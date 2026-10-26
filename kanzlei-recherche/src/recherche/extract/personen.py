@@ -1,0 +1,218 @@
+"""Regelbasierte Erkennung von Personen und Mitarbeiterzahlen – unabhängig vom LLM.
+
+Personen: Zeilen bzw. Kacheln mit einem Namen (2–4 großgeschriebene Wörter, Titel erlaubt)
+und daneben oder darunter einer Funktion aus config/personen_funktionen.yaml
+(„Jens Hansen" / „Steuerberater, Partner" oder „Jens Hansen – Steuerberater").
+
+Mitarbeiterzahl: Textstellen wie „Team aus 12 Mitarbeitenden", „28 Expert:innen",
+„über 20 Mitarbeiterinnen und Mitarbeiter". Eine genaue Angabe ergibt eine Zahl;
+„über/mehr als N" ist eine Untergrenze (Klasse oberhalb von N); „rund/ca./etwa N"
+ergibt die Klasse von N.
+"""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+from functools import lru_cache
+from pathlib import Path
+
+import yaml
+
+from ..config import PROJEKT_DIR
+from ..models import TeamKlasse
+
+STANDARD_FUNKTIONEN = PROJEKT_DIR / "config" / "personen_funktionen.yaml"
+
+_TITEL = re.compile(
+    r"^(?:(?:Prof\.|Dr\.(?:\s*(?:rer\.\s*pol\.|jur\.|oec\.))?|Dipl\.-?\s?[A-ZÄÖÜa-zäöü]+\.?(?:\s*\((?:FH|BA|DH)\))?|"
+    r"M\.\s?(?:Sc|A)\.|B\.\s?(?:Sc|A)\.|LL\.\s?M\.|MBA|Mag\.)\s*)+"
+)
+_TITEL_HINTEN = re.compile(r",\s*((?:M\.\s?Sc\.|M\.\s?A\.|B\.\s?Sc\.|B\.\s?A\.|LL\.\s?M\.|MBA|Dipl\.-?\s?\w+\.?)(?:\s*\(\w+\))?)\s*$")
+_PARTIKEL = frozenset({"von", "van", "de", "der", "den", "zu", "la", "le", "di", "da", "ten"})
+_NAME_WORT = re.compile(r"^[A-ZÄÖÜ][a-zäöüßé]+(?:-[A-ZÄÖÜ][a-zäöüßé]+)?\.?$")
+_KEINE_NAMEN = frozenset(
+    """unser unsere unseres team kanzlei kontakt steuerberatung leistungen impressum datenschutz startseite home über
+    uns karriere jobs mehr erfahren sie ihr ihre wir telefon fax termin willkommen standort standorte anfahrt
+    mandanten service aktuelles news referenzen downloads links partnerschaft gesellschaft sprechzeiten
+    öffnungszeiten ansprechpartner ansprechpartnerin geschäftsführung leitung verwaltung angaben berufsrechtliche
+    rechtliche hinweise register registergericht amtsgericht handelsregister partnerschaftsregister ust
+    steuernummer umsatzsteuer gesellschaft kammer versicherung aufsichtsbehörde berufsbezeichnung haftung
+    inhalte urheberrecht verantwortlich inhaltlich sitz deutschland bundesrepublik zuständige zuständiger
+    berufshaftpflicht berufsordnung streitschlichtung information informationen allgemeine
+    vertretungsberechtigte vertretungsberechtigter gesellschafter""".split()
+)
+_TRENNER = re.compile(r"\s+[–—|·]\s+|\s+-\s+|\s*\|\s*|,\s+")
+
+
+@dataclass(frozen=True)
+class Funktionen:
+    berufstraeger: tuple[str, ...]
+    leitung: tuple[str, ...]
+    mitarbeitende: tuple[str, ...]
+
+    @property
+    def alle(self) -> tuple[str, ...]:
+        return self.berufstraeger + self.leitung + self.mitarbeitende
+
+    def _muster(self, woerter: tuple[str, ...]) -> re.Pattern:
+        teile = sorted((re.escape(w) for w in woerter), key=len, reverse=True)
+        # Gender-Formen: Steuerberater:in, Steuerberater/in, Steuerberater*in, Steuerberater_in
+        return re.compile(r"(?<![a-zäöüß])(?:" + "|".join(teile) + r")(?:[:*/_]?in(?:nen)?)?(?![a-zäöüß])", re.I)
+
+    @property
+    def muster_alle(self) -> re.Pattern:
+        return _muster_cache(self, "alle")
+
+    @property
+    def muster_berufstraeger(self) -> re.Pattern:
+        return _muster_cache(self, "berufstraeger")
+
+    @property
+    def muster_leitung(self) -> re.Pattern:
+        return _muster_cache(self, "leitung")
+
+
+@lru_cache(maxsize=32)
+def _muster_cache(f: Funktionen, art: str) -> re.Pattern:
+    return f._muster(f.alle if art == "alle" else getattr(f, art))
+
+
+@lru_cache(maxsize=8)
+def lade_funktionen(pfad: str | Path = STANDARD_FUNKTIONEN) -> Funktionen:
+    d = yaml.safe_load(Path(pfad).read_text(encoding="utf-8-sig")) or {}
+    return Funktionen(*(tuple(d.get(k) or ()) for k in ("berufstraeger", "leitung", "mitarbeitende")))
+
+
+@dataclass(frozen=True)
+class ErkanntePerson:
+    name: str
+    titel: str | None
+    funktion: str
+    zeile: int
+
+
+def name_zerlegen(text: str) -> tuple[str, str | None] | None:
+    """'Dipl.-Kfm. Jens Hansen' → ('Jens Hansen', 'Dipl.-Kfm.'); kein Name → None."""
+    text = " ".join(text.strip(" :;").split())
+    titel_teile = []
+    if m := _TITEL.match(text):
+        titel_teile.append(m.group(0).strip())
+        text = text[m.end():].strip()
+    if m := _TITEL_HINTEN.search(text):
+        titel_teile.append(m.group(1).strip())
+        text = text[: m.start()].strip()
+    text = text.rstrip(" .")
+    woerter = text.split()
+    gross = [w for w in woerter if w.lower() not in _PARTIKEL]
+    if not 2 <= len(gross) <= 4 or len(woerter) > 6:
+        return None
+    if not all(_NAME_WORT.match(w) for w in gross) or any(w.lower().strip(".") in _KEINE_NAMEN for w in woerter):
+        return None
+    return text, " ".join(titel_teile) or None
+
+
+def _ist_funktion(zeile: str, f: Funktionen) -> bool:
+    return len(zeile) <= 120 and len(zeile.split()) <= 12 and bool(f.muster_alle.search(zeile))
+
+
+def erkenne_personen(text: str, funktionen: Funktionen | None = None) -> list[ErkanntePerson]:
+    """Personen mit Funktion aus zeilenweisem Seitentext (Kacheln, Listen, „Name – Funktion")."""
+    f = funktionen or lade_funktionen()
+    zeilen = [z.strip() for z in text.splitlines()]
+    gefunden: list[ErkanntePerson] = []
+    vergeben: set[int] = set()
+
+    def hinzu(name_titel, funktion: str, i: int) -> None:
+        name, titel = name_titel
+        schluessel = frozenset(name.lower().split())
+        if any(frozenset(p.name.lower().split()) == schluessel for p in gefunden):
+            return
+        gefunden.append(ErkanntePerson(name, titel, funktion.strip(" ,;:–-"), i))
+
+    for i, z in enumerate(zeilen):
+        if not z or i in vergeben:
+            continue
+        # „Jens Hansen – Steuerberater" / „Dr. Henrik Lorenzen, Geschäftsführer, Steuerberater"
+        teile = _TRENNER.split(z, maxsplit=1)
+        if len(teile) == 2 and (nt := name_zerlegen(teile[0])) and _ist_funktion(teile[1], f):
+            hinzu(nt, teile[1], i)
+            vergeben.add(i)
+            continue
+        nt = name_zerlegen(z)
+        if nt is None:
+            continue
+        # Name, darunter (höchstens zwei Zeilen) die Funktion
+        for j in (i + 1, i + 2):
+            if j < len(zeilen) and zeilen[j] and _ist_funktion(zeilen[j], f) and not name_zerlegen(zeilen[j]):
+                hinzu(nt, zeilen[j], i)
+                vergeben.update({i, j})
+                break
+        else:
+            # Funktion über dem Namen (Kachel mit Rolle als Überschrift)
+            if i > 0 and zeilen[i - 1] and i - 1 not in vergeben and _ist_funktion(zeilen[i - 1], f) \
+                    and not name_zerlegen(zeilen[i - 1]):
+                hinzu(nt, zeilen[i - 1], i)
+                vergeben.update({i - 1, i})
+    return gefunden
+
+
+def ist_berufstraeger_funktion(funktion: str | None, f: Funktionen | None = None) -> bool:
+    return bool(funktion) and bool((f or lade_funktionen()).muster_berufstraeger.search(funktion))
+
+
+def ist_leitung_funktion(funktion: str | None, f: Funktionen | None = None) -> bool:
+    return bool(funktion) and bool((f or lade_funktionen()).muster_leitung.search(funktion))
+
+
+# ---------------------------------------------------------------------- Mitarbeiterzahl
+
+_G = r"(?:[:*/_]?[iI]nnen|[:*/_]?[iI]n)?"  # Gender-Endungen: :innen, *innen, _innen, /innen, Innen
+_PERSONEN_WORT = (
+    r"(?:Mitarbeiterinnen\s+und\s+Mitarbeiter(?:n)?|Mitarbeiter(?:n)?" + _G + r"|Mitarbeitende(?:n)?|"
+    r"Kolleginnen\s+und\s+Kollegen|Kolleg(?:en|" + _G[3:-2] + r")|Kolleg" + _G + r"|Beschäftigte(?:n)?|"
+    r"Expertinnen\s+und\s+Experten|Expert(?:en|" + _G[3:-2] + r")|Experte" + _G + r"|Fachkräfte(?:n)?|"
+    r"Berater(?:n)?" + _G + r"|Beraterinnen\s+und\s+Berater(?:n)?|Köpfe(?:n)?|Spezialist(?:en)?" + _G + r"|"
+    r"Teammitglieder(?:n)?|Menschen|Personen)"
+)
+_EIGENSCHAFT = r"(?:(?:engagierte|qualifizierte|erfahrene|motivierte|kompetente|fachkundige|hochqualifizierte)[nr]?\s+)?"
+_MITARBEITERZAHL = re.compile(
+    r"(?<![\w.,])(?P<vor>über|mehr\s+als|rund|ca\.?|circa|etwa|knapp|fast|insgesamt)?\s*(?P<zahl>\d{1,3})"
+    r"(?:\s*(?:-|\s)köpfig\w*|\s*" + _EIGENSCHAFT + _PERSONEN_WORT + r"(?![\w]))",
+    re.I,
+)
+# „Team von 28", „Team aus über 20" – ohne Personenwort dahinter
+_TEAM_VON = re.compile(
+    r"\bTeam\s+(?:von|aus|mit)\s+(?P<vor>über|mehr\s+als|rund|ca\.?|circa|etwa|knapp|fast)?\s*(?P<zahl>\d{1,3})(?![\d.,])",
+    re.I,
+)
+_UNTERGRENZE = {"über", "mehr als"}
+_UNGEFAEHR = {"rund", "ca", "ca.", "circa", "etwa", "knapp", "fast"}
+
+
+@dataclass(frozen=True)
+class Mitarbeiterzahl:
+    zahl: int | None  # genaue Angabe
+    klasse: TeamKlasse | None  # bei Unter- oder ungefährer Angabe
+    beleg: str
+
+
+def mitarbeiterzahl(texte: list[str]) -> Mitarbeiterzahl | None:
+    """Größte plausible Mitarbeiterangabe (2–999) aus den Seitentexten."""
+    beste: tuple[int, Mitarbeiterzahl] | None = None
+    for text in texte:
+        for m in [*_MITARBEITERZAHL.finditer(text or ""), *_TEAM_VON.finditer(text or "")]:
+            n = int(m.group("zahl"))
+            if not 2 <= n <= 999:
+                continue
+            vor = " ".join((m.group("vor") or "").lower().split())
+            beleg = " ".join(m.group(0).split())
+            if vor in _UNTERGRENZE:
+                eintrag, rang = Mitarbeiterzahl(None, TeamKlasse.aus_zahl(n + 1), beleg), n + 1
+            elif vor in _UNGEFAEHR:
+                eintrag, rang = Mitarbeiterzahl(None, TeamKlasse.aus_zahl(n), beleg), n
+            else:
+                eintrag, rang = Mitarbeiterzahl(n, None, beleg), n
+            if beste is None or rang > beste[0]:
+                beste = (rang, eintrag)
+    return beste[1] if beste else None

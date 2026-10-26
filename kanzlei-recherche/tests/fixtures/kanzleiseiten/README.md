@@ -11,10 +11,11 @@ Je Domain:
 
 | Datei | Inhalt |
 |---|---|
-| `start.html`, `impressum.html`, `kontakt.html`, `team.html` | Rohseiten (fehlende Seiten fehlen einfach) |
+| `start.html`, `impressum.html`, `kontakt.html`, `team.html`, `team2.html` | Rohseiten (fehlende Seiten fehlen einfach; `team2` = zweite Teamseite, z. B. `/ueber-uns`) |
 | `meta.json` | `domain`, `urls` je Seitentyp, `abgerufen_am` |
 | `erwartet.json` | Sollwerte, von Hand; erst mit `"_status": "fertig"` bewertet |
 | `llm/<modell>.json` | aufgezeichnete Ollama-Antworten (`fixture-eval --live`) |
+| `llm/handgeschrieben_<modell>.json` | von Hand geschriebene Antworten der Beispiele (eine echte Aufzeichnung geht vor) |
 
 `erwartet.json`:
 
@@ -39,8 +40,12 @@ Je Domain:
   „Holstenstraße 42"), Telefon über die Ziffern, Personen ohne Titel, Namen ohne Satzzeichen.
 - `teamgroesse`: Zahl, wenn ablesbar; sonst `null` und `teamgroesse_klasse` (`1-5`, `6-15`,
   `16-50`, `>50`) oder beides `null`.
-- `erster_ansprechpartner`: Hauptansprechpartner (Berufsträger oder Leitung, bevorzugt die im
-  Impressum verantwortliche Person).
+- `erster_ansprechpartner`: Hauptansprechpartner (Berufsträger oder Leitung): erste Person im
+  Impressum-Abschnitt „vertretungsberechtigt/vertreten durch", sonst erste auf der Teamseite.
+  Bei gleichrangigen Partnern auch als Liste zulässiger Namen: `["Jörg Petersen", "Sandra Albers"]`.
+- `rechtsform` wird kanonisch verglichen („Partnerschaftsgesellschaft mbB" = „PartG mbB").
+- JSON-Dateien dürfen ein UTF-8-BOM haben (PowerShell).
 
 Ablauf: `recherche fixture-add --domain X` → `erwartet.json` ausfüllen → `recherche fixture-eval --live`
 (zeichnet für `llm.modell` auf) → danach jederzeit offline `recherche fixture-eval`.
+Kürzung und Linkerkennung prüfen: `recherche fixture-prompt --domain X [--live]`.

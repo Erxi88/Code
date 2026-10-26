@@ -207,13 +207,74 @@ def test_extract_ollama_nicht_erreichbar(monkeypatch, fake_llm, db_pfad):
     assert r.exit_code == 0 and "Lauf vorzeitig beendet: Ollama nicht erreichbar" in r.output
 
 
-def test_fixture_eval():
+@pytest.fixture
+def fake_openplz_pruefer(monkeypatch):
+    from fakes import fake_pruefer
+
+    monkeypatch.setattr(cli, "PlzPruefer", lambda *a, **kw: fake_pruefer())
+
+
+def test_fixture_eval(fake_openplz_pruefer):
     r = runner.invoke(cli.app, ["fixture-eval", "--nur", "beispiele"])
     assert r.exit_code == 0, r.output
-    assert "Fixtures: 3 ausgewertet; Modell qwen3.5:9b" in r.output
-    assert "Trefferquote je Feld" in r.output and "3/3 (100%)" in r.output
-    assert "Je Kanzlei im Mittel: 33.6 s, Token 2478 (Prompt 2166, Antwort 311) über 3 Antworten" in r.output
+    assert "Fixtures: 5 ausgewertet; Modell qwen3.5:9b" in r.output
+    assert "Trefferquote je Feld" in r.output and "5/5 (100%)" in r.output
+    assert "Je Kanzlei im Mittel: 36.1 s, Token 3282 (Prompt 2928, Antwort 354) über 5 Antworten" in r.output
     assert "Modellvergleich" in r.output and "qwen3.6:27b" in r.output
+    assert "✗" not in r.output.split("Modellvergleich")[0]
+
+
+def test_fixture_eval_offline_ohne_ort_vereinheitlichung():
+    r = runner.invoke(cli.app, ["fixture-eval", "--nur", "beispiele", "--offline"])
+    assert r.exit_code == 0 and "nordlicht-steuerberatung.example · ort: ist 'Kiel-Holtenau' / soll 'Kiel'" in r.output
+
+
+def test_fixture_eval_live_nur_echte(monkeypatch, fake_openplz_pruefer):
+    aufrufe = []
+
+    class Fake:
+        def __init__(self, cfg, modell=None):
+            self.modell = modell
+
+        def extract(self, seiten):
+            aufrufe.append(next(iter(seiten.values())).domain)
+            raise AssertionError("darf für Beispiele nicht laufen")
+
+    monkeypatch.setattr(cli, "OllamaExtractor", Fake)
+    r = runner.invoke(cli.app, ["fixture-eval", "--live"])
+    assert "--live: nur echte Fixtures" in r.output
+    assert aufrufe == []  # echt/ ist hier leer, Beispiele werden nicht live überschrieben
+
+
+def test_fixture_prompt():
+    r = runner.invoke(cli.app, ["fixture-prompt", "--domain", "nordlicht-steuerberatung.example"])
+    assert r.exit_code == 0, r.output
+    for teil in ("Zeichen je Bereinigungsstufe", "101 KB", "Linkerkennung", "/kanzlei/team/",
+                 "Berufsträger 3", "2 Vertretungsberechtigte, Berufsbezeichnung: Steuerberater",
+                 "geschätzt", "Zeichen/Token", "→ 3.05 Zeichen/Token"):
+        assert teil in r.output, teil
+    r = runner.invoke(cli.app, ["fixture-prompt", "--domain", "mittelstand-steuer.example"])
+    assert "Mitarbeiterzahl (Regel): 28 Expert:innen" in r.output and "/information/license" in r.output
+
+
+def test_fixture_prompt_live_und_speichern(monkeypatch, tmp_path):
+    from test_extract_ollama import _ok, _ollama
+
+    original = cli.OllamaExtractor
+    client, gesendet = _ollama([_ok()])
+    monkeypatch.setattr(cli, "OllamaExtractor", lambda cfg, modell=None: original(cfg, modell=modell, client=client))
+    r = runner.invoke(cli.app, ["fixture-prompt", "--domain", "hansen-steuerberatung.example", "--live", "--speichern"])
+    assert r.exit_code == 0, r.output
+    assert "Ollama qwen3.5:9b: 1200 Prompt-Token" in r.output and "Zeichen/Token" in r.output
+    assert gesendet[0]["options"]["num_ctx"] == 16384
+    ziel = load_settings().pfad("data") / "prompt_hansen-steuerberatung.example.txt"
+    assert ziel.exists() and "=== SYSTEM ===" in ziel.read_text()
+    ziel.unlink()
+
+
+def test_fixture_prompt_unbekannt():
+    r = runner.invoke(cli.app, ["fixture-prompt", "--domain", "gibtsnicht.example"])
+    assert r.exit_code == 2 and "nicht gefunden" in r.output
 
 
 def test_fixture_eval_ohne_aufzeichnung():

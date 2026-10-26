@@ -33,7 +33,17 @@ class ExtractStatistik:
     llm_aufrufe: int = 0
     llm_laufzeit_s: float = 0.0
     tokens: int = 0
+    gekuerzt: int = 0  # Kanzleien, deren Seitentext für den Prompt gekürzt wurde
+    kontext_voll: int = 0  # Prompt + Antwort ≥ 95 % von num_ctx (Ollama hat vermutlich abgeschnitten)
     abbruch: str | None = None
+
+    def hinweis(self) -> str | None:
+        teile = []
+        if self.gekuerzt:
+            teile.append(f"gekürzt: {self.gekuerzt} Kanzleien")
+        if self.kontext_voll:
+            teile.append(f"Kontext fast voll: {self.kontext_voll} Kanzleien")
+        return "; ".join(teile) or None
 
     @property
     def mittlere_laufzeit_s(self) -> float | None:
@@ -94,7 +104,8 @@ def run_extract(
             lauf_id=lauf_id, schritt="extract", bundesland=bundesland,
             adapter=extractor.modell if extractor else "nur Regeln",
             suchbegriff=f"{stat.fertig} Kanzleien, {stat.fehler} Fehler", trefferzahl=stat.fertig,
-            anfragen=stat.llm_aufrufe, laufzeit_s=round(time.monotonic() - start, 2), fehler=stat.abbruch,
+            anfragen=stat.llm_aufrufe, laufzeit_s=round(time.monotonic() - start, 2),
+            fehler="; ".join(x for x in (stat.abbruch, stat.hinweis()) if x) or None,
         )
     )  # fmt: skip
     return stat
@@ -104,7 +115,7 @@ def _eine(storage: Storage, k: Kandidat, extractor, pruefer, ausschluss, stat: E
     funde = storage.funde_kandidat(k.id)
     if not (k.domain or k.website):
         stat.ohne_website += 1
-        return zusammenfuehren(k, funde, {}, None, None, pruefer.pruefe if pruefer else None)
+        return zusammenfuehren(k, funde, {}, None, None, pruefer.pruefe if pruefer else None, ausschluss)
     seiten = storage.kandidat_seiten(k.id)
     regel = regeln_fuer(seiten, ausschluss, k.domain)
     llm = None
@@ -114,4 +125,8 @@ def _eine(storage: Storage, k: Kandidat, extractor, pruefer, ausschluss, stat: E
         stat.llm_aufrufe += 1
         stat.llm_laufzeit_s += antwort.laufzeit_s
         stat.tokens += antwort.tokens or 0
-    return zusammenfuehren(k, funde, seiten, regel, llm, pruefer.pruefe if pruefer else None)
+        stat.gekuerzt += bool(antwort.kuerzung)
+        stat.kontext_voll += antwort.kontext_voll
+        if antwort.kuerzung or antwort.kontext_voll:
+            log.info("%s: Prompt gekürzt (%s)%s", k.domain, antwort.kuerzung, ", Kontext fast voll" if antwort.kontext_voll else "")
+    return zusammenfuehren(k, funde, seiten, regel, llm, pruefer.pruefe if pruefer else None, ausschluss)

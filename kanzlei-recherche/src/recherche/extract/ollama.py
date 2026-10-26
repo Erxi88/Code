@@ -14,7 +14,6 @@ import httpx
 from pydantic import ValidationError
 
 from ..config import LlmConfig
-from ..crawl import haupttext
 from ..models import Seite, Seitentyp
 from .base import (
     AnbieterNichtErreichbar,
@@ -24,6 +23,7 @@ from .base import (
     LlmErgebnis,
     llm_schema,
 )
+from .prompt import Prompt, baue_prompt, text_budget
 
 log = logging.getLogger(__name__)
 
@@ -40,12 +40,10 @@ Regeln:
   Versicherung, des Webdesigns oder Datenschutzbeauftragte externer Firmen.
 - mitarbeiterzahl nur, wenn eine Zahl ausdrücklich genannt wird (z. B. „Team aus 12 Mitarbeitern");
   Personen nicht selbst zählen.
-- teamgroesse_klasse nur, wenn keine Zahl genannt ist, aber eine Größenordnung im Text steht."""
-
-# Anteil der Seiten am Textbudget (llm.max_text_chars)
-ANTEILE = {Seitentyp.IMPRESSUM: 0.30, Seitentyp.TEAM: 0.45, Seitentyp.KONTAKT: 0.12, Seitentyp.START: 0.13}
-REIHENFOLGE = (Seitentyp.IMPRESSUM, Seitentyp.KONTAKT, Seitentyp.TEAM, Seitentyp.START)
-
+- teamgroesse_klasse nur, wenn keine Zahl genannt ist, aber eine Größenordnung im Text steht.
+- Der Abschnitt PERSONEN wurde automatisch aus Kacheln/Listen erkannt: als Hilfe nutzen, offensichtliche
+  Fehlerkennungen (keine Person) weglassen, fehlende Personen aus dem Text ergänzen.
+- RAHMEN enthält Navigation und Fußzeile, die auf allen Seiten gleich sind (oft Adresse und Telefon)."""
 
 class OllamaExtractor(Extractor):
     name = "ollama"
@@ -62,31 +60,20 @@ class OllamaExtractor(Extractor):
             self._client = httpx.Client(timeout=self.cfg.timeout_s)
         return self._client
 
-    def seiten_text(self, seiten: dict[Seitentyp, Seite]) -> str:
-        teile = []
-        gesehen: set[str] = set()
-        for typ in REIHENFOLGE:
-            s = seiten.get(typ)
-            if s is None or s.url in gesehen:
-                continue
-            gesehen.add(s.url)
-            text = s.text or ""
-            if typ == Seitentyp.TEAM and s.html:
-                # Haupttext ohne Navigation – außer trafilatura verwirft offensichtlich zu viel (Kachel-Layouts)
-                kurz = haupttext(s.html)
-                if kurz and len(kurz) >= 0.15 * len(text):
-                    text = kurz
-            text = text[: int(self.cfg.max_text_chars * ANTEILE[typ])]
-            if text.strip():
-                teile.append(f"### {typ.value.upper()} ({s.url})\n{text}")
-        return "\n\n".join(teile)[: self.cfg.max_text_chars]
+    def prompt(self, seiten: dict[Seitentyp, Seite]) -> Prompt:
+        return baue_prompt(seiten, text_budget(self.cfg))
 
-    def build_payload(self, seiten: dict[Seitentyp, Seite], modell: str | None = None) -> dict:
+    def seiten_text(self, seiten: dict[Seitentyp, Seite]) -> str:
+        return self.prompt(seiten).text
+
+    def build_payload(self, seiten: dict[Seitentyp, Seite], modell: str | None = None,
+                      prompt: Prompt | None = None) -> dict:
+        prompt = prompt or self.prompt(seiten)
         return {
             "model": modell or self.modell,
             "messages": [
                 {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": self.seiten_text(seiten)},
+                {"role": "user", "content": prompt.text},
             ],
             "format": llm_schema(),
             "think": False,
@@ -96,8 +83,9 @@ class OllamaExtractor(Extractor):
 
     def extract(self, seiten: dict[Seitentyp, Seite]) -> ExtraktionsAntwort:
         letzter_fehler = ""
+        prompt = self.prompt(seiten)
         for versuch in range(self.cfg.retries + 1):
-            daten, dauer = self._anfrage(self.build_payload(seiten))
+            daten, dauer = self._anfrage(self.build_payload(seiten, prompt=prompt))
             inhalt = (daten.get("message") or {}).get("content") or ""
             try:
                 ergebnis = LlmErgebnis.model_validate_json(inhalt)
@@ -112,6 +100,9 @@ class OllamaExtractor(Extractor):
                 laufzeit_s=round(ns / 1e9, 3) if ns else round(dauer, 3),
                 prompt_tokens=daten.get("prompt_eval_count"),
                 antwort_tokens=daten.get("eval_count"),
+                prompt_zeichen=len(SYSTEM_PROMPT) + len(prompt.text),
+                kuerzung=prompt.kuerzung_text(),
+                num_ctx=self.cfg.num_ctx,
             )
         raise ExtraktionFehler(f"{self.modell}: {letzter_fehler}")
 

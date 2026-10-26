@@ -8,6 +8,7 @@ from __future__ import annotations
 import os
 from datetime import date
 from pathlib import Path
+from typing import Literal
 
 import yaml
 from dotenv import load_dotenv
@@ -206,7 +207,8 @@ class LlmConfig(BaseModel):
     timeout_s: float = 300.0
     num_ctx: int = 16384  # Kontextfenster; Ollama-Standard ist zu klein und schneidet ab
     retries: int = 1  # erneuter Versuch bei ungültiger Antwort
-    max_text_chars: int = 24000
+    # Text aller Seiten zusammen; "auto" = passend zu num_ctx (siehe extract/prompt.py)
+    max_text_chars: int | Literal["auto"] = "auto"
 
 
 class OpenPlzConfig(BaseModel):
@@ -289,7 +291,7 @@ class Settings(BaseModel):
 def load_settings(pfad: str | Path | None = None) -> Settings:
     """Lädt settings.yaml und – falls vorhanden – .env aus dem Projektordner."""
     pfad = Path(pfad) if pfad else STANDARD_CONFIG
-    daten = yaml.safe_load(pfad.read_text(encoding="utf-8")) or {}
+    daten = yaml.safe_load(pfad.read_text(encoding="utf-8-sig")) or {}
     basis = pfad.resolve().parent.parent
     load_dotenv(basis / ".env", override=False)
     return Settings(**daten, basis_dir=basis)

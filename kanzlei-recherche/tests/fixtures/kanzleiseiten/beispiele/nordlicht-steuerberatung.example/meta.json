@@ -1,0 +1,11 @@
+{
+ "domain": "nordlicht-steuerberatung.example",
+ "urls": {
+  "start": "https://www.nordlicht-steuerberatung.example/",
+  "impressum": "https://www.nordlicht-steuerberatung.example/impressum/",
+  "kontakt": "https://www.nordlicht-steuerberatung.example/kontakt/",
+  "team": "https://www.nordlicht-steuerberatung.example/kanzlei/team/"
+ },
+ "abgerufen_am": "2026-10-28T10:00:00",
+ "_hinweis": "Fiktive Kanzlei (Testdaten) nach dem Vorbild echter Seitenbauweisen."
+}

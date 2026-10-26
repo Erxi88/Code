@@ -122,8 +122,11 @@ der nächsten Quelle füllen.**
 - Für jeden Kandidaten **mit Website**: Start bei `https://<domain>/` (Rückfall `http://`,
   dann Treffer-URL), Links sammeln, Impressum-/Kontakt-/Team-Seite über Pfad und Linktext
   erkennen (`/impressum`, `/kontakt`, `/team`, `/ueber-uns`, `/kanzlei`, `/wir`,
-  „Unser Team", „Mitarbeiter", „Ansprechpartner"; Abzüge für Datenschutz, Karriere,
-  Jobs). Ohne Impressum-Link wird `/impressum` geraten (Soft-404 wird erkannt).
+  „Unser Team", „Mitarbeiter", „Ansprechpartner", „Berufsträger", „Partner", „Über uns";
+  Abzüge für Datenschutz, Karriere, Jobs, Kooperationspartner). Das Impressum wird auch
+  über den Linktext erkannt, wenn der Pfad fremd ist (`/information/license`). Die zweitbeste
+  Team-Kandidatin wird als `team2` gelesen (z. B. `/berufstraeger` und `/ueber-uns`) –
+  höchstens 6 Abrufe je Domain. Ohne Impressum-Link wird `/impressum` geraten (Soft-404 wird erkannt).
 - Max. 1 Request/Sekunde je Domain – **auch Weiterleitungen und robots.txt** (Weiter-
   leitungen werden selbst verfolgt) –, viele Domains parallel (`crawl.parallel_domains`),
   Timeout 15 s, 2 Retries mit Backoff, User-Agent aus `settings.yaml`.
@@ -131,7 +134,8 @@ der nächsten Quelle füllen.**
 - Jede URL wird **einmal** geladen und als **HTML (gzip) + bereinigter Text** in SQLite
   gecacht (auch 404). Der Text entsteht aus dem ganzen `<body>` mit Zeilenumbrüchen –
   **Navigation und Fußzeile bleiben**, weil dort oft Adresse und Telefon stehen.
-  trafilatura liefert nur den Haupttext der Teamseite für den LLM-Prompt.
+  Cookie-/Consent-Banner werden entfernt; **versteckte Elemente bleiben** (Akkordeons
+  im Impressum und auf Teamseiten enthalten oft die Namen).
 - Playwright nur als Rückfall für fast leere Seiten (< `crawl.min_text_zeichen`) und nur
   mit `crawl.playwright: true` (`setup.sh --mit-playwright`).
 - Fehler (nicht erreichbar, HTTP-Fehler, robots.txt, kein Impressum, JavaScript-Seite,
@@ -154,15 +158,39 @@ der nächsten Quelle füllen.**
   - `num_ctx` immer setzen (Ollama-Standard schneidet längere Seiten ab).
   - Modelle: lokal `qwen3.5:9b`, Fallback `llama3.1:8b`; GPU-Server `qwen3.6:27b`,
     Alternative `gemma4:26b`. Umschalten nach dem Fixture-Vergleich (`fixture-eval`).
+- Prompt (`prompt.py`): gezielt reduzieren statt hinten abschneiden – Navigation/Fußzeile
+  einmal (Abschnitt RAHMEN: Zeilen auf ≥ ¾ der Seiten, mind. 2), Cookie-Zeilen und
+  Textbausteine (Datenschutz, Haftung, Urheberrecht, Streitschlichtung) raus,
+  Impressum-Schlüsselstellen (vertretungsberechtigt, Partner, Geschäftsführer, Inhaber,
+  Berufsbezeichnung; ±4 Zeilen) immer vorn, dann die regelbasiert erkannten PERSONEN.
+  Budget `llm.max_text_chars: auto` = (num_ctx − 2700 Token) × 3,0 Zeichen/Token, verteilt
+  nach Anteilen je Seite. Wird gekürzt oder ist der Kontext fast voll, steht ein Hinweis im
+  Log und im Lauf-Protokoll. `recherche fixture-prompt --domain X [--live]` zeigt jede
+  Stufe und vergleicht die geschätzten mit den echten Prompt-Token.
+- Personen (`personen.py`, `config/personen_funktionen.yaml`): Kacheln/Listen auf beiden
+  Teamseiten (Name mit Funktion darunter, „Name – Funktion", Funktion darüber).
+  Mitarbeiterzahl-Regel auf allen Seiten inkl. Startseite („28 Expert:innen", „Team von 28",
+  „15-köpfig"; Gender-Schreibweisen normalisiert; „über N" → Klasse über N).
 - Fehlende Felder bleiben `null` – **nie raten**. Konfidenz berechnet der Code, nicht das LLM.
 - Zusammenführung (`merge.py`):
   - Adresse (als Einheit) und Telefon: Discovery (Stufe B) > Regeln > LLM.
   - Name: Discovery (Stufe B) > LLM; **Websuche-Titel gelten nicht als Discovery-Name**.
   - Discovery-Daten werden nie überschrieben; Unterschiede (normalisiert verglichen)
     stehen in der Spalte „Abweichung". Kandidatenfelder werden nur ergänzt, wenn leer.
-  - Ansprechpartner = nur **Berufsträger und Leitung** (Verantwortliche/r laut Impressum
-    zuerst); „Berufsträger (Anzahl)" zählt StB/WP/RA/vBP darunter.
-  - Teamgröße: genannte Zahl > **alle** Personen der Teamseite (≥ 2; Untergrenze, eine
+  - Ansprechpartner = nur **Berufsträger und Leitung**; Mehrfachnennungen werden
+    vereinigt (Funktionen und Titel). Reihenfolge: Vertretungsberechtigte in der
+    Reihenfolge des Impressum-Abschnitts „vertretungsberechtigt/vertreten durch", dann
+    Leitung, dann Berufsträger – jeweils in der Reihenfolge der Teamseite.
+  - „Berufsträger (Anzahl)" zählt StB/WP/RA/vBP, Berufstitel nur mit Wortgrenze;
+    Fach­angestellte, Fachwirt, Fachassistent, Fachgehilfe und Anwärter nie.
+    Vertretungsberechtigte zählen, wenn im selben Impressum-Abschnitt genau **eine**
+    Berufsbezeichnung steht.
+  - Rechtsform kanonisch (`config/rechtsformen.yaml`: „Partnerschaftsgesellschaft mbB" →
+    „PartG mbB"); Ort laut OpenPLZ („Hamburg-Rissen" → „Hamburg").
+  - Adresszusatz („/ Haus 8 Süd", eigene Zeile mit Haus, Gebäude, Eingang, Etage, OG,
+    Hinterhof, c/o) steht im eigenen Feld; die PLZ-Zeile darf bis zu zwei Zeilen unter
+    der Straße stehen.
+  - Teamgröße: genannte Zahl (LLM, dann Regel) > **alle** Personen der Teamseiten (≥ 2; Untergrenze, eine
     größere Klasse aus dem Text geht vor) > Klasse aus dem Text.
 - Kandidaten **ohne Website** kommen mit ihren Discovery-Daten ins Blatt „Kanzleien"
   („Website vorhanden" = nein).
@@ -170,14 +198,16 @@ der nächsten Quelle füllen.**
 ### Fixtures für die Extraktion (`fixtures.py`)
 
 - `tests/fixtures/kanzleiseiten/<beispiele|echt>/<domain>/`: `start/impressum/kontakt/
-  team.html`, `meta.json`, `erwartet.json` (von Hand, `_status: fertig`),
-  `llm/<modell>.json` (Aufzeichnungen).
+  team/team2.html`, `meta.json`, `erwartet.json` (von Hand, `_status: fertig`),
+  `llm/<modell>.json` (Aufzeichnungen; in den Beispielen von Hand geschrieben:
+  `llm/handgeschrieben_<modell>.json`). JSON wird mit `utf-8-sig` gelesen (PowerShell-BOM).
 - **Echte Kanzleiseiten nur lokal** unter `echt/` (`.gitignore`); committet werden nur
   die fiktiven Beispiele. Tests überspringen fehlende echte Fixtures.
 - `recherche fixture-add --domain X` holt die Seiten (robots.txt, Drosselung) und legt
   die Vorlage an. `recherche fixture-eval [--live] [--modell M]` misst die Trefferquote
   je Feld, mittlere Laufzeit und Token je Kanzlei; `--live` fragt Ollama und zeichnet
-  auf. Name und Ansprechpartner werden offline nur über Aufzeichnungen bewertet.
+  auf – nur für `echt/`, außer mit `--nur beispiele`. `--offline` prüft PLZ/Ort ohne OpenPLZ.
+  Name und Ansprechpartner werden offline nur über Aufzeichnungen bewertet.
 - Ziel: 13 von 15 echten Fixtures korrekt für Name, Adresse, Telefon und ersten
   Ansprechpartner.
 
@@ -200,7 +230,7 @@ der nächsten Quelle füllen.**
 ### CLI (`cli.py`)
 
 `recherche search | fill | coverage | crawl | extract | export | run | search-compare | orte |
-fixture-add | fixture-eval`,
+fixture-add | fixture-eval | fixture-prompt`,
 jeweils mit `--bundesland` und `--db`. **Jeder Schritt muss nach Abbruch
 wiederaufnehmbar sein**: Fortschritt steht in SQLite (Status je Domain und
 Schritt, erledigte Queries im Lauf-Protokoll); ein erneuter Aufruf macht nur das,
@@ -212,7 +242,7 @@ SQLite-Tabellen: `kandidaten` (eigene ID, Domain optional), `funde` (jeder Treff
 Quelle), `api_cache` (auch robots.txt und OpenPLZ), `seiten` (HTML gzip + Text),
 `kandidat_seiten` (Seitentyp → URL je Kandidat), `kanzleien` (je Kandidat),
 `nicht_gefunden`, `dubletten`, `lauf_protokoll` (inkl. Anfragen und Kosten).
-Schemaversion über `PRAGMA user_version` (aktuell 3); ältere Datenbanken werden beim
+Schemaversion über `PRAGMA user_version` (aktuell 4, `adresszusatz`); ältere Datenbanken werden beim
 Öffnen schrittweise migriert (jeder Schritt in einer Transaktion).
 
 ## Arbeitsweise
@@ -239,7 +269,10 @@ Schemaversion über `PRAGMA user_version` (aktuell 3); ältere Datenbanken werde
   `elf880`, `stb_verzeichnis`.
 - Stufe 2 (Lesen und Extrahieren): `crawl`, `extract` (Regeln + Ollama), Zusammenführung
   mit Abweichung und Konfidenz, OpenPLZ-Prüfung, Schema v3, `fixture-add`,
-  `fixture-eval` mit 3 fiktiven Beispielen. Die 15 echten Fixtures folgen (lokal).
+  `fixture-eval` mit 5 fiktiven Beispielen. Die 15 echten Fixtures folgen (lokal).
+- Nach dem ersten echten Fixture-Lauf: Prompt-Aufbau ohne Abschneiden, `fixture-prompt`,
+  Personen- und Mitarbeiterzahl-Regeln, Adresszusatz (Schema v4), kanonische
+  Rechtsform und Ort, Berufsträger- und Ansprechpartner-Reihenfolge.
 - `orte`: vollständige Gemeindeliste (OpenPLZ + GV-ISys), Einwohnerregel mit
   Seitenbegrenzung, Zusatz-Suchorte für Kiel/Lübeck. Die erzeugte Liste ersetzt die
   Startliste erst nach `recherche orte --force`.

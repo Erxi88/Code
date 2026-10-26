@@ -30,7 +30,7 @@ from .extract.lauf import regeln_fuer
 from .extract.merge import gleiche_person, zusammenfuehren
 from .extract.rules import Ausschluss
 from .models import Kandidat, Kanzlei, Seite, Seitentyp
-from .normalize import _ortsname
+from .normalize import _ortsname, normalize_rechtsform
 from .search.dedupe import adresse_key, telefon_key
 from .storage import Storage
 
@@ -39,6 +39,7 @@ DATEIEN = {
     Seitentyp.IMPRESSUM: "impressum.html",
     Seitentyp.KONTAKT: "kontakt.html",
     Seitentyp.TEAM: "team.html",
+    Seitentyp.TEAM2: "team2.html",
 }
 STATUS_OFFEN = "offen"
 STATUS_FERTIG = "fertig"
@@ -67,6 +68,10 @@ KERNFELDER = ["kanzleiname", "adresse", "telefon", "erster_ansprechpartner"]
 LLM_FELDER = {"kanzleiname", "erster_ansprechpartner", "rechtsform", "berufstraeger_anzahl", "teamgroesse"}
 
 
+# Vorsilbe handgeschriebener Beispielantworten – echte Aufzeichnungen überschreiben sie nie
+HANDGESCHRIEBEN = "handgeschrieben_"
+
+
 def modell_datei(modell: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]", "_", modell) + ".json"
 
@@ -81,15 +86,15 @@ class Fixture:
 
     @classmethod
     def laden(cls, pfad: Path) -> Fixture:
-        meta = json.loads((pfad / "meta.json").read_text(encoding="utf-8")) if (pfad / "meta.json").exists() else {}
+        meta = json.loads((pfad / "meta.json").read_text(encoding="utf-8-sig")) if (pfad / "meta.json").exists() else {}
         domain = meta.get("domain") or pfad.name
         erwartet_pfad = pfad / "erwartet.json"
-        erwartet = json.loads(erwartet_pfad.read_text(encoding="utf-8")) if erwartet_pfad.exists() else {}
+        erwartet = json.loads(erwartet_pfad.read_text(encoding="utf-8-sig")) if erwartet_pfad.exists() else {}
         abgerufen = datetime.fromisoformat(meta["abgerufen_am"]) if meta.get("abgerufen_am") else datetime.now()
         seiten = {}
         for typ, datei in DATEIEN.items():
             if (pfad / datei).exists():
-                html = (pfad / datei).read_text(encoding="utf-8")
+                html = (pfad / datei).read_text(encoding="utf-8-sig")
                 url = (meta.get("urls") or {}).get(typ.value) or f"https://{domain}/{'' if typ == Seitentyp.START else typ.value}"
                 seiten[typ] = Seite(url=url, domain=domain, seitentyp=typ, http_status=200, html=html,
                                     text=html_zu_text(html), final_url=url, abgerufen_am=abgerufen)  # fmt: skip
@@ -100,10 +105,12 @@ class Fixture:
         return self.erwartet.get("_status") == STATUS_FERTIG
 
     def aufzeichnung(self, modell: str) -> ExtraktionsAntwort | None:
-        p = self.pfad / "llm" / modell_datei(modell)
-        if not p.exists():
-            return None
-        return ExtraktionsAntwort(**json.loads(p.read_text(encoding="utf-8")))
+        """Echte Aufzeichnung (llm/<modell>.json), sonst handgeschriebene (llm/handgeschrieben_<modell>.json)."""
+        for datei in (modell_datei(modell), HANDGESCHRIEBEN + modell_datei(modell)):
+            p = self.pfad / "llm" / datei
+            if p.exists():
+                return ExtraktionsAntwort(**json.loads(p.read_text(encoding="utf-8-sig")))
+        return None
 
     def aufzeichnen(self, antwort: ExtraktionsAntwort, modell: str) -> Path:
         p = self.pfad / "llm" / modell_datei(modell)
@@ -115,7 +122,7 @@ class Fixture:
         ordner = self.pfad / "llm"
         if not ordner.exists():
             return []
-        return sorted(json.loads(p.read_text(encoding="utf-8"))["modell"] for p in ordner.glob("*.json"))
+        return sorted({json.loads(p.read_text(encoding="utf-8-sig"))["modell"] for p in ordner.glob("*.json")})
 
 
 def fixtures_finden(ordner: list[Path]) -> list[Fixture]:
@@ -201,16 +208,30 @@ def feld_richtig(feld: str, ist: dict, soll: dict) -> bool | None:
         return a is None and b is None
     vergleich = {
         "kanzleiname": lambda: _name_norm(a) == _name_norm(b),
-        "rechtsform": lambda: _name_norm(a) == _name_norm(b),
+        "rechtsform": lambda: _name_norm(normalize_rechtsform(a)) == _name_norm(normalize_rechtsform(b)),
         "strasse": lambda: adresse_key(a, "00000") == adresse_key(b, "00000"),
         "plz": lambda: str(a) == str(b),
         "ort": lambda: _ortsname(a) == _ortsname(b),
         "telefon": lambda: telefon_key(a) == telefon_key(b),
         "email": lambda: a.lower() == b.lower(),
-        "erster_ansprechpartner": lambda: gleiche_person(a, b),
+        # Liste zulässiger Namen erlaubt (gleichrangige Partner): Treffer, wenn einer passt
+        "erster_ansprechpartner": lambda: any(gleiche_person(a, n) for n in (b if isinstance(b, list) else [b])),
         "berufstraeger_anzahl": lambda: int(a) == int(b),
     }
     return vergleich[feld]()
+
+
+def _anzeige(feld: str, ist: dict, soll: dict) -> tuple[object, object]:
+    """(Ist, Soll) für die Fehlerliste – bei der Teamgröße Zahl und Klasse, damit nie „None / None" steht."""
+    if feld == "adresse":
+        teile = ("strasse", "plz", "ort")
+        return {k: ist.get(k) for k in teile}, {k: soll.get(k) for k in teile}
+    if feld == "teamgroesse":
+        def fmt(d: dict) -> str:
+            return f"Zahl {d.get('teamgroesse')}, Klasse {d.get('teamgroesse_klasse')}"
+
+        return fmt(ist), fmt(soll)
+    return ist.get(feld), soll.get(feld)
 
 
 @dataclass
@@ -256,6 +277,7 @@ def auswerten(
     ausschluss: Ausschluss,
     modell: str | None,
     extractor: Extractor | None = None,
+    plz_pruefen=None,
 ) -> EvalErgebnis:
     """Trefferquote je Feld. Mit `extractor` (live) werden die Antworten zugleich aufgezeichnet."""
     erg = EvalErgebnis(modell)
@@ -280,7 +302,8 @@ def auswerten(
         regel = regeln_fuer(fx.seiten, ausschluss, fx.domain)
         start = fx.seiten.get(Seitentyp.START)
         kandidat = Kandidat(bundesland="XX", domain=fx.domain, website=start.url if start else None)
-        kanzlei = zusammenfuehren(kandidat, [], fx.seiten, regel, antwort.ergebnis if antwort else None)
+        kanzlei = zusammenfuehren(kandidat, [], fx.seiten, regel, antwort.ergebnis if antwort else None,
+                                  plz_pruefen, ausschluss)  # fmt: skip
         ist = istwerte(kanzlei)
         for feld in FELDER:
             if feld in LLM_FELDER and antwort is None:
@@ -292,14 +315,78 @@ def auswerten(
             if richtig:
                 erg.richtig[feld] = erg.richtig.get(feld, 0) + 1
             else:
-                soll = (
-                    {k: fx.erwartet.get(k) for k in ("strasse", "plz", "ort")} if feld == "adresse"
-                    else fx.erwartet.get(feld, fx.erwartet.get("teamgroesse_klasse"))
-                )  # fmt: skip
-                wert = {k: ist[k] for k in ("strasse", "plz", "ort")} if feld == "adresse" else ist.get(feld)
-                erg.fehler.append(Abweichung(fx.domain, feld, wert, soll))
+                erg.fehler.append(Abweichung(fx.domain, feld, *_anzeige(feld, ist, fx.erwartet)))
     return erg
 
 
 def aufgezeichnete_modelle(fixtures: list[Fixture]) -> list[str]:
     return sorted({m for fx in fixtures for m in fx.modelle()})
+
+
+# ---------------------------------------------------------------------- fixture-prompt
+
+
+@dataclass
+class PromptDiagnose:
+    """Was vom HTML einer Fixture beim Modell ankommt – nur Größen und Zählungen, keine Inhalte."""
+
+    domain: str
+    prompt: object  # extract.prompt.Prompt
+    system_zeichen: int
+    links: dict  # Seitentyp → [(Punkte, Pfad, Linktext, gewählt)]
+    personen_je_art: dict[str, int]
+    vertreter: int
+    berufsbezeichnung: str | None
+    mitarbeiter_beleg: str | None
+    regel_felder: dict[str, bool]
+    aufzeichnung: ExtraktionsAntwort | None
+
+    @property
+    def prompt_zeichen(self) -> int:
+        return self.system_zeichen + len(self.prompt.text)
+
+
+def fixture_finden(domain: str, ordner: list[Path]) -> Fixture | None:
+    for o in ordner:
+        if (o / domain).is_dir():
+            return Fixture.laden(o / domain)
+    return None
+
+
+def prompt_diagnose(fx: Fixture, llm_cfg, ausschluss: Ausschluss, modell: str | None = None) -> PromptDiagnose:
+    from urllib.parse import urlsplit
+
+    from .crawl import link_kandidaten
+    from .extract.merge import (
+        _text,
+        ist_berufstraeger,
+        ist_leitung,
+        vertretungsberechtigte,
+    )
+    from .extract.ollama import SYSTEM_PROMPT
+    from .extract.personen import mitarbeiterzahl
+    from .extract.prompt import baue_prompt, text_budget
+
+    prompt = baue_prompt(fx.seiten, text_budget(llm_cfg))
+    links: dict = {}
+    start = fx.seiten.get(Seitentyp.START)
+    if start and start.html:
+        gewaehlt = {s.url for s in fx.seiten.values()}
+        for typ, liste in link_kandidaten(start.html, start.url, fx.domain).items():
+            links[typ] = [(p, urlsplit(u).path or "/", text[:40], u in gewaehlt) for p, _, u, text in liste[:3]]
+    arten = {"Berufsträger": 0, "Leitung (ohne Berufstitel)": 0, "weitere Mitarbeitende": 0}
+    from .extract.base import LlmPerson
+
+    for q in prompt.personen:
+        lp = LlmPerson(name=q.name, titel=q.titel, funktion=q.funktion)
+        art = "Berufsträger" if ist_berufstraeger(lp) else "Leitung (ohne Berufstitel)" if ist_leitung(lp) else "weitere Mitarbeitende"
+        arten[art] += 1
+    impressum = _text(fx.seiten[Seitentyp.IMPRESSUM]) if Seitentyp.IMPRESSUM in fx.seiten else ""
+    vertreter, bezeichnung = vertretungsberechtigte(impressum, ausschluss.fremd_zeilen(impressum.splitlines()))
+    angabe = mitarbeiterzahl([_text(s) for s in fx.seiten.values()])
+    regel = regeln_fuer(fx.seiten, ausschluss, fx.domain)
+    felder = {k: bool(getattr(regel, k)) for k in ("strasse", "adresszusatz", "plz", "ort", "telefon", "email")} if regel else {}
+    return PromptDiagnose(
+        fx.domain, prompt, len(SYSTEM_PROMPT), links, arten, len(vertreter), bezeichnung,
+        angabe.beleg if angabe else None, felder, fx.aufzeichnung(modell) if modell else None,
+    )  # fmt: skip

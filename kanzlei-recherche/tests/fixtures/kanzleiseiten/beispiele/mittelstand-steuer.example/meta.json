@@ -1,0 +1,12 @@
+{
+ "domain": "mittelstand-steuer.example",
+ "urls": {
+  "start": "https://mittelstand-steuer.example/",
+  "impressum": "https://mittelstand-steuer.example/information/license",
+  "kontakt": "https://mittelstand-steuer.example/kontakt",
+  "team": "https://mittelstand-steuer.example/berufstraeger",
+  "team2": "https://mittelstand-steuer.example/ueber-uns"
+ },
+ "abgerufen_am": "2026-10-28T10:00:00",
+ "_hinweis": "Fiktive Kanzlei (Testdaten) nach dem Vorbild echter Seitenbauweisen."
+}

@@ -1,0 +1,17 @@
+{
+ "_status": "fertig",
+ "kanzleiname": "Mittelstand Steuerberatungsgesellschaft mbH",
+ "rechtsform": "GmbH",
+ "strasse": "Luruper Chaussee 125",
+ "plz": "22761",
+ "ort": "Hamburg",
+ "telefon": "+49 40 88901230",
+ "email": "info@mittelstand-steuer.example",
+ "erster_ansprechpartner": [
+  "Jörg Petersen",
+  "Sandra Albers"
+ ],
+ "berufstraeger_anzahl": 4,
+ "teamgroesse": 28,
+ "teamgroesse_klasse": null
+}

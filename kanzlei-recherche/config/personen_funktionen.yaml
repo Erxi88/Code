@@ -1,0 +1,87 @@
+# Funktionsbezeichnungen für die strukturelle Personenerkennung (extract/personen.py)
+# und die Einordnung von Ansprechpartnern. Vergleich ohne Groß/Klein; Gender-Schreibweisen
+# („Steuerberater:in", „Steuerberater/in", „Steuerberater*in") werden automatisch erkannt.
+
+# zählen für „Berufsträger (Anzahl)"
+berufstraeger:
+  - Steuerberater
+  - Steuerberaterin
+  - StB
+  - Wirtschaftsprüfer
+  - Wirtschaftsprüferin
+  - WP
+  - Rechtsanwalt
+  - Rechtsanwältin
+  - Rechtsanwälte
+  - RA
+  - vereidigter Buchprüfer
+  - vereidigte Buchprüferin
+  - vBP
+  - Steuerbevollmächtigter
+  - Steuerbevollmächtigte
+
+# Leitung (Ansprechpartner, aber nicht automatisch Berufsträger)
+leitung:
+  - Partner
+  - Partnerin
+  - Geschäftsführer
+  - Geschäftsführerin
+  - Inhaber
+  - Inhaberin
+  - Kanzleiinhaber
+  - Kanzleiinhaberin
+  - Gesellschafter
+  - Gesellschafterin
+  - Niederlassungsleiter
+  - Niederlassungsleiterin
+  - Kanzleileitung
+  - Vorstand
+
+# weitere Mitarbeitende (zählen nur für die Teamgröße)
+mitarbeitende:
+  - Steuerfachangestellte
+  - Steuerfachangestellter
+  - Rechtsanwaltsfachangestellte
+  - Rechtsanwaltsfachangestellter
+  - Notarfachangestellte
+  - Notarfachangestellter
+  - Steuerfachgehilfin
+  - Steuerfachgehilfe
+  - Steuerfachwirt
+  - Steuerfachwirtin
+  - Bilanzbuchhalter
+  - Bilanzbuchhalterin
+  - Lohnbuchhalter
+  - Lohnbuchhalterin
+  - Finanzbuchhalter
+  - Finanzbuchhalterin
+  - Buchhalter
+  - Buchhalterin
+  - Fachassistent Lohn und Gehalt
+  - Fachassistentin Lohn und Gehalt
+  - Steuerassistent
+  - Steuerassistentin
+  - Steuerberatungsassistent
+  - Steuerberatungsassistentin
+  - Auszubildende
+  - Auszubildender
+  - Azubi
+  - Kanzleimanager
+  - Kanzleimanagerin
+  - Büroleitung
+  - Büroleiterin
+  - Sekretariat
+  - Sekretärin
+  - Assistenz
+  - Assistentin
+  - Assistent
+  - Werkstudent
+  - Werkstudentin
+  - Sachbearbeiter
+  - Sachbearbeiterin
+  - Empfang
+  - Verwaltung
+  - Lohn und Gehalt
+  - Finanzbuchhaltung
+  - Lohnbuchhaltung
+  - Steuerberater-Anwärter

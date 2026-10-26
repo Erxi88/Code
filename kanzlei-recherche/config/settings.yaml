@@ -126,7 +126,9 @@ llm:
   timeout_s: 300
   num_ctx: 16384                     # Kontextfenster (Ollama-Standard ist zu klein und schneidet ab)
   retries: 1                         # erneuter Versuch bei ungültiger Antwort
-  max_text_chars: 24000              # Text aller Seiten zusammen, vor dem LLM-Aufruf gekürzt
+  # Text aller Seiten zusammen. auto = (num_ctx − 700 − 2000 Token Reserve) × 3,0 Zeichen/Token,
+  # bei num_ctx 16384 ≈ 41.000 Zeichen. Vorher wird gezielt bereinigt (extract/prompt.py).
+  max_text_chars: auto
 
 openplz:
   url: https://openplzapi.org

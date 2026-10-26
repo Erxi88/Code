@@ -13,7 +13,7 @@ Projektregeln und Arbeitsweise: siehe [CLAUDE.md](CLAUDE.md).
 
 | Baustein | Stand |
 |---|---|
-| Modelle, SQLite-Speicher (Schema v2 mit Migration), Excel-Export | fertig |
+| Modelle, SQLite-Speicher (Schema v4 mit Migration), Excel-Export | fertig |
 | Discovery: Interface, Pipeline, Dubletten-Logik (Domain, Telefon, Adresse, PLZ+Name) | fertig |
 | Stufe A: Brave (Standard), Google CSE (nur Alt-Key), ddgs (Entwicklung) | fertig |
 | Stufe A: SerpAPI | Platzhalter |
@@ -21,7 +21,7 @@ Projektregeln und Arbeitsweise: siehe [CLAUDE.md](CLAUDE.md).
 | `coverage`, `fill`, `search-compare` (alle aktiven Adapter) | fertig |
 | Crawling (robots.txt, Drosselung je Domain, Cache, Playwright-Rückfall) | fertig |
 | Extraktion: Regeln + Ollama, Zusammenführung mit Abweichung, OpenPLZ, Konfidenz | fertig |
-| `fixture-add`, `fixture-eval` (Trefferquote, Laufzeit, Token je Modell) | fertig; 3 fiktive Beispiele, echte Fixtures lokal |
+| `fixture-add`, `fixture-eval` (Trefferquote, Laufzeit, Token je Modell), `fixture-prompt` | fertig; 5 fiktive Beispiele, echte Fixtures lokal |
 | `orte` (Gemeinden aus OpenPLZ, Kreis/Einwohner aus GV-ISys, Zusatz-Suchorte Kiel/Lübeck) | fertig; bis zum ersten Lauf gilt die Startliste mit 80 Orten |
 | Einwohnerregel: Query-Varianten und Seiten je Einwohnerklasse | fertig |
 
@@ -63,7 +63,8 @@ recherche orte    -b SH [--dry-run] [--force] [--out datei.csv] [--gv pfad-oder-
 
 # Extraktion an echten Kanzleiseiten messen (Fixtures nur lokal, siehe unten)
 recherche fixture-add  --domain kanzlei-beispiel.de
-recherche fixture-eval [--live] [--modell gemma4:26b] [--nur beispiele|echt]
+recherche fixture-eval [--live] [--modell gemma4:26b] [--nur beispiele|echt] [--offline]
+recherche fixture-prompt --domain kanzlei-beispiel.de [--live] [--speichern]  # Prompt-Aufbau prüfen
 ```
 
 **Extraktion:** `crawl` liest für jeden Kandidaten mit Website Start-, Impressum-, Kontakt-
@@ -76,8 +77,16 @@ erreichbar, endet der Lauf sauber; `--ohne-llm` extrahiert nur per Regeln.
 **Fixtures:** `fixture-add` legt die Seiten einer Domain unter
 `tests/fixtures/kanzleiseiten/echt/<domain>/` ab (nicht im Git) und erzeugt eine
 `erwartet.json`-Vorlage zum Ausfüllen. `fixture-eval --live` fragt Ollama und zeichnet die
-Antworten je Modell auf; ohne `--live` wird mit den Aufzeichnungen gerechnet. Ausgabe:
-Trefferquote je Feld, mittlere Laufzeit und Token je Kanzlei, Modellvergleich.
+Antworten je Modell auf (nur echte Fixtures, außer `--nur beispiele`); ohne `--live` wird
+mit den Aufzeichnungen gerechnet. Ausgabe: Trefferquote je Feld, mittlere Laufzeit und Token
+je Kanzlei, Modellvergleich. `fixture-prompt` zeigt, was vom Seitentext im Prompt landet
+(je Seite und Bereinigungsstufe), die erkannten Links und Personen und – mit `--live` – die
+echten Prompt-Token gegen die Schätzung. `--speichern` schreibt den ganzen Prompt nach
+`data/prompt_<domain>.txt` (enthält Seiteninhalte, nicht weitergeben).
+
+**Prompt:** Statt hinten abzuschneiden, wird der Seitentext gezielt reduziert (Navigation und
+Fußzeile nur einmal, Cookie- und Datenschutztexte raus, Impressum-Schlüsselstellen und
+erkannte Personen vorn). `llm.max_text_chars: auto` passt das Budget an `num_ctx` an.
 
 **Wiederaufnahme:** Jeder Schritt speichert seinen Fortschritt in SQLite, jede API-Antwort
 wird gecacht. Nach einem Abbruch (auch Tages-/Monatslimit oder Budget) denselben Befehl
@@ -110,6 +119,8 @@ und Lücke je Kreis sowie die Orte mit der größten Lücke (Eingabe für `fill 
   `mitglieder` mit `faktor`, Land gesamt und optional je Kreis).
 - `config/queries.yaml`: Query-Vorlagen mit `{ort}`, `{plz}`, `{kreis}`.
 - `config/domain_blocklist.txt`: Portale, Verzeichnisse, Social Media (Subdomains inklusive).
+- `config/rechtsformen.yaml`: kanonische Rechtsformen und ihre Schreibweisen.
+- `config/personen_funktionen.yaml`: Funktionen für Berufsträger, Leitung, Mitarbeitende.
 - `config/orte_SH.csv`: `ort;plz;kreis;einwohner`, eine Zeile je Ort (`einwohner` optional,
   wird später von `orte` aus GV-ISys befüllt).
 - `.env` (aus `.env.example`): `BRAVE_API_KEY` (Stufe A), optional `GOOGLE_CSE_API_KEY` +

@@ -17,7 +17,7 @@ from .config import Settings, load_settings
 from .coverage import CoverageErgebnis, als_excel, berechne, load_referenz
 from .crawl import run_crawl
 from .export import export_excel
-from .extract.base import AnbieterNichtErreichbar
+from .extract.base import AnbieterNichtErreichbar, ExtraktionFehler
 from .extract.lauf import run_extract
 from .extract.ollama import OllamaExtractor
 from .extract.rules import Ausschluss
@@ -27,8 +27,10 @@ from .fixtures import (
     EvalErgebnis,
     aufgezeichnete_modelle,
     auswerten,
+    fixture_finden,
     fixture_holen_sync,
     fixtures_finden,
+    prompt_diagnose,
 )
 from .models import LAND_SCHLUESSEL, LaufEintrag, SchrittStatus
 from .normalize import PlzPruefer
@@ -219,6 +221,8 @@ def _extract(
     )
     if stat.llm_aufrufe:
         console.print(f"  im Mittel {stat.mittlere_laufzeit_s:.1f} s und {stat.tokens / stat.llm_aufrufe:.0f} Token je Kanzlei")
+    if hinweis := stat.hinweis():
+        console.print(f"[yellow]  Hinweis: {hinweis} – Details mit recherche fixture-prompt bzw. -v[/yellow]")
     if stat.abbruch:
         console.print(f"[yellow]Lauf vorzeitig beendet:[/yellow] {stat.abbruch}")
         console.print("[yellow]Ollama starten (bzw. Modell laden) und denselben Befehl erneut aufrufen.[/yellow]")
@@ -397,24 +401,110 @@ def fixture_eval(
     modell: Annotated[str | None, typer.Option(help="Modell (Standard: llm.modell)")] = None,
     live: Annotated[bool, typer.Option("--live", help="Ollama fragen und Antworten aufzeichnen")] = False,
     nur: Annotated[str | None, typer.Option(help="nur 'beispiele' oder 'echt'")] = None,
+    offline: Annotated[bool, typer.Option("--offline", help="ohne OpenPLZ (Ort wird nicht vereinheitlicht)")] = False,
 ) -> None:
-    """Trefferquote je Feld über die Kanzleiseiten-Fixtures, mit Laufzeit und Token je Kanzlei."""
+    """Trefferquote je Feld über die Kanzleiseiten-Fixtures, mit Laufzeit und Token je Kanzlei.
+
+    --live zeichnet nur für echt/ auf; die fiktiven Beispiele nur mit ausdrücklichem --nur beispiele."""
     s = load_settings(config)
     ordner = {"beispiele": s.pfad(s.pfade.fixtures_beispiele), "echt": s.pfad(s.pfade.fixtures_echt)}
+    if live and nur is None:
+        nur = "echt"
+        console.print("--live: nur echte Fixtures (fiktive Beispiele mit --nur beispiele)")
     fixtures = fixtures_finden([p for n, p in ordner.items() if nur in (None, n)])
     if not fixtures:
         _fehler("Keine Fixtures gefunden (recherche fixture-add --domain …)")
     ausschluss = Ausschluss.laden(s.pfad(s.pfade.impressum_ausschluss))
     modell = modell or s.llm.modell
     extractor = OllamaExtractor(s.llm, modell=modell) if live else None
-    try:
-        erg = auswerten(fixtures, ausschluss, modell, extractor)
-    except AnbieterNichtErreichbar as e:
-        _fehler(str(e))
-    zeige_eval(erg, len(fixtures))
-    modelle = aufgezeichnete_modelle(fixtures)
-    if len(modelle) > 1:
-        zeige_modellvergleich([auswerten(fixtures, ausschluss, m) for m in modelle])
+    with Storage(s.db_pfad()) as st:
+        pruefer = None if offline else PlzPruefer(s.openplz.url, cache=st).pruefe
+        try:
+            erg = auswerten(fixtures, ausschluss, modell, extractor, pruefer)
+        except AnbieterNichtErreichbar as e:
+            _fehler(str(e))
+        zeige_eval(erg, len(fixtures))
+        modelle = aufgezeichnete_modelle(fixtures)
+        if len(modelle) > 1:
+            zeige_modellvergleich([auswerten(fixtures, ausschluss, m, plz_pruefen=pruefer) for m in modelle])
+
+
+@app.command("fixture-prompt")
+def fixture_prompt(
+    domain: Annotated[str, typer.Option("--domain", help="Fixture-Ordner, z. B. bd-partner.de")],
+    config: ConfigOpt = None,
+    modell: Annotated[str | None, typer.Option(help="Modell (Standard: llm.modell)")] = None,
+    live: Annotated[bool, typer.Option("--live", help="Prompt an Ollama schicken und echte Token messen")] = False,
+    speichern: Annotated[bool, typer.Option("--speichern", help="vollständigen Prompt unter data/ ablegen")] = False,
+) -> None:
+    """Was vom HTML beim Modell ankommt: Größen je Bereinigungsstufe, Kürzung, Token – ohne Inhalte."""
+    s = load_settings(config)
+    fx = fixture_finden(domain, [s.pfad(s.pfade.fixtures_echt), s.pfad(s.pfade.fixtures_beispiele)])
+    if fx is None:
+        _fehler(f"Fixture {domain} nicht gefunden (recherche fixture-add --domain {domain})")
+    modell = modell or s.llm.modell
+    d = prompt_diagnose(fx, s.llm, Ausschluss.laden(s.pfad(s.pfade.impressum_ausschluss)), modell)
+    p = d.prompt
+    console.print(f"[bold]{d.domain}[/bold] – Budget {p.budget} Zeichen (num_ctx {s.llm.num_ctx}, "
+                  f"max_text_chars {s.llm.max_text_chars})")
+    t = Table(title="Seiten: Zeichen je Bereinigungsstufe")
+    for col in ("Seite", "Pfad", "HTML", "Text", "bereinigt", "im Prompt", "gekürzt", "Schlüssel", "Personen"):
+        t.add_column(col, justify="left" if col in ("Seite", "Pfad") else "right")
+    from urllib.parse import urlsplit
+
+    for sp in p.seiten:
+        t.add_row(sp.typ.value, urlsplit(sp.url).path or "/", f"{sp.html_zeichen / 1000:.0f} KB", str(sp.text_zeichen),
+                  str(sp.bereinigt_zeichen), str(sp.im_prompt_zeichen), "ja" if sp.gekuerzt else "",
+                  str(sp.schluesselstellen or ""), str(sp.personen or ""))  # fmt: skip
+    t.add_row("rahmen", "(Navigation/Fußzeile)", "", "", str(p.rahmen_zeichen), str(p.rahmen_im_prompt),
+              "ja" if p.rahmen_im_prompt < p.rahmen_zeichen else "", "", "")  # fmt: skip
+    console.print(t)
+    if d.links:
+        lt = Table(title="Linkerkennung (Startseite, beste 3 je Typ)")
+        for col in ("Typ", "Punkte", "Pfad", "Linktext", "geladen"):
+            lt.add_column(col, justify="right" if col == "Punkte" else "left")
+        for typ, liste in d.links.items():
+            for punkte_, pfad, text, gewaehlt in liste:
+                lt.add_row(typ.value, str(punkte_), pfad, text, "✓" if gewaehlt else "")
+        console.print(lt)
+    console.print("Erkannte Personen (Teamseiten): " + ", ".join(f"{k} {v}" for k, v in d.personen_je_art.items()))
+    console.print(f"Impressum: {d.vertreter} Vertretungsberechtigte, Berufsbezeichnung: {d.berufsbezeichnung or '–'}")
+    console.print(f"Mitarbeiterzahl (Regel): {d.mitarbeiter_beleg or '–'}")
+    console.print("Regeln gefunden: " + ", ".join(f"{k} {'✓' if v else '✗'}" for k, v in d.regel_felder.items()))
+    from .extract.prompt import ZEICHEN_JE_TOKEN
+
+    geschaetzt = round(d.prompt_zeichen / ZEICHEN_JE_TOKEN)
+    console.print(f"Prompt: {d.prompt_zeichen} Zeichen (System {d.system_zeichen} + Seiten {len(p.text)}), "
+                  f"geschätzt {geschaetzt} Token bei {ZEICHEN_JE_TOKEN} Zeichen/Token"
+                  f"{'; gekürzt: ' + p.kuerzung_text() if p.gekuerzt else ''}")
+    a = d.aufzeichnung
+    if a and a.prompt_tokens:
+        if a.prompt_zeichen:
+            console.print(f"Aufzeichnung {a.modell}: {a.prompt_tokens} Prompt-Token für {a.prompt_zeichen} Zeichen "
+                          f"→ {a.zeichen_je_token:.2f} Zeichen/Token")
+        else:
+            console.print(f"Aufzeichnung {a.modell}: {a.prompt_tokens} Prompt-Token (alter Prompt, Zeichen nicht "
+                          f"aufgezeichnet) – mit --live neu messen")
+    if live:
+        try:
+            antwort = OllamaExtractor(s.llm, modell=modell).extract(fx.seiten)
+        except (AnbieterNichtErreichbar, ExtraktionFehler) as e:
+            _fehler(str(e))
+        console.print(
+            f"Ollama {antwort.modell}: {antwort.prompt_tokens} Prompt-Token (geschätzt {geschaetzt}), "
+            f"{antwort.antwort_tokens} Antwort-Token, {antwort.laufzeit_s:.1f} s → "
+            f"{antwort.zeichen_je_token:.2f} Zeichen/Token" if antwort.zeichen_je_token else "keine Token-Angabe"
+        )
+        console.print("  Hinweis: Ollama zählt bei wiederverwendetem Präfix (Prompt-Cache) evtl. weniger Token.")
+        if antwort.kontext_voll:
+            console.print(f"[yellow]  Kontext fast voll ({s.llm.num_ctx}) – Ollama hat vermutlich abgeschnitten.[/yellow]")
+    if speichern:
+        from .extract.ollama import SYSTEM_PROMPT
+
+        ziel = s.pfad("data") / f"prompt_{d.domain}.txt"
+        ziel.parent.mkdir(parents=True, exist_ok=True)
+        ziel.write_text(f"=== SYSTEM ===\n{SYSTEM_PROMPT}\n\n=== USER ===\n{p.text}\n", encoding="utf-8")
+        console.print(f"Prompt gespeichert: {ziel} (enthält Seiteninhalte – nicht weitergeben, wenn echte Daten)")
 
 
 def _quote(e: EvalErgebnis, feld: str) -> str:

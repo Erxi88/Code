@@ -2,7 +2,7 @@ import json
 import shutil
 
 import pytest
-from fakes import FakeWeb, beispiel_seiten
+from fakes import FakeWeb, beispiel_seiten, fake_pruefer
 
 from recherche.config import CrawlConfig, load_settings
 from recherche.extract.rules import Ausschluss
@@ -23,33 +23,47 @@ ECHT = S.pfad(S.pfade.fixtures_echt)
 AUSSCHLUSS = Ausschluss.laden(S.pfad(S.pfade.impressum_ausschluss))
 
 
+BEISPIELE = ["foerde-steuer.example", "hansen-steuerberatung.example", "mittelstand-steuer.example",
+             "nordlicht-steuerberatung.example", "steuerbuero-schuett.example"]
+
+
 def test_beispiele_vollstaendig():
     fx = fixtures_finden([BSP])
-    assert [f.domain for f in fx] == ["foerde-steuer.example", "hansen-steuerberatung.example", "steuerbuero-schuett.example"]
+    assert [f.domain for f in fx] == BEISPIELE
     assert all(f.fertig for f in fx)
     assert aufgezeichnete_modelle(fx) == ["qwen3.5:9b", "qwen3.6:27b"]
     assert set(fx[1].seiten) == {"start", "impressum", "kontakt", "team"}
+    assert set(fx[2].seiten) == {"start", "impressum", "kontakt", "team", "team2"}
+    # handgeschriebene Antworten tragen eine eigene Vorsilbe – echte Aufzeichnungen kollidieren nie damit
+    assert all(p.name.startswith("handgeschrieben_") for f in fx for p in (f.pfad / "llm").glob("*.json"))
 
 
 def test_beispiele_alle_felder_richtig():
-    erg = auswerten(fixtures_finden([BSP]), AUSSCHLUSS, "qwen3.5:9b")
-    assert erg.fixtures == 3 and erg.fehler == []
+    erg = auswerten(fixtures_finden([BSP]), AUSSCHLUSS, "qwen3.5:9b", plz_pruefen=fake_pruefer().pruefe)
+    assert erg.fixtures == 5 and erg.fehler == []
     assert all(erg.quote(f) == 1.0 for f in KERNFELDER)
-    assert erg.mittlere_laufzeit_s == pytest.approx((41.3 + 36.9 + 22.5) / 3)
+    assert erg.mittlere_laufzeit_s == pytest.approx((41.3 + 36.9 + 22.5 + 48.2 + 31.4) / 5)
     p, a, g = erg.mittlere_tokens
-    assert (p, a, g) == pytest.approx(((3184 + 2210 + 1105) / 3, (402 + 318 + 214) / 3, (3184 + 2210 + 1105 + 402 + 318 + 214) / 3))
+    assert p == pytest.approx((3184 + 2210 + 1105 + 5210 + 2930) / 5)
+
+
+def test_ort_ohne_openplz_nicht_vereinheitlicht():
+    erg = auswerten(fixtures_finden([BSP]), AUSSCHLUSS, "qwen3.5:9b")
+    assert [(f.domain, f.feld, f.ist) for f in erg.fehler if f.feld == "ort"] == [
+        ("nordlicht-steuerberatung.example", "ort", "Kiel-Holtenau")]
 
 
 def test_anderes_modell_mit_fehler():
-    erg = auswerten(fixtures_finden([BSP]), AUSSCHLUSS, "qwen3.6:27b")
+    erg = auswerten(fixtures_finden([BSP]), AUSSCHLUSS, "qwen3.6:27b", plz_pruefen=fake_pruefer().pruefe)
     assert [(f.domain, f.feld) for f in erg.fehler] == [("steuerbuero-schuett.example", "rechtsform")]
+    assert erg.ohne_aufzeichnung == ["mittelstand-steuer.example", "nordlicht-steuerberatung.example"]
     assert erg.quote("rechtsform") == pytest.approx(2 / 3)
     assert erg.mittlere_laufzeit_s == pytest.approx((12.8 + 10.4 + 6.1) / 3)
 
 
 def test_ohne_aufzeichnung_nur_regelfelder():
-    erg = auswerten(fixtures_finden([BSP]), AUSSCHLUSS, "gemma4:26b")
-    assert erg.ohne_aufzeichnung == ["foerde-steuer.example", "hansen-steuerberatung.example", "steuerbuero-schuett.example"]
+    erg = auswerten(fixtures_finden([BSP]), AUSSCHLUSS, "gemma4:26b", plz_pruefen=fake_pruefer().pruefe)
+    assert erg.ohne_aufzeichnung == BEISPIELE
     assert "kanzleiname" not in erg.bewertet and "erster_ansprechpartner" not in erg.bewertet
     assert erg.quote("adresse") == erg.quote("telefon") == erg.quote("email") == 1.0
     assert erg.mittlere_laufzeit_s is None
@@ -88,6 +102,10 @@ def test_offene_fixtures_werden_nicht_bewertet(tmp_path):
     ("email", None, None, True),
     ("email", "a@b.example", None, False),
     ("rechtsform", None, "GmbH", False),
+    ("rechtsform", "Partnerschaftsgesellschaft mbB", "PartG mbB", True),
+    ("rechtsform", "Steuerberatungsgesellschaft mbH", "GmbH", True),
+    ("erster_ansprechpartner", "Sandra Albers", ["Jörg Petersen", "Sandra Albers"], True),
+    ("erster_ansprechpartner", "Malte Ohm", ["Jörg Petersen", "Sandra Albers"], False),
 ])  # fmt: skip
 def test_feldvergleich(feld, ist, soll, richtig):
     assert feld_richtig(feld, {feld: ist}, {feld: soll}) is richtig
@@ -142,3 +160,45 @@ def test_echte_fixtures_llm_felder(feld):
     if erg.bewertet.get(feld, 0) < 15:
         pytest.skip(f"Aufzeichnungen für {S.llm.modell} fehlen – `recherche fixture-eval --live`")
     assert erg.richtig.get(feld, 0) >= erg.bewertet[feld] - 2, [f for f in erg.fehler if f.feld == feld]
+
+
+
+@pytest.mark.parametrize("feld", ["kanzleiname", "rechtsform", "strasse", "plz", "ort", "telefon", "email",
+                                  "erster_ansprechpartner", "berufstraeger_anzahl", "adresse", "teamgroesse"])
+def test_beide_leer_ist_richtig(feld):
+    leer = {k: None for k in ("kanzleiname", "rechtsform", "strasse", "plz", "ort", "telefon", "email",
+                              "erster_ansprechpartner", "berufstraeger_anzahl", "teamgroesse", "teamgroesse_klasse")}
+    assert feld_richtig(feld, dict(leer), dict(leer)) is True
+
+
+def test_anzeige_teamgroesse_nie_none_none():
+    from recherche.fixtures import _anzeige
+
+    ist, soll = _anzeige("teamgroesse", {"teamgroesse": None, "teamgroesse_klasse": "6-15"},
+                         {"teamgroesse": None, "teamgroesse_klasse": "16-50"})
+    assert (ist, soll) == ("Zahl None, Klasse 6-15", "Zahl None, Klasse 16-50")
+
+
+def test_json_mit_bom(tmp_path):
+    ziel = tmp_path / "bom.example"
+    shutil.copytree(BSP / "steuerbuero-schuett.example", ziel)
+    for name in ("erwartet.json", "meta.json", "llm/handgeschrieben_qwen3.5_9b.json"):
+        p = ziel / name
+        p.write_bytes(b"\xef\xbb\xbf" + p.read_bytes())  # PowerShell-Standard: UTF-8 mit BOM
+    erg = auswerten(fixtures_finden([tmp_path]), AUSSCHLUSS, "qwen3.5:9b")
+    assert erg.fixtures == 1 and erg.fehler == []
+
+
+def test_fixture_prompt_diagnose():
+    from recherche.fixtures import fixture_finden, prompt_diagnose
+
+    fx = fixture_finden("nordlicht-steuerberatung.example", [ECHT, BSP])
+    d = prompt_diagnose(fx, S.llm, AUSSCHLUSS, "qwen3.5:9b")
+    imp = next(s for s in d.prompt.seiten if s.typ == "impressum")
+    assert imp.html_zeichen > 90_000 and imp.text_zeichen > 70_000 and imp.bereinigt_zeichen < 2_000
+    assert not d.prompt.gekuerzt
+    assert d.personen_je_art == {"Berufsträger": 3, "Leitung (ohne Berufstitel)": 0, "weitere Mitarbeitende": 8}
+    assert (d.vertreter, d.berufsbezeichnung) == (2, "Steuerberater")
+    assert d.regel_felder == {"strasse": True, "adresszusatz": True, "plz": True, "ort": True, "telefon": True, "email": True}
+    assert d.aufzeichnung.zeichen_je_token == pytest.approx(15890 / 5210)
+    assert {typ.value for typ in d.links} >= {"impressum", "kontakt", "team"}

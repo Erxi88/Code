@@ -20,7 +20,7 @@ def _keine_api_keys(monkeypatch):
 
 @pytest.fixture(scope="session")
 def testdaten() -> dict:
-    return json.loads((FIXTURES / "kanzleien_20.json").read_text(encoding="utf-8"))
+    return json.loads((FIXTURES / "kanzleien_20.json").read_text(encoding="utf-8-sig"))
 
 
 @pytest.fixture
@@ -30,7 +30,7 @@ def kanzleien(testdaten) -> list[Kanzlei]:
 
 @pytest.fixture
 def ddgs_antworten() -> dict[str, list[dict]]:
-    d = json.loads((FIXTURES / "search" / "ddgs_antworten.json").read_text(encoding="utf-8"))
+    d = json.loads((FIXTURES / "search" / "ddgs_antworten.json").read_text(encoding="utf-8-sig"))
     d.pop("_hinweis", None)
     return d
 

@@ -1,0 +1,45 @@
+{
+ "_hinweis": "Handgeschriebene Beispielantwort für Tests – keine echte Modellausgabe.",
+ "ergebnis": {
+  "kanzleiname": "Mittelstand Steuerberatungsgesellschaft mbH",
+  "rechtsform": "Steuerberatungsgesellschaft mbH",
+  "strasse": "Luruper Chaussee 125 / Haus 8 Süd",
+  "plz": "22761",
+  "ort": "Hamburg",
+  "telefon": "+49 40 8890 1230",
+  "email": "info@mittelstand-steuer.example",
+  "verantwortliche_person": "Jörg Petersen",
+  "personen": [
+   {
+    "name": "Jörg Petersen",
+    "titel": "Dr.",
+    "funktion": "Geschäftsführer"
+   },
+   {
+    "name": "Sandra Albers",
+    "titel": null,
+    "funktion": "Geschäftsführerin"
+   },
+   {
+    "name": "Malte Ohm",
+    "titel": null,
+    "funktion": "Rechtsanwalt"
+   },
+   {
+    "name": "Ina Wendt",
+    "titel": null,
+    "funktion": "Rechtsanwaltsfachangestellte"
+   }
+  ],
+  "mitarbeiterzahl": null,
+  "mitarbeiterzahl_beleg": null,
+  "teamgroesse_klasse": null
+ },
+ "modell": "qwen3.5:9b",
+ "laufzeit_s": 31.4,
+ "prompt_tokens": 2930,
+ "antwort_tokens": 380,
+ "prompt_zeichen": 9870,
+ "kuerzung": null,
+ "num_ctx": 16384
+}

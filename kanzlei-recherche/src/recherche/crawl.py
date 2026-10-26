@@ -43,6 +43,30 @@ _BLOCK = frozenset(
 )
 
 
+# Cookie-/Consent-Banner (id/class); deren Texte sind oft länger als das Impressum selbst
+_COOKIE_ELEMENTE = re.compile(
+    r"cookie|consent|gdpr|\bcmp\b|borlabs|usercentrics|cookiebot|klaro|complianz|onetrust|cc-banner|cc-window|"
+    r"tarteaucitron|iubenda|cookie-notice|privacy-banner",
+    re.I,
+)
+_NIE_ENTFERNEN = frozenset({"html", "body", "main", "article"})
+
+
+def _cookie_banner_entfernen(soup: BeautifulSoup) -> int:
+    """Entfernt Cookie-/Consent-Elemente; gibt die Zahl entfernter Elemente zurück."""
+    treffer = []
+    for el in soup.find_all(True):
+        if el.name in _NIE_ENTFERNEN or el.attrs is None:
+            continue
+        kennung = " ".join([el.get("id") or "", *(el.get("class") or [])])
+        if kennung.strip() and _COOKIE_ELEMENTE.search(kennung):
+            treffer.append(el)
+    for el in treffer:
+        if not el.decomposed:
+            el.decompose()
+    return len(treffer)
+
+
 def _soup(html: str) -> BeautifulSoup:
     try:
         return BeautifulSoup(html, "lxml")
@@ -74,6 +98,7 @@ def html_zu_text(html: str) -> str:
     soup = _soup(html)
     for tag in soup(_ENTFERNEN):
         tag.decompose()
+    _cookie_banner_entfernen(soup)
     for c in soup.find_all(string=lambda s: isinstance(s, Comment)):
         c.extract()
     _cf_emails_ersetzen(soup)
@@ -92,12 +117,19 @@ def html_zu_text(html: str) -> str:
     return "\n".join(zeilen)
 
 
+def html_ohne_cookie_banner(html: str) -> str:
+    soup = _soup(html)
+    _cookie_banner_entfernen(soup)
+    return str(soup)
+
+
 def haupttext(html: str) -> str | None:
     """Haupttext ohne Navigation (trafilatura) – kürzerer Text für den LLM-Prompt."""
     try:
         import trafilatura
 
-        return trafilatura.extract(html, include_comments=False, include_tables=True, favor_recall=True)
+        return trafilatura.extract(html_ohne_cookie_banner(html), include_comments=False, include_tables=True,
+                                   favor_recall=True)  # fmt: skip
     except Exception:  # pragma: no cover – trafilatura-Fehler bei kaputtem HTML
         return None
 
@@ -109,7 +141,7 @@ def links(html: str, basis_url: str) -> list[tuple[str, str]]:
     ergebnis = []
     for a in soup.find_all("a", href=True):
         href = a["href"].strip()
-        text = " ".join(a.get_text(" ").split()) or (a.get("title") or "").strip()
+        text = " ".join(a.get_text(" ").split()) or (a.get("aria-label") or a.get("title") or "").strip()
         if href.lower().startswith(("mailto:", "tel:")):
             ergebnis.append((href, text))
         elif not href.lower().startswith(("javascript:", "data:", "#")):
@@ -126,24 +158,28 @@ _DATEI_ENDUNGEN = (".pdf", ".jpg", ".jpeg", ".png", ".gif", ".zip", ".doc", ".do
 MUSTER: dict[Seitentyp, dict[str, list[tuple[str, int]]]] = {
     Seitentyp.IMPRESSUM: {
         "pfad": [("impressum", 10), ("imprint", 8), ("anbieterkennzeichnung", 8), ("legal-notice", 6)],
-        "text": [("impressum", 10), ("imprint", 8), ("anbieterkennzeichnung", 8), ("rechtliche hinweise", 4)],
+        "text": [("impressum", 10), ("imprint", 8), ("anbieterkennzeichnung", 8), ("legal notice", 8),
+                 ("rechtliche hinweise", 6), ("=rechtliches", 6), ("pflichtangaben", 6)],
     },
     Seitentyp.KONTAKT: {
         "pfad": [("kontakt", 10), ("contact", 8), ("anfahrt", 5), ("standort", 4)],
         "text": [("kontakt", 10), ("contact", 8), ("anfahrt", 5), ("so finden sie uns", 5), ("standort", 4)],
     },
     Seitentyp.TEAM: {
-        "pfad": [("team", 10), ("mitarbeiter", 9), ("ansprechpartner", 9), ("ueber-uns", 7), ("uber-uns", 7),
-                 ("about", 5), ("wir", 6), ("personen", 5), ("kanzlei", 5), ("menschen", 5)],
-        "text": [("unser team", 12), ("team", 10), ("mitarbeiter", 9), ("ansprechpartner", 9), ("ueber uns", 7),
-                 ("die kanzlei", 5), ("=kanzlei", 5), ("=wir", 6), ("menschen", 5)],
+        "pfad": [("team", 10), ("mitarbeiter", 9), ("ansprechpartner", 9), ("berufstraeger", 9), ("ueber-uns", 7),
+                 ("uber-uns", 7), ("about", 5), ("wir", 6), ("partner", 6), ("experten", 6), ("personen", 5),
+                 ("kanzlei", 5), ("menschen", 5)],
+        "text": [("unser team", 12), ("team", 10), ("mitarbeiter", 9), ("ansprechpartner", 9), ("berufstraeger", 9),
+                 ("ueber uns", 7), ("=partner", 6), ("unsere partner", 6), ("experten", 6), ("die kanzlei", 5),
+                 ("=kanzlei", 5), ("=wir", 6), ("menschen", 5)],
     },
 }  # fmt: skip
 # Abzüge: Schlüsselwort in Pfad oder Linktext → Punkte (nicht, wenn das Typ-Wort selbst auch vorkommt)
 ABZUEGE: dict[Seitentyp, list[tuple[str, int]]] = {
     Seitentyp.IMPRESSUM: [("datenschutz", -15)],
     Seitentyp.KONTAKT: [("datenschutz", -15), ("impressum", -6)],
-    Seitentyp.TEAM: [("karriere", -8), ("jobs", -8), ("stellen", -8), ("ausbildung", -6), ("datenschutz", -15)],
+    Seitentyp.TEAM: [("karriere", -8), ("jobs", -8), ("stellen", -8), ("ausbildung", -6), ("datenschutz", -15),
+                     ("kooperationspartner", -8), ("netzwerk", -4)],
 }
 TYP_WORT = {Seitentyp.IMPRESSUM: "impressum", Seitentyp.KONTAKT: "kontakt", Seitentyp.TEAM: "team"}
 MINDESTPUNKTE = 5
@@ -195,8 +231,20 @@ def gleiche_site(url: str, domain: str) -> bool:
 
 
 def finde_unterseiten(html: str, basis_url: str, domain: str) -> dict[Seitentyp, str]:
-    """Beste URL je Seitentyp (Impressum, Kontakt, Team) auf derselben Website."""
-    beste: dict[Seitentyp, tuple[int, int, str]] = {}
+    """Beste URL je Seitentyp (Impressum, Kontakt, Team) auf derselben Website; dazu eine zweite
+    Team-Kandidatin (TEAM2, z. B. /berufstraeger neben /ueber-uns), wenn es eine gibt."""
+    kandidaten = link_kandidaten(html, basis_url, domain)
+    ergebnis = {typ: liste[0][2] for typ, liste in kandidaten.items() if liste}
+    team = kandidaten.get(Seitentyp.TEAM, [])
+    zweite = [u for _, _, u, _ in team[1:] if u not in ergebnis.values()]
+    if zweite:
+        ergebnis[Seitentyp.TEAM2] = zweite[0]
+    return ergebnis
+
+
+def link_kandidaten(html: str, basis_url: str, domain: str) -> dict[Seitentyp, list[tuple[int, int, str, str]]]:
+    """Alle passenden Links je Typ, beste zuerst: (Punkte, -Länge, URL, Linktext)."""
+    beste: dict[Seitentyp, dict[str, tuple[int, int, str, str]]] = {}
     start = _ohne_fragment(basis_url)
     for url, text in links(html, basis_url):
         if url.lower().startswith(("mailto:", "tel:")) or not gleiche_site(url, domain):
@@ -208,10 +256,10 @@ def finde_unterseiten(html: str, basis_url: str, domain: str) -> dict[Seitentyp,
             p = punkte(typ, url, text)
             if p < MINDESTPUNKTE:
                 continue
-            rang = (p, -len(url))
-            if typ not in beste or rang > beste[typ][:2]:
-                beste[typ] = (p, -len(url), url)
-    return {typ: url for typ, (_, _, url) in beste.items()}
+            je_url = beste.setdefault(typ, {})
+            if url not in je_url or p > je_url[url][0]:
+                je_url[url] = (p, -len(url), url, text)
+    return {typ: sorted(je_url.values(), reverse=True) for typ, je_url in beste.items()}
 
 
 def _ohne_fragment(url: str) -> str:
@@ -491,7 +539,7 @@ class Crawler:
         gefunden = finde_unterseiten(start.html, basis, site)
         geladen: dict[str, Abruf] = {start.url: start}
         budget = self.cfg.max_seiten_je_domain - 1
-        for typ in (Seitentyp.IMPRESSUM, Seitentyp.KONTAKT, Seitentyp.TEAM):
+        for typ in (Seitentyp.IMPRESSUM, Seitentyp.KONTAKT, Seitentyp.TEAM, Seitentyp.TEAM2):
             url = gefunden.get(typ)
             if url is None:
                 continue

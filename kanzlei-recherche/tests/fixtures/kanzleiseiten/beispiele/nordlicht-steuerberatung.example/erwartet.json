@@ -1,0 +1,14 @@
+{
+ "_status": "fertig",
+ "kanzleiname": "Nordlicht Steuerberatung Kruse & Behrens Partnerschaftsgesellschaft mbB",
+ "rechtsform": "PartG mbB",
+ "strasse": "Holtenauer Straße 210",
+ "plz": "24159",
+ "ort": "Kiel",
+ "telefon": "+49 431 2609400",
+ "email": "kanzlei@nordlicht-steuerberatung.example",
+ "erster_ansprechpartner": "Anna Kruse",
+ "berufstraeger_anzahl": 3,
+ "teamgroesse": 11,
+ "teamgroesse_klasse": null
+}

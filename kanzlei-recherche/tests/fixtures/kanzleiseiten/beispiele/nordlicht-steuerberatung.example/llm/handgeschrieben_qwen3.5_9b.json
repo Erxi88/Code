@@ -1,0 +1,60 @@
+{
+ "_hinweis": "Handgeschriebene Beispielantwort für Tests – keine echte Modellausgabe.",
+ "ergebnis": {
+  "kanzleiname": "Nordlicht Steuerberatung Kruse & Behrens Partnerschaftsgesellschaft mbB",
+  "rechtsform": "Partnerschaftsgesellschaft mbB",
+  "strasse": "Holtenauer Straße 210",
+  "plz": "24159",
+  "ort": "Kiel-Holtenau",
+  "telefon": "0431 / 26 09 40-0",
+  "email": "kanzlei@nordlicht-steuerberatung.example",
+  "verantwortliche_person": "Lars Behrens",
+  "personen": [
+   {
+    "name": "Anna Kruse",
+    "titel": "Dr.",
+    "funktion": "Partnerin"
+   },
+   {
+    "name": "Lars Behrens",
+    "titel": null,
+    "funktion": "Partner"
+   },
+   {
+    "name": "Anna Kruse",
+    "titel": "Dr.",
+    "funktion": "Steuerberaterin, Partnerin"
+   },
+   {
+    "name": "Lars Behrens",
+    "titel": null,
+    "funktion": "Steuerberater, Partner"
+   },
+   {
+    "name": "Jana Wolff",
+    "titel": null,
+    "funktion": "Steuerberaterin"
+   },
+   {
+    "name": "Mehmet Yilmaz",
+    "titel": null,
+    "funktion": "Steuerfachwirt"
+   },
+   {
+    "name": "Katrin Lange",
+    "titel": null,
+    "funktion": "Steuerfachangestellte"
+   }
+  ],
+  "mitarbeiterzahl": null,
+  "mitarbeiterzahl_beleg": null,
+  "teamgroesse_klasse": null
+ },
+ "modell": "qwen3.5:9b",
+ "laufzeit_s": 48.2,
+ "prompt_tokens": 5210,
+ "antwort_tokens": 455,
+ "prompt_zeichen": 15890,
+ "kuerzung": null,
+ "num_ctx": 16384
+}
