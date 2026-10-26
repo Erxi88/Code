@@ -22,7 +22,8 @@ Projektregeln und Arbeitsweise: siehe [CLAUDE.md](CLAUDE.md).
 | Crawling (robots.txt, Drosselung je Domain, Cache, Playwright-Rückfall) | fertig |
 | Extraktion: Regeln + Ollama, Zusammenführung mit Abweichung, OpenPLZ, Konfidenz | fertig |
 | `fixture-add`, `fixture-eval` (Trefferquote, Laufzeit, Token je Modell) | fertig; 3 fiktive Beispiele, echte Fixtures lokal |
-| `orte` (Ortsliste aus OpenPLZ, Einwohner aus GV-ISys) | Platzhalter; Startliste mit 80 Orten |
+| `orte` (Gemeinden aus OpenPLZ, Kreis/Einwohner aus GV-ISys, Zusatz-Suchorte Kiel/Lübeck) | fertig; bis zum ersten Lauf gilt die Startliste mit 80 Orten |
+| Einwohnerregel: Query-Varianten und Seiten je Einwohnerklasse | fertig |
 
 ## Installation
 
@@ -57,7 +58,8 @@ recherche crawl   -b SH [--limit 20] [--wiederholen]
 recherche extract -b SH [--ohne-llm] [--modell qwen3.6:27b] [--limit 20] [--wiederholen]
 recherche export  -b SH [--out liste.xlsx]  # Excel schreiben
 recherche run     -b SH [--orte …] [--adapter ddgs]  # Stufe A + crawl + extract + export
-recherche orte    -b SH                     # Ortsliste (Platzhalter)
+# Vollständige Ortsliste (schreibt config/orte_SH.csv nur mit --force)
+recherche orte    -b SH [--dry-run] [--force] [--out datei.csv] [--gv pfad-oder-url] [--ohne-gv]
 
 # Extraktion an echten Kanzleiseiten messen (Fixtures nur lokal, siehe unten)
 recherche fixture-add  --domain kanzlei-beispiel.de
@@ -84,6 +86,16 @@ erneut starten: erledigte Abfragen werden übersprungen, nichts wird doppelt bez
 **Kosten:** Jeder Lauf gibt die Zahl der gesendeten Anfragen und die geschätzten Kosten
 aus (`kosten_je_1000` je Adapter); `max_anfragen_je_lauf` (Standard 1000) begrenzt das
 Budget je Lauf und Adapter. Die Werte stehen auch im Blatt „Lauf-Protokoll".
+
+**Ortsliste:** `orte` lädt alle Gemeinden des Bundeslandes aus OpenPLZ und ergänzt Kreis und
+Einwohner aus dem Gemeindeverzeichnis (GV-ISys) von Destatis. Die Datei („Alle politisch
+selbständigen Gemeinden", XLSX) einmal herunterladen und den Pfad (oder die URL) unter
+`orte.gv_isys.quelle` eintragen. Erst `--dry-run` ansehen: Der Befehl zeigt den Vergleich
+mit der bisherigen Liste und eine Kostenabschätzung je Einwohnerstufe.
+
+**Einwohnerregel:** Kleine Orte werden mit weniger Query-Varianten und Ergebnisseiten
+gesucht (`discovery.stufe_a.einwohner_regel`), außer die Ergebnisseite ist voll mit
+Kanzlei-Websites – dann wird weitergeblättert. Reihenfolge in `queries.yaml` beachten.
 
 **coverage** zeigt gefundene Kanzleien je Kreis und Quelle, den Anteil der Kanzleien, die
 nur eine Quelle kennt, und – sobald `config/referenz_kammern.yaml` ausgefüllt ist – Quote

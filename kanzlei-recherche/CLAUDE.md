@@ -53,6 +53,18 @@ der nächsten Quelle füllen.**
      Lauf sauber.
   3. `serpapi` – Platzhalter für den Pilot-Vergleich (Google-Trefferseite).
   4. `ddgs` (DuckDuckGo, ohne Key) – **nur lokale Entwicklung**.
+- **Gründlichkeit je Einwohnerklasse** (`discovery.stufe_a.einwohner_regel`): erste N
+  Vorlagen aus `queries.yaml` (Reihenfolge zählt!) und höchstens M Ergebnisseiten je
+  Query – Standard: unter 2.000 Einwohnern 1 Variante/1 Seite, bis 20.000 2/2, darüber
+  alle/3. **Ausnahme:** War die letzte erlaubte Seite voll und überwiegend Kanzlei-Domains
+  (`weiter_wenn_voll`, > 50 % nicht auf der Blocklist), wird die nächste Seite trotzdem
+  geholt. Orte ohne Einwohnerzahl werden vollständig gesucht. Gilt für `search` und
+  `search-compare`, nicht für `fill`.
+- **Zusatz-Suchorte großer Städte**: kreisfreie Städte ab 100.000 Einwohnern (Kiel,
+  Lübeck) bekommen je PLZ-Bezirk einen Zusatz-Suchort mit Verweis auf die Gemeinde
+  (`stadtteil_vorlagen` in `queries.yaml`). OpenPLZ führt je PLZ meist nur den Postort
+  („Kiel"), echte Stadtteilnamen gibt es nur, wo OpenPLZ einen eigenen Ortsnamen hat.
+  Coverage und Lückenfüller arbeiten weiter je Gemeinde.
 - **Danach `recherche coverage`**: gefundene Kanzleien je Kreis gegen
   `config/referenz_kammern.yaml` (Einheit `kanzleien` oder `mitglieder` × `faktor`, Land
   gesamt und optional je Kreis; Rest nach Einwohnern verteilt), Anteil je Quelle und
@@ -91,6 +103,19 @@ der nächsten Quelle füllen.**
 - `recherche search-compare --orte …` vergleicht **alle aktiven Adapter** (oder
   `--adapter a,b,…`): Kanzleien je Adapter und Ort, Schnittmenge, „nur in diesem
   Adapter", Paar-Matrix. Treffer werden über die Dubletten-Logik zusammengefasst.
+
+### Ortsliste (`orte.py`, `recherche orte`)
+
+- Gemeinden aus OpenPLZ (`/de/FederalStates/<Land>/Localities`, alle Seiten, gecacht),
+  zusammengefasst je amtlichem Gemeindeschlüssel (AGS); Name ohne Zusatz („Kiel,
+  Landeshauptstadt" → „Kiel"), niedrigste PLZ in `plz`, übrige in `plz_weitere`.
+- Kreis und Einwohner aus dem GV-ISys von Destatis (XLSX oder CSV, Pfad oder URL in
+  `orte.gv_isys.quelle`, Spaltennamen einstellbar; Satzart 40 = Kreis, 60 = Gemeinde),
+  Zuordnung über den AGS. Kreisnamen im Format der Referenzdatei („Kreis Dithmarschen",
+  „Kreisfreie Stadt Kiel").
+- Ausgabe `config/orte_<BL>.csv` (`ort;plz;kreis;einwohner;ags;plz_weitere;gemeinde;
+  stadtteil`). **Eine bestehende Datei wird nie ungefragt überschrieben** (`--force`,
+  `--out`, `--dry-run`); vorher Vergleich alt/neu und Kostenabschätzung je Einwohnerstufe.
 
 ### Crawling (`crawl.py`)
 
@@ -215,4 +240,6 @@ Schemaversion über `PRAGMA user_version` (aktuell 3); ältere Datenbanken werde
 - Stufe 2 (Lesen und Extrahieren): `crawl`, `extract` (Regeln + Ollama), Zusammenführung
   mit Abweichung und Konfidenz, OpenPLZ-Prüfung, Schema v3, `fixture-add`,
   `fixture-eval` mit 3 fiktiven Beispielen. Die 15 echten Fixtures folgen (lokal).
-- Noch Platzhalter: `orte` (OpenPLZ + Einwohner aus GV-ISys).
+- `orte`: vollständige Gemeindeliste (OpenPLZ + GV-ISys), Einwohnerregel mit
+  Seitenbegrenzung, Zusatz-Suchorte für Kiel/Lübeck. Die erzeugte Liste ersetzt die
+  Startliste erst nach `recherche orte --force`.
