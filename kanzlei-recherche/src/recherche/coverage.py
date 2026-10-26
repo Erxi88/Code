@@ -58,7 +58,7 @@ def load_referenz(pfad: str | Path, bundesland: str) -> Referenz | None:
     pfad = Path(pfad)
     if not pfad.exists():
         return None
-    daten = (yaml.safe_load(pfad.read_text(encoding="utf-8")) or {}).get(bundesland.upper())
+    daten = (yaml.safe_load(pfad.read_text(encoding="utf-8-sig")) or {}).get(bundesland.upper())
     if not daten:
         return None
     einheit = daten.get("einheit") or "kanzleien"

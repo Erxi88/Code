@@ -69,7 +69,7 @@ def _zelle(r: dict, k: str) -> str:
 
 def load_orte(pfad: str | Path, mit_zusatz: bool = True) -> list[Ort]:
     """Ortsliste (Startliste oder von `recherche orte` erzeugt); Zusatz-Suchorte optional."""
-    with open(pfad, encoding="utf-8", newline="") as f:
+    with open(pfad, encoding="utf-8-sig", newline="") as f:
         orte = [
             Ort(
                 name=_zelle(r, "ort"),
@@ -116,7 +116,7 @@ def orte_filtern(orte: list[Ort], namen: Iterable[str] | None) -> list[Ort]:
 
 
 def _vorlagen_yaml(pfad: str | Path) -> dict:
-    return yaml.safe_load(Path(pfad).read_text(encoding="utf-8")) or {}
+    return yaml.safe_load(Path(pfad).read_text(encoding="utf-8-sig")) or {}
 
 
 def load_vorlagen(pfad: str | Path) -> list[str]:
@@ -181,7 +181,7 @@ def als_suchplan(vorlagen: list[str] | Suchplan) -> Suchplan:
 
 def load_blocklist(pfad: str | Path) -> set[str]:
     eintraege: set[str] = set()
-    for zeile in Path(pfad).read_text(encoding="utf-8").splitlines():
+    for zeile in Path(pfad).read_text(encoding="utf-8-sig").splitlines():
         zeile = zeile.split("#", 1)[0].strip().lower()
         if zeile:
             eintraege.add(normalize_domain(zeile) or zeile)
