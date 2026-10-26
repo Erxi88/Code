@@ -176,3 +176,77 @@ def test_linkerkennung_impressum_fremder_pfad_und_team2():
 def test_cookie_banner_entfernt():
     html = "<div id='cookie-consent'><p>Wir verwenden Cookies. Alle akzeptieren</p></div><p>Kanzlei Kruse</p>"
     assert html_zu_text(html).strip() == "Kanzlei Kruse"
+
+
+# ---- Fälle aus dem ersten echten Fixture-Lauf (fiktiv nachgebaut)
+
+def test_navigation_ist_kein_vertretungsberechtigter():
+    """Navigation als eine Zeile: „Partner" trifft, „Berufsträger Firmenphilosophie Historie" ist kein Name."""
+    impressum = ("Start Partner Berufsträger Firmenphilosophie Historie Kontakt\n"
+                 "Vertretungsberechtigte Geschäftsführer:\nChristian Wermke\nAnna Bock\nCarl Dau\nDora Ems\n"
+                 "Registergericht: Amtsgericht Hamburg\nHRB 12345\nBerufsbezeichnung: Steuerberater")
+    assert vertretungsberechtigte(impressum)[0] == ["Christian Wermke", "Anna Bock", "Carl Dau", "Dora Ems"]
+    assert vertretungsberechtigte("Partner Berufsträger Firmenphilosophie Historie")[0] == []
+
+
+def test_vertretung_endet_am_abschnitt():
+    impressum = "Vertreten durch:\nChristian Wermke\nAnna Bock\nOMM Steuerberatung GmbH\nOle Fremd"
+    assert vertretungsberechtigte(impressum)[0] == ["Christian Wermke", "Anna Bock"]
+
+
+def test_vertretung_rahmenzeilen_zaehlen_nicht():
+    impressum = "Partner: Max Muster\nVertretungsberechtigt: Anna Bock"
+    assert vertretungsberechtigte(impressum, rahmen={"partner: max muster"})[0] == ["Anna Bock"]
+
+
+def test_verantwortlich_nach_vertretungsberechtigten():
+    assert vertretungsberechtigte("Verantwortlich gemäß § 5 TMG: Olaf Brandt-Wessel")[0] == ["Olaf Brandt-Wessel"]
+    impressum = "Verantwortlich für den Inhalt nach § 18 Abs. 2 MStV:\nOle Fremd\nGeschäftsführer: Anna Bock"
+    assert vertretungsberechtigte(impressum)[0] == ["Anna Bock", "Ole Fremd"]
+
+
+def test_ueber_uns_mit_weiteren_funktionen():
+    text = """Unser Team
+Olaf Brandt-Wessel
+Geschäftsführer, Steuerberater
+Sabine Schulz (Steuerfachwirtin)
+Frau Tina Roth
+Directrice
+Ilka Meyer
+Finanzbuchhalterin in Ausbildung
+Jens Lau
+Einzelhandelskaufmann
+Mara Ost
+Großhandelskauffrau
+Pia Kern
+Lohnbuchhalterin
+Ute Graf
+Rechtsanwaltsfachangestellte"""
+    gefunden = erkenne_personen(text)
+    assert [p.name for p in gefunden] == ["Olaf Brandt-Wessel", "Sabine Schulz", "Tina Roth", "Ilka Meyer", "Jens Lau",
+                                          "Mara Ost", "Pia Kern", "Ute Graf"]
+    assert sum(ist_berufstraeger(LlmPerson(name=p.name, funktion=p.funktion)) for p in gefunden) == 1
+
+
+def test_name_nur_mit_funktion_daneben_und_ohne_rahmen():
+    assert erkenne_personen("Anna Bock\nLeistungen\nSteuerberaterin") == []  # Funktion nicht direkt darunter
+    text = "Anna Bock\nSteuerberaterin\nMax Muster\nSteuerberater"
+    assert [p.name for p in erkenne_personen(text, rahmen={"max muster"})] == ["Anna Bock"]
+
+
+def test_initiale_und_fachangestellte():
+    p = erkenne_personen("W. Drews, Diplom-Kauffrau / Steuerfachangestellte")
+    assert p[0].name == "W. Drews" and not ist_berufstraeger(LlmPerson(name=p[0].name, funktion=p[0].funktion))
+
+
+def test_personen_aus_json_ld_und_versteckte_quellen():
+    from recherche.extract.personen import personen_aus_json_ld, versteckte_quellen
+
+    html = ("<html><body><p>Team</p><img alt='Anna Bock' src='a.jpg'><noscript>Ole Fremd</noscript>"
+            "<script>var t=[{\"name\":\"Max Muster\"}]</script><script type='application/ld+json'>"
+            "{\"@type\":\"Organization\",\"employee\":[{\"@type\":\"Person\",\"name\":\"Eva Kahl\","
+            "\"jobTitle\":\"Steuerberaterin\"},{\"@type\":\"Person\",\"name\":\"Kai Ohne\"}]}</script></body></html>")
+    assert [(p.name, p.funktion) for p in personen_aus_json_ld(html)] == [("Eva Kahl", "Steuerberaterin")]
+    q = versteckte_quellen(html, "Team")
+    assert (q.attribut_namen, q.noscript_namen, q.skript_namen, q.json_ld_personen) == (1, 1, 1, 2)
+    assert q.anteil < 0.02 and "Person" in q.json_ld_typen

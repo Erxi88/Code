@@ -257,6 +257,15 @@ def test_fixture_prompt():
     assert "Mitarbeiterzahl (Regel): 28 Expert:innen" in r.output and "/information/license" in r.output
 
 
+def test_fixture_prompt_namen_und_versteckte_quellen():
+    r = runner.invoke(cli.app, ["fixture-prompt", "--domain", "nordlicht-steuerberatung.example"])
+    assert "Teamseiten: Text außerhalb" in r.output and "Anna Kruse" not in r.output  # ohne --namen keine Namen
+    assert "Berufsträger laut Zusammenführung (mit Aufzeichnung qwen3.5:9b): 3" in r.output
+    assert "9/12 Felder belegt, 7 Personen" in r.output
+    r = runner.invoke(cli.app, ["fixture-prompt", "--domain", "nordlicht-steuerberatung.example", "--namen"])
+    assert "(Anna Kruse, Lars Behrens)" in r.output and "Erster Ansprechpartner: Anna Kruse" in r.output
+
+
 def test_fixture_prompt_live_und_speichern(monkeypatch, tmp_path):
     from test_extract_ollama import _ok, _ollama
 

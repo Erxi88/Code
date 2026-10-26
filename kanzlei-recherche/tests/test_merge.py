@@ -163,3 +163,10 @@ def test_discovery_ohne_strasse_wird_mit_website_adresse_vervollstaendigt():
     andere_plz = PLACES.model_copy(update={"strasse": None, "plz": "24105"})
     k = zusammenfuehren(K, [andere_plz], SEITEN, REGEL, LLM, OK)
     assert (k.strasse, k.plz) == (None, "24105") and "Adresse" in k.abweichung
+
+
+def test_llm_strasse_wenn_regel_nur_plz_findet():
+    regel = RegelErgebnis(plz="22761", ort="Hamburg", telefon="+49 40 123456")
+    llm = LlmErgebnis(strasse="Luruper Chaussee 125 / Haus 8 Süd", plz="22761", ort="Hamburg")
+    k = zusammenfuehren(K, [WEB], {}, regel, llm)
+    assert (k.strasse, k.adresszusatz, k.plz) == ("Luruper Chaussee 125", "Haus 8 Süd", "22761")

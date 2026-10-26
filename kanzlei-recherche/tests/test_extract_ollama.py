@@ -123,3 +123,10 @@ def test_schema_felder():
 def test_settings_modelle(settings):
     assert settings.llm.think is False and settings.llm.num_ctx >= 8192
     assert settings.llm.modell == "qwen3.5:9b" and settings.llm.fallback_modell == "llama3.1:8b"
+
+
+def test_abbruchgrund_und_belegte_felder(cfg):
+    client, _ = _ollama([_ok({"kanzleiname": "Kanzlei X", "personen": []}, done_reason="stop", eval_count=52)])
+    a = OllamaExtractor(cfg, client=client).extract(SEITEN)
+    assert a.abbruchgrund == "stop" and a.antwort_tokens == 52
+    assert a.belegte_felder == (1, 12)

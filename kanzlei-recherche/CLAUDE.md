@@ -136,8 +136,11 @@ der nächsten Quelle füllen.**
   **Navigation und Fußzeile bleiben**, weil dort oft Adresse und Telefon stehen.
   Cookie-/Consent-Banner werden entfernt; **versteckte Elemente bleiben** (Akkordeons
   im Impressum und auf Teamseiten enthalten oft die Namen).
-- Playwright nur als Rückfall für fast leere Seiten (< `crawl.min_text_zeichen`) und nur
-  mit `crawl.playwright: true` (`setup.sh --mit-playwright`).
+- Playwright nur als Rückfall für fast leere Seiten (< `crawl.min_text_zeichen`) und für
+  Teamseiten mit großem HTML, aber kaum Text (≥ `playwright_team_min_html`, Text unter
+  `playwright_team_min_anteil` = 2 % des HTML; Namen per JavaScript) – nur mit
+  `crawl.playwright: true` (`setup.sh --mit-playwright`). Das gerenderte HTML ersetzt das
+  ursprüngliche nur, wenn es mehr Text ergibt.
 - Fehler (nicht erreichbar, HTTP-Fehler, robots.txt, kein Impressum, JavaScript-Seite,
   Weiterleitung auf Portal) → Blatt „Nicht gefunden" **mit den Discovery-Daten** (Name,
   Adresse, Telefon), damit von Hand nachgepflegt werden kann.
@@ -165,10 +168,18 @@ der nächsten Quelle füllen.**
   Berufsbezeichnung; ±4 Zeilen) immer vorn, dann die regelbasiert erkannten PERSONEN.
   Budget `llm.max_text_chars: auto` = (num_ctx − 2700 Token) × 3,0 Zeichen/Token, verteilt
   nach Anteilen je Seite. Wird gekürzt oder ist der Kontext fast voll, steht ein Hinweis im
-  Log und im Lauf-Protokoll. `recherche fixture-prompt --domain X [--live]` zeigt jede
-  Stufe und vergleicht die geschätzten mit den echten Prompt-Token.
+  Log und im Lauf-Protokoll. `recherche fixture-prompt --domain X [--live] [--namen]` zeigt
+  jede Stufe, versteckte Quellen der Teamseiten (noscript, Skripte, JSON-LD, Attribute),
+  die gezählten Berufsträger mit Herkunft (LLM, Teamseite, Impressum-Berufsbezeichnung),
+  belegte Felder und Abbruchgrund der Antwort und vergleicht geschätzte mit echten
+  Prompt-Token. Namen nur mit `--namen`.
 - Personen (`personen.py`, `config/personen_funktionen.yaml`): Kacheln/Listen auf beiden
-  Teamseiten (Name mit Funktion darunter, „Name – Funktion", Funktion darüber).
+  Teamseiten. Ein Name gilt nur mit einer Funktion aus der Liste **in derselben Zeile**
+  („Name – Funktion", „Name (Funktion)"), **in der Folgezeile** oder direkt darüber
+  (Kachel mit Rolle als Überschrift); Zeilen aus dem RAHMEN und Menüwörter („Berufsträger",
+  „Firmenphilosophie", „Historie" …) sind nie Namen. Initialen („W. Drews") und Anrede
+  („Frau …") sind erlaubt; `*kauffrau` in der Liste trifft auch Komposita
+  („Einzelhandelskauffrau"). Zusätzlich Personen aus JSON-LD (schema.org `Person` mit `jobTitle`).
   Mitarbeiterzahl-Regel auf allen Seiten inkl. Startseite („28 Expert:innen", „Team von 28",
   „15-köpfig"; Gender-Schreibweisen normalisiert; „über N" → Klasse über N).
 - Fehlende Felder bleiben `null` – **nie raten**. Konfidenz berechnet der Code, nicht das LLM.
@@ -185,11 +196,19 @@ der nächsten Quelle füllen.**
     Fach­angestellte, Fachwirt, Fachassistent, Fachgehilfe und Anwärter nie.
     Vertretungsberechtigte zählen, wenn im selben Impressum-Abschnitt genau **eine**
     Berufsbezeichnung steht.
+  - Vertretungsberechtigte im Impressum: „vertretungsberechtigt", „vertreten durch",
+    „Geschäftsführer", „Inhaber" (Namen dürfen direkt folgen); „Partner", „Gesellschafter",
+    „Vorstand" nur als Label mit Doppelpunkt (sonst trifft die Navigation). Namen in den
+    Folgezeilen enden an der nächsten Leerzeile, Label-Zeile („Registergericht: …"),
+    Schlüsselwort-Zeile oder Zeile ohne Namen. „Verantwortlich gemäß § 5 TMG/§ 18 MStV"
+    zählt nachrangig (nach den Vertretungsberechtigten). Rahmenzeilen zählen nie.
   - Rechtsform kanonisch (`config/rechtsformen.yaml`: „Partnerschaftsgesellschaft mbB" →
     „PartG mbB"); Ort laut OpenPLZ („Hamburg-Rissen" → „Hamburg").
   - Adresszusatz („/ Haus 8 Süd", eigene Zeile mit Haus, Gebäude, Eingang, Etage, OG,
-    Hinterhof, c/o) steht im eigenen Feld; die PLZ-Zeile darf bis zu zwei Zeilen unter
-    der Straße stehen.
+    Hinterhof, c/o; auch in Klammern, mehrteilig oder nach einem Zeilenumbruch hinter
+    „/") steht im eigenen Feld; die PLZ-Zeile darf bis zu zwei Zeilen unter der Straße
+    stehen. Findet die Regel nur PLZ/Ort, wird die Straße des LLM zur selben PLZ genommen
+    (ebenfalls in Straße und Zusatz zerlegt).
   - Teamgröße: genannte Zahl (LLM, dann Regel) > **alle** Personen der Teamseiten (≥ 2; Untergrenze, eine
     größere Klasse aus dem Text geht vor) > Klasse aus dem Text.
 - Kandidaten **ohne Website** kommen mit ihren Discovery-Daten ins Blatt „Kanzleien"

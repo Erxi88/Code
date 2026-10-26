@@ -41,8 +41,10 @@ from .personen import (
     ist_leitung_funktion,
     mitarbeiterzahl,
     name_zerlegen,
+    personen_aus_json_ld,
 )
-from .rules import Ausschluss, rechtsform_aus_name
+from .prompt import seiten_rahmen
+from .rules import Ausschluss, rechtsform_aus_name, strasse_zerlegen
 
 
 def _text(s: Seite) -> str:
@@ -133,11 +135,16 @@ def personen_vereinigen(personen: list[LlmPerson]) -> list[LlmPerson]:
     return ergebnis
 
 
-_VERTRETUNG = re.compile(
-    r"vertretungsberechtigt\w*|vertreten\s+durch|gesellschafter\w*|geschäftsführ\w*|geschaeftsfuehr\w*|"
-    r"inhaber\w*|partner(?:in|innen)?\b(?!schafts)|vorstand",
-    re.I,
+# Starke Schlüsselwörter: Namen dürfen direkt folgen („vertreten durch Christian Wermke").
+# Schwache („Partner", „Gesellschafter") nur als Label mit Doppelpunkt – sonst trifft die Navigation
+# („Partner Berufsträger Firmenphilosophie Historie").
+_VERTRETUNG_STARK = re.compile(
+    r"vertretungsberechtigt\w*|vertreten\s+durch|geschäftsführ\w*|geschaeftsfuehr\w*|inhaber\w*", re.I
 )
+_VERTRETUNG_SCHWACH = re.compile(r"gesellschafter\w*|partner(?:in|innen)?\b(?!schafts)|vorstand", re.I)
+# „Verantwortlich gemäß § 5 TMG: Olaf Müller-Madaus" – nachrangig nach den Vertretungsberechtigten
+_VERANTWORTLICH = re.compile(r"\bverantwortlich\w*", re.I)
+_LABEL = re.compile(r"^[^:]{2,60}:")  # „Registergericht: …" beendet einen Abschnitt
 _BERUFSBEZEICHNUNG = re.compile(r"berufsbezeichnung\w*\s*:?\s*(.*)", re.I)
 _BEZEICHNUNGEN = {
     "Steuerberater": re.compile(r"steuerberater", re.I),
@@ -161,25 +168,65 @@ def _namen_aus(text: str) -> list[str]:
     return namen
 
 
-def vertretungsberechtigte(impressum: str, fremd: set[int] | None = None) -> tuple[list[str], str | None]:
-    """Im Impressum genannte Vertretungsberechtigte und – falls genau eine im selben Abschnitt
-    (±8 Zeilen, außerhalb von Kammer-/Fremd-Abschnitten) – ihre Berufsbezeichnung."""
+def _schluessel(z: str) -> re.Match | None:
+    if m := _VERTRETUNG_STARK.search(z):
+        return m
+    if (m := _VERTRETUNG_SCHWACH.search(z)) and ":" in z[m.end():]:
+        return m
+    return None
+
+
+def _abschnitt_namen(zeilen: list[str], i: int, ende: int, gesperrt: Callable[[int], bool]) -> list[str]:
+    """Namen hinter dem Schlüsselwort in Zeile i – oder, wenn dort keine stehen, in den Folgezeilen
+    bis zur nächsten Label-Zeile, Leerzeile, Schlüsselwort-Zeile oder Zeile ohne Namen."""
+    z = zeilen[i]
+    if namen := _namen_aus(z[ende:]):
+        return namen
+    if z[ende:].strip(" :") and ":" not in z[ende:]:
+        return []  # Text hinter dem Schlüsselwort, aber kein Name: kein Abschnittsanfang
+    namen = []
+    for j in range(i + 1, min(len(zeilen), i + 9)):
+        folge = zeilen[j].strip()
+        if not folge or gesperrt(j) or _LABEL.match(folge) or _schluessel(folge) or _BERUFSBEZEICHNUNG.search(folge):
+            break
+        gefunden = _namen_aus(folge)
+        if not gefunden:
+            break
+        namen += gefunden
+    return namen
+
+
+def vertretungsberechtigte(
+    impressum: str, fremd: set[int] | None = None, rahmen: set[str] | None = None
+) -> tuple[list[str], str | None]:
+    """Im Impressum genannte Vertretungsberechtigte (danach „Verantwortlich gemäß § 5 TMG") und –
+    falls genau eine im selben Abschnitt (±8 Zeilen, außerhalb von Kammer-/Fremd-Abschnitten) –
+    ihre Berufsbezeichnung. Zeilen aus Navigation/Fußzeile (`rahmen`, normalisiert) zählen nicht."""
     zeilen = impressum.splitlines()
     fremd = fremd or set()
+    rahmen = rahmen or set()
+
+    def gesperrt(j: int) -> bool:
+        return j in fremd or " ".join(zeilen[j].lower().split()) in rahmen
+
     namen: list[str] = []
+    verantwortliche: list[str] = []
     bezeichnung: str | None = None
     for i, z in enumerate(zeilen):
-        if i in fremd or not (m := _VERTRETUNG.search(z)) or len(z) > 300:
+        if gesperrt(i) or len(z) > 300:
             continue
-        # Namen hinter dem Schlüsselwort – oder, wenn dort keine stehen, in den nächsten Zeilen
-        gefunden_namen = _namen_aus(z[m.end():])
-        if not gefunden_namen:
-            for j in (i + 1, i + 2):
-                if j < len(zeilen) and j not in fremd:
-                    gefunden_namen += _namen_aus(zeilen[j])
+        if m := _schluessel(z):
+            ziel = namen
+        elif m := _VERANTWORTLICH.search(z):
+            ziel = verantwortliche
+        else:
+            continue
+        gefunden_namen = _abschnitt_namen(zeilen, i, m.end(), gesperrt)
         for name in gefunden_namen:
-            if not any(gleiche_person(name, n) for n in namen):
-                namen.append(name)
+            if not any(gleiche_person(name, n) for n in namen + verantwortliche):
+                ziel.append(name)
+        if not gefunden_namen:
+            continue
         bereich = range(max(0, i - ABSCHNITT_ZEILEN), min(len(zeilen), i + ABSCHNITT_ZEILEN + 1))
         gefunden = set()
         for j in bereich:
@@ -189,7 +236,7 @@ def vertretungsberechtigte(impressum: str, fremd: set[int] | None = None) -> tup
             gefunden |= {name for name, muster in _BEZEICHNUNGEN.items() if muster.search(text)}
         if len(gefunden) == 1 and bezeichnung is None:
             bezeichnung = gefunden.pop()
-    return namen, bezeichnung
+    return namen + verantwortliche, bezeichnung
 
 
 def ansprechpartner(
@@ -197,6 +244,7 @@ def ansprechpartner(
     erkannte: list[ErkanntePerson] | None = None,
     impressum: str | None = None,
     fremd: set[int] | None = None,
+    rahmen: set[str] | None = None,
 ) -> list[Ansprechpartner]:
     """Berufsträger und Leitung aus LLM, Regel-Erkennung und Impressum.
 
@@ -206,7 +254,7 @@ def ansprechpartner(
     """
     roh: list[LlmPerson] = list(llm.personen) if llm else []
     roh += [LlmPerson(name=p.name, titel=p.titel, funktion=p.funktion) for p in erkannte or []]
-    vertreter, bezeichnung = vertretungsberechtigte(impressum, fremd) if impressum else ([], None)
+    vertreter, bezeichnung = vertretungsberechtigte(impressum, fremd, rahmen) if impressum else ([], None)
     # Hauptansprechpartner: erste/r Vertretungsberechtigte laut Impressum, sonst die vom LLM genannte Person
     verantwortlich = vertreter[0] if vertreter else (llm.verantwortliche_person if llm else None)
     for v in vertreter:
@@ -318,9 +366,16 @@ def zusammenfuehren(
         abweichungen.append(f"Name: {disc['quelle_name']} „{disc['name']}“ / Website „{llm_name}“")
 
     # ---- Adresse als Einheit: Discovery > Regeln > LLM
+    regel_zusatz = regel.adresszusatz
+    llm_strasse, llm_zusatz = (strasse_zerlegen(llm.strasse) or (llm.strasse, None)) if llm and llm.strasse else (None, None)
     web_adresse = (regel.strasse, regel.plz, regel.ort) if regel.plz else (
-        (llm.strasse, llm.plz, llm.ort) if llm and llm.plz else (None, None, None)
+        (llm_strasse, llm.plz, llm.ort) if llm and llm.plz else (None, None, None)
     )
+    if regel.plz and not regel.strasse and llm_strasse and llm.plz == regel.plz:
+        # Regel fand PLZ/Ort, aber keine Straße: die Straße des LLM zur selben PLZ übernehmen
+        web_adresse, regel_zusatz = (llm_strasse, regel.plz, regel.ort), llm_zusatz
+    elif not regel.plz:
+        regel_zusatz = llm_zusatz
     if disc["plz"] and not disc["strasse"] and web_adresse[1] == disc["plz"] and web_adresse[0]:
         # Discovery kennt nur PLZ/Ort, die Website dieselbe PLZ mit Straße: vollständige Adresse nehmen
         strasse, plz, ort = web_adresse
@@ -350,14 +405,15 @@ def zusammenfuehren(
 
     # ---- Personen und Teamgröße: Regel-Erkennung auf den Teamseiten + LLM + Impressum
     team_seiten = [seiten[t] for t in (Seitentyp.TEAM, Seitentyp.TEAM2) if t in seiten]
+    rahmen = seiten_rahmen(seiten)
     erkannte: list[ErkanntePerson] = []
     for s in team_seiten:
-        for p in erkenne_personen(_text(s)):
+        for p in erkenne_personen(_text(s), rahmen=rahmen) + personen_aus_json_ld(s.html):
             if not any(gleiche_person(p.name, q.name) for q in erkannte):
                 erkannte.append(p)
     impressum_text = _text(seiten[Seitentyp.IMPRESSUM]) if Seitentyp.IMPRESSUM in seiten else None
     fremd = ausschluss.fremd_zeilen(impressum_text.splitlines()) if ausschluss and impressum_text else None
-    personen = ansprechpartner(llm, erkannte, impressum_text, fremd)
+    personen = ansprechpartner(llm, erkannte, impressum_text, fremd, rahmen)
     angabe = mitarbeiterzahl([_text(s) for s in seiten.values()])
     zahl, klasse, basis = teamgroesse(llm, team_seiten, erkannte, angabe)
     hat_personeninfo = llm is not None or bool(erkannte) or bool(personen)
@@ -376,7 +432,7 @@ def zusammenfuehren(
         abrufdatum = date.today()
 
     # Adresszusatz nur, wenn die Adresse die der Regeln ist
-    adresszusatz = regel.adresszusatz if regel.plz == plz and (strasse or "") == (regel.strasse or "") else None
+    adresszusatz = regel_zusatz if (strasse, plz) == web_adresse[:2] else None
     pruefung = plz_pruefen(plz, ort) if plz_pruefen and plz else None
     if pruefung and pruefung.ort_kanonisch:
         ort = pruefung.ort_kanonisch  # „Hamburg-Rissen" → „Hamburg" (OpenPLZ-Ortsname)

@@ -1,6 +1,8 @@
 # Funktionsbezeichnungen für die strukturelle Personenerkennung (extract/personen.py)
 # und die Einordnung von Ansprechpartnern. Vergleich ohne Groß/Klein; Gender-Schreibweisen
 # („Steuerberater:in", „Steuerberater/in", „Steuerberater*in") werden automatisch erkannt.
+# Erkannt wird nur mit Wortgrenze („Rechtsanwaltsfachangestellte" ist kein „Rechtsanwalt");
+# Einträge mit führendem „*" dürfen auch Wortende eines zusammengesetzten Worts sein.
 
 # zählen für „Berufsträger (Anzahl)"
 berufstraeger:
@@ -85,3 +87,18 @@ mitarbeitende:
   - Finanzbuchhaltung
   - Lohnbuchhaltung
   - Steuerberater-Anwärter
+  - Kauffrau
+  # „*" = auch als Wortende: Einzelhandelskauffrau, Großhandelskaufmann, Diplom-Kauffrau, Lohnbuchhalterin
+  - "*kauffrau"
+  - "*kaufmann"
+  - "*buchhalter"
+  - "*buchhalterin"
+  - "*fachwirt"
+  - "*fachwirtin"
+  - Directrice
+  - in Ausbildung
+  - Bürokraft
+  - Teamassistenz
+  - Office Management
+  - Office Manager
+  - Office Managerin

@@ -103,6 +103,7 @@ class OllamaExtractor(Extractor):
                 prompt_zeichen=len(SYSTEM_PROMPT) + len(prompt.text),
                 kuerzung=prompt.kuerzung_text(),
                 num_ctx=self.cfg.num_ctx,
+                abbruchgrund=daten.get("done_reason"),
             )
         raise ExtraktionFehler(f"{self.modell}: {letzter_fehler}")
 

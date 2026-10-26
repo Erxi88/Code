@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections import Counter
 from datetime import datetime
 from pathlib import Path
 from typing import Annotated
@@ -436,8 +437,10 @@ def fixture_prompt(
     modell: Annotated[str | None, typer.Option(help="Modell (Standard: llm.modell)")] = None,
     live: Annotated[bool, typer.Option("--live", help="Prompt an Ollama schicken und echte Token messen")] = False,
     speichern: Annotated[bool, typer.Option("--speichern", help="vollständigen Prompt unter data/ ablegen")] = False,
+    namen: Annotated[bool, typer.Option("--namen", help="erkannte Personen namentlich ausgeben")] = False,
 ) -> None:
-    """Was vom HTML beim Modell ankommt: Größen je Bereinigungsstufe, Kürzung, Token – ohne Inhalte."""
+    """Was vom HTML beim Modell ankommt: Größen je Bereinigungsstufe, Kürzung, Token – ohne Inhalte
+    (Personennamen nur mit --namen)."""
     s = load_settings(config)
     fx = fixture_finden(domain, [s.pfad(s.pfade.fixtures_echt), s.pfad(s.pfade.fixtures_beispiele)])
     if fx is None:
@@ -468,7 +471,31 @@ def fixture_prompt(
                 lt.add_row(typ.value, str(punkte_), pfad, text, "✓" if gewaehlt else "")
         console.print(lt)
     console.print("Erkannte Personen (Teamseiten): " + ", ".join(f"{k} {v}" for k, v in d.personen_je_art.items()))
-    console.print(f"Impressum: {d.vertreter} Vertretungsberechtigte, Berufsbezeichnung: {d.berufsbezeichnung or '–'}")
+    if d.versteckt:
+        vt = Table(title="Teamseiten: Text außerhalb des sichtbaren Inhalts (N. = Anzahl Namen)")
+        for col in ("Seite", "Text/HTML", "noscript", "Skripte", "JSON-LD", "N.Attr", "N.Skript", "N.noscr"):
+            vt.add_column(col, justify="left" if col in ("Seite", "JSON-LD") else "right")
+        for typ, q in d.versteckt.items():
+            vt.add_row(typ.value, f"{q.anteil:.1%}", f"{q.noscript_zeichen} Z.", f"{q.skript_zeichen / 1000:.0f} KB",
+                       ", ".join(q.json_ld_typen) or "–", str(q.attribut_namen), str(q.skript_namen),
+                       str(q.noscript_namen))  # fmt: skip
+        console.print(vt)
+        if any(q.anteil < s.crawl.playwright_team_min_anteil and q.html_zeichen >= s.crawl.playwright_team_min_html
+               for q in d.versteckt.values()):  # fmt: skip
+            console.print(f"  Teamseite mit Text unter {s.crawl.playwright_team_min_anteil:.0%} des HTML: der Crawler lädt sie "
+                          f"mit Playwright nach{'' if s.crawl.playwright else ' – dafür crawl.playwright: true setzen'} "
+                          f"(Fixture neu holen: fixture-add).")
+    console.print(f"Impressum: {d.vertreter} Vertretungsberechtigte"
+                  f"{' (' + ', '.join(d.vertreter_namen) + ')' if namen and d.vertreter_namen else ''}, "
+                  f"Berufsbezeichnung: {d.berufsbezeichnung or '–'}")
+    quelle = f"mit Aufzeichnung {d.aufzeichnung.modell}" if d.aufzeichnung else "nur Regeln, keine Aufzeichnung"
+    herkunft = Counter(h for _, _, hs in d.berufstraeger for h in hs.split(", "))
+    console.print(f"Berufsträger laut Zusammenführung ({quelle}): {len(d.berufstraeger)}"
+                  + (" – Herkunft: " + ", ".join(f"{k} {v}" for k, v in herkunft.items()) if herkunft else ""))
+    if namen:
+        for name_, funktion, hs in d.berufstraeger:
+            console.print(f"  {name_} | {funktion} | {hs}")
+        console.print(f"Erster Ansprechpartner: {d.erster_ansprechpartner or '–'}")
     console.print(f"Mitarbeiterzahl (Regel): {d.mitarbeiter_beleg or '–'}")
     console.print("Regeln gefunden: " + ", ".join(f"{k} {'✓' if v else '✗'}" for k, v in d.regel_felder.items()))
     from .extract.prompt import ZEICHEN_JE_TOKEN
@@ -485,6 +512,10 @@ def fixture_prompt(
         else:
             console.print(f"Aufzeichnung {a.modell}: {a.prompt_tokens} Prompt-Token (alter Prompt, Zeichen nicht "
                           f"aufgezeichnet) – mit --live neu messen")
+    if a:
+        belegt, alle = a.belegte_felder
+        console.print(f"  Antwort: {belegt}/{alle} Felder belegt, {len(a.ergebnis.personen)} Personen, "
+                      f"{a.antwort_tokens} Antwort-Token, Abbruchgrund {a.abbruchgrund or 'nicht aufgezeichnet'}")
     if live:
         try:
             antwort = OllamaExtractor(s.llm, modell=modell).extract(fx.seiten)
@@ -496,6 +527,11 @@ def fixture_prompt(
             f"{antwort.zeichen_je_token:.2f} Zeichen/Token" if antwort.zeichen_je_token else "keine Token-Angabe"
         )
         console.print("  Hinweis: Ollama zählt bei wiederverwendetem Präfix (Prompt-Cache) evtl. weniger Token.")
+        belegt, alle = antwort.belegte_felder
+        console.print(f"  Antwort: {belegt}/{alle} Felder belegt, {len(antwort.ergebnis.personen)} Personen, "
+                      f"Abbruchgrund {antwort.abbruchgrund or '–'}")
+        if belegt <= 3:
+            console.print("[yellow]  Fast leere Antwort – mit --speichern den Prompt ansehen.[/yellow]")
         if antwort.kontext_voll:
             console.print(f"[yellow]  Kontext fast voll ({s.llm.num_ctx}) – Ollama hat vermutlich abgeschnitten.[/yellow]")
     if speichern:

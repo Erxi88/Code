@@ -22,7 +22,13 @@ from dataclasses import dataclass, field
 from ..config import LlmConfig
 from ..crawl import haupttext, html_zu_text
 from ..models import Seite, Seitentyp
-from .personen import ErkanntePerson, Funktionen, erkenne_personen, lade_funktionen
+from .personen import (
+    ErkanntePerson,
+    Funktionen,
+    erkenne_personen,
+    lade_funktionen,
+    personen_aus_json_ld,
+)
 
 ZEICHEN_JE_TOKEN = 3.0  # vorsichtige Schätzung für deutschen Text
 RESERVE_SYSTEM_TOKEN = 700
@@ -108,6 +114,27 @@ def _norm(z: str) -> str:
     return " ".join(z.lower().split())
 
 
+def rahmen_normiert(texte: list[str]) -> set[str]:
+    """Normalisierte Zeilen, die auf mindestens drei Vierteln der Seiten (mind. 2) stehen –
+    Navigation und Fußzeile. Nicht schon bei zwei von vier Seiten: Partnernamen stehen oft in
+    Impressum und Teamseite."""
+    if len(texte) < 2:
+        return set()
+    vorkommen = Counter(n for text in texte for n in {_norm(z) for z in text.splitlines() if z.strip()})
+    schwelle = max(2, math.ceil(0.75 * len(texte)))
+    return {n for n, k in vorkommen.items() if k >= schwelle}
+
+
+def seiten_rahmen(seiten: dict[Seitentyp, Seite]) -> set[str]:
+    """Rahmen über die Seiten einer Kanzlei (jede URL einmal)."""
+    texte, gesehen = [], set()
+    for s in seiten.values():
+        if s is not None and s.url not in gesehen and (s.html or s.text):
+            gesehen.add(s.url)
+            texte.append(_seitentext(s))
+    return rahmen_normiert(texte)
+
+
 def _ohne_bausteine(zeilen: list[str]) -> list[str]:
     """Textbausteine (Datenschutz, Haftung …) bis zur nächsten Schlüsselstelle weglassen."""
     ergebnis, im_baustein = [], False
@@ -156,11 +183,8 @@ def baue_prompt(seiten: dict[Seitentyp, Seite], budget: int, funktionen: Funktio
             geordnet.append((typ, s))
     roh = {typ: [z for z in _seitentext(s).splitlines() if z.strip()] for typ, s in geordnet}
 
-    # ---- Rahmen: Zeilen auf mindestens drei Vierteln der Seiten (mind. 2) – Navigation, Fußzeile.
-    # Nicht schon bei zwei von vier Seiten: Partnernamen stehen oft in Impressum und Teamseite.
-    vorkommen = Counter(n for zeilen in roh.values() for n in {_norm(z) for z in zeilen})
-    schwelle = max(2, math.ceil(0.75 * len(roh)))
-    rahmen_norm = {n for n, k in vorkommen.items() if k >= schwelle} if len(roh) >= 2 else set()
+    # ---- Rahmen: Navigation, Fußzeile (Zeilen auf ≥ ¾ der Seiten)
+    rahmen_norm = rahmen_normiert(["\n".join(z) for z in roh.values()])
     rahmen: list[str] = []
     for zeilen in roh.values():
         for z in zeilen:
@@ -184,7 +208,8 @@ def baue_prompt(seiten: dict[Seitentyp, Seite], budget: int, funktionen: Funktio
         eigene = [z for z in zeilen if _norm(z) not in rahmen_norm and not (len(z) <= 160 and _COOKIE_ZEILE.search(z))]
         eigene = _ohne_bausteine(eigene)
         if typ in TEAM_TYPEN:
-            gefunden = erkenne_personen("\n".join(zeilen), funktionen)
+            gefunden = erkenne_personen("\n".join(zeilen), funktionen, rahmen_norm)
+            gefunden += personen_aus_json_ld(s.html, funktionen)
             p.personen = len(gefunden)
             for person in gefunden:
                 if not any(set(person.name.lower().split()) == set(q.name.lower().split()) for q in personen):

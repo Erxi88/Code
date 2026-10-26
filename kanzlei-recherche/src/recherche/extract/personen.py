@@ -31,6 +31,8 @@ _TITEL = re.compile(
 _TITEL_HINTEN = re.compile(r",\s*((?:M\.\s?Sc\.|M\.\s?A\.|B\.\s?Sc\.|B\.\s?A\.|LL\.\s?M\.|MBA|Dipl\.-?\s?\w+\.?)(?:\s*\(\w+\))?)\s*$")
 _PARTIKEL = frozenset({"von", "van", "de", "der", "den", "zu", "la", "le", "di", "da", "ten"})
 _NAME_WORT = re.compile(r"^[A-ZÄÖÜ][a-zäöüßé]+(?:-[A-ZÄÖÜ][a-zäöüßé]+)?\.?$")
+_INITIALE = re.compile(r"^[A-ZÄÖÜ]\.$")  # „W. Drews" – nur als erstes Wort
+_ANREDE = re.compile(r"^(?:Frau|Herr|Herrn)\s+")
 _KEINE_NAMEN = frozenset(
     """unser unsere unseres team kanzlei kontakt steuerberatung leistungen impressum datenschutz startseite home über
     uns karriere jobs mehr erfahren sie ihr ihre wir telefon fax termin willkommen standort standorte anfahrt
@@ -40,9 +42,17 @@ _KEINE_NAMEN = frozenset(
     steuernummer umsatzsteuer gesellschaft kammer versicherung aufsichtsbehörde berufsbezeichnung haftung
     inhalte urheberrecht verantwortlich inhaltlich sitz deutschland bundesrepublik zuständige zuständiger
     berufshaftpflicht berufsordnung streitschlichtung information informationen allgemeine
-    vertretungsberechtigte vertretungsberechtigter gesellschafter""".split()
+    vertretungsberechtigte vertretungsberechtigter gesellschafter
+    berufsträger berufstraeger firmenphilosophie philosophie historie geschichte leitbild werte vision
+    mandantenportal portal aktuelles blog presse veranstaltungen seminare newsletter formulare rechner
+    partner netzwerk kooperationen branchen schwerpunkte kompetenzen digitalisierung ausbildung
+    stellenangebote unternehmen privatpersonen existenzgründer existenzgründung nachfolge erbschaft
+    buchhaltung jahresabschluss beratung wirtschaftsprüfung rechtsberatung sanierung international galerie
+    faq glossar login suche menü menu zurück weiter kontaktformular rückruf termine expertise tätigkeitsfelder
+    tätigkeitsschwerpunkte mitarbeiter mitarbeitende experten historie anfahrt chaussee straße strasse weg
+    allee platz ring damm""".split()
 )
-_TRENNER = re.compile(r"\s+[–—|·]\s+|\s+-\s+|\s*\|\s*|,\s+")
+_TRENNER = re.compile(r"\s+[–—|·]\s+|\s+-\s+|\s*\|\s*|,\s+|\s*\(")
 
 
 @dataclass(frozen=True)
@@ -56,9 +66,15 @@ class Funktionen:
         return self.berufstraeger + self.leitung + self.mitarbeitende
 
     def _muster(self, woerter: tuple[str, ...]) -> re.Pattern:
-        teile = sorted((re.escape(w) for w in woerter), key=len, reverse=True)
+        # Wortgrenze vorn – außer bei „*kauffrau": auch als Wortende von Komposita
+        # („Einzelhandelskauffrau", „Diplom-Kauffrau"), aber nicht allein (Nachname „Kaufmann")
+        ganz = sorted((re.escape(w) for w in woerter if not w.startswith("*")), key=len, reverse=True)
+        ende = sorted((re.escape(w[1:]) for w in woerter if w.startswith("*")), key=len, reverse=True)
+        alternativen = [r"(?<![a-zäöüß])(?:" + "|".join(ganz) + ")"] if ganz else []
+        if ende:
+            alternativen.append(r"(?<=[a-zäöüß-]{3})(?:" + "|".join(ende) + ")")
         # Gender-Formen: Steuerberater:in, Steuerberater/in, Steuerberater*in, Steuerberater_in
-        return re.compile(r"(?<![a-zäöüß])(?:" + "|".join(teile) + r")(?:[:*/_]?in(?:nen)?)?(?![a-zäöüß])", re.I)
+        return re.compile(r"(?:" + "|".join(alternativen) + r")(?:[:*/_]?in(?:nen)?)?(?![a-zäöüß])", re.I)
 
     @property
     def muster_alle(self) -> re.Pattern:
@@ -94,7 +110,7 @@ class ErkanntePerson:
 
 def name_zerlegen(text: str) -> tuple[str, str | None] | None:
     """'Dipl.-Kfm. Jens Hansen' → ('Jens Hansen', 'Dipl.-Kfm.'); kein Name → None."""
-    text = " ".join(text.strip(" :;").split())
+    text = _ANREDE.sub("", " ".join(text.strip(" :;").split()))
     titel_teile = []
     if m := _TITEL.match(text):
         titel_teile.append(m.group(0).strip())
@@ -107,7 +123,8 @@ def name_zerlegen(text: str) -> tuple[str, str | None] | None:
     gross = [w for w in woerter if w.lower() not in _PARTIKEL]
     if not 2 <= len(gross) <= 4 or len(woerter) > 6:
         return None
-    if not all(_NAME_WORT.match(w) for w in gross) or any(w.lower().strip(".") in _KEINE_NAMEN for w in woerter):
+    if not all(_NAME_WORT.match(w) or (k == 0 and _INITIALE.match(w)) for k, w in enumerate(gross)) \
+            or any(w.lower().strip(".") in _KEINE_NAMEN for w in woerter):
         return None
     return text, " ".join(titel_teile) or None
 
@@ -116,10 +133,19 @@ def _ist_funktion(zeile: str, f: Funktionen) -> bool:
     return len(zeile) <= 120 and len(zeile.split()) <= 12 and bool(f.muster_alle.search(zeile))
 
 
-def erkenne_personen(text: str, funktionen: Funktionen | None = None) -> list[ErkanntePerson]:
-    """Personen mit Funktion aus zeilenweisem Seitentext (Kacheln, Listen, „Name – Funktion")."""
+def erkenne_personen(
+    text: str, funktionen: Funktionen | None = None, rahmen: set[str] | None = None
+) -> list[ErkanntePerson]:
+    """Personen mit Funktion aus zeilenweisem Seitentext (Kacheln, Listen, „Name – Funktion").
+
+    Ein Name gilt nur mit einer Funktion aus config/personen_funktionen.yaml in derselben Zeile,
+    in der Folgezeile oder – bei Kacheln mit Rolle als Überschrift – direkt darüber. Zeilen aus
+    Navigation/Fußzeile (`rahmen`, normalisiert wie im Prompt) werden übersprungen.
+    """
     f = funktionen or lade_funktionen()
+    rahmen = rahmen or set()
     zeilen = [z.strip() for z in text.splitlines()]
+    zeilen = ["" if " ".join(z.lower().split()) in rahmen else z for z in zeilen]
     gefunden: list[ErkanntePerson] = []
     vergeben: set[int] = set()
 
@@ -128,12 +154,12 @@ def erkenne_personen(text: str, funktionen: Funktionen | None = None) -> list[Er
         schluessel = frozenset(name.lower().split())
         if any(frozenset(p.name.lower().split()) == schluessel for p in gefunden):
             return
-        gefunden.append(ErkanntePerson(name, titel, funktion.strip(" ,;:–-"), i))
+        gefunden.append(ErkanntePerson(name, titel, funktion.strip(" ,;:–-()"), i))
 
     for i, z in enumerate(zeilen):
         if not z or i in vergeben:
             continue
-        # „Jens Hansen – Steuerberater" / „Dr. Henrik Lorenzen, Geschäftsführer, Steuerberater"
+        # „Jens Hansen – Steuerberater" / „Dr. Henrik Lorenzen, Geschäftsführer" / „Sabine Schulz (Steuerfachwirtin)"
         teile = _TRENNER.split(z, maxsplit=1)
         if len(teile) == 2 and (nt := name_zerlegen(teile[0])) and _ist_funktion(teile[1], f):
             hinzu(nt, teile[1], i)
@@ -142,18 +168,14 @@ def erkenne_personen(text: str, funktionen: Funktionen | None = None) -> list[Er
         nt = name_zerlegen(z)
         if nt is None:
             continue
-        # Name, darunter (höchstens zwei Zeilen) die Funktion
-        for j in (i + 1, i + 2):
-            if j < len(zeilen) and zeilen[j] and _ist_funktion(zeilen[j], f) and not name_zerlegen(zeilen[j]):
-                hinzu(nt, zeilen[j], i)
-                vergeben.update({i, j})
-                break
-        else:
-            # Funktion über dem Namen (Kachel mit Rolle als Überschrift)
-            if i > 0 and zeilen[i - 1] and i - 1 not in vergeben and _ist_funktion(zeilen[i - 1], f) \
-                    and not name_zerlegen(zeilen[i - 1]):
-                hinzu(nt, zeilen[i - 1], i)
-                vergeben.update({i - 1, i})
+        j = i + 1  # Funktion in der Folgezeile
+        if j < len(zeilen) and zeilen[j] and _ist_funktion(zeilen[j], f) and not name_zerlegen(zeilen[j]):
+            hinzu(nt, zeilen[j], i)
+            vergeben.update({i, j})
+        elif i > 0 and zeilen[i - 1] and i - 1 not in vergeben and _ist_funktion(zeilen[i - 1], f) \
+                and not name_zerlegen(zeilen[i - 1]):
+            hinzu(nt, zeilen[i - 1], i)  # Funktion über dem Namen (Kachel mit Rolle als Überschrift)
+            vergeben.update({i - 1, i})
     return gefunden
 
 
@@ -216,3 +238,95 @@ def mitarbeiterzahl(texte: list[str]) -> Mitarbeiterzahl | None:
             if beste is None or rang > beste[0]:
                 beste = (rang, eintrag)
     return beste[1] if beste else None
+
+
+# ---------------------------------------------------------------------- versteckte Quellen
+
+def _json_ld_objekte(html: str) -> list[dict]:
+    import json
+
+    from bs4 import BeautifulSoup
+
+    objekte: list[dict] = []
+
+    def sammeln(x) -> None:
+        if isinstance(x, list):
+            for y in x:
+                sammeln(y)
+        elif isinstance(x, dict):
+            objekte.append(x)
+            for v in x.values():
+                if isinstance(v, (list, dict)):
+                    sammeln(v)
+
+    for tag in BeautifulSoup(html, "lxml").find_all("script", type="application/ld+json"):
+        try:
+            sammeln(json.loads(tag.string or ""))
+        except ValueError:
+            continue
+    return objekte
+
+
+def personen_aus_json_ld(html: str | None, funktionen: Funktionen | None = None) -> list[ErkanntePerson]:
+    """Personen aus strukturierten Daten (schema.org Person mit jobTitle)."""
+    if not html or "ld+json" not in html:
+        return []
+    f = funktionen or lade_funktionen()
+    gefunden = []
+    for o in _json_ld_objekte(html):
+        typ = o.get("@type")
+        if (typ == "Person" or (isinstance(typ, list) and "Person" in typ)) and isinstance(o.get("name"), str):
+            funktion = o.get("jobTitle") if isinstance(o.get("jobTitle"), str) else ""
+            if (nt := name_zerlegen(o["name"])) and _ist_funktion(funktion, f):
+                gefunden.append(ErkanntePerson(nt[0], nt[1], funktion, -1))
+    return gefunden
+
+
+@dataclass
+class VersteckteQuellen:
+    """Wo auf einer Seite Text steckt, der nicht im sichtbaren Text landet (Diagnose)."""
+
+    html_zeichen: int
+    text_zeichen: int
+    noscript_zeichen: int = 0
+    skript_zeichen: int = 0  # Inline-Skripte (z. B. JSON für ein JavaScript-Team-Widget)
+    json_ld_typen: tuple[str, ...] = ()
+    json_ld_personen: int = 0
+    attribut_namen: int = 0  # Namen in alt/title/aria-label/data-*
+    skript_namen: int = 0  # Namen in Inline-Skripten
+    noscript_namen: int = 0
+
+    @property
+    def anteil(self) -> float:
+        return self.text_zeichen / self.html_zeichen if self.html_zeichen else 1.0
+
+
+_NAME_IM_TEXT = re.compile(r"(?<![\w-])([A-ZÄÖÜ][a-zäöüß]+(?:-[A-ZÄÖÜ][a-zäöüß]+)?\s+[A-ZÄÖÜ][a-zäöüß]+(?:-[A-ZÄÖÜ][a-zäöüß]+)?)(?![\w-])")
+
+
+def _namen_zaehlen(texte: list[str]) -> int:
+    namen = {n for t in texte for n in _NAME_IM_TEXT.findall(t) if name_zerlegen(n)}
+    return len(namen)
+
+
+def versteckte_quellen(html: str | None, text: str | None) -> VersteckteQuellen:
+    from bs4 import BeautifulSoup
+
+    html = html or ""
+    q = VersteckteQuellen(len(html), len(text or ""))
+    if not html:
+        return q
+    soup = BeautifulSoup(html, "lxml")
+    noscript = [n.get_text(" ") for n in soup.find_all("noscript")]
+    skripte = [s.string or "" for s in soup.find_all("script") if not s.get("src") and s.get("type") != "application/ld+json"]
+    attribute = [str(v) for el in soup.find_all(True) for k, v in el.attrs.items()
+                 if k in ("alt", "title", "aria-label") or k.startswith("data-")]  # fmt: skip
+    q.noscript_zeichen = sum(len(n) for n in noscript)
+    q.skript_zeichen = sum(len(s) for s in skripte)
+    objekte = _json_ld_objekte(html)
+    q.json_ld_typen = tuple(sorted({str(o.get("@type")) for o in objekte if o.get("@type")}))
+    q.json_ld_personen = sum(1 for o in objekte if o.get("@type") == "Person")
+    q.attribut_namen = _namen_zaehlen(attribute)
+    q.skript_namen = _namen_zaehlen([s.replace("\\u00", "") for s in skripte])
+    q.noscript_namen = _namen_zaehlen(noscript)
+    return q

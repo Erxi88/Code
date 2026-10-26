@@ -25,7 +25,7 @@ import httpx
 
 from .config import CrawlConfig
 from .crawl import Crawler, html_zu_text
-from .extract.base import Extractor, ExtraktionsAntwort
+from .extract.base import Extractor, ExtraktionsAntwort, LlmPerson
 from .extract.lauf import regeln_fuer
 from .extract.merge import gleiche_person, zusammenfuehren
 from .extract.rules import Ausschluss
@@ -340,6 +340,11 @@ class PromptDiagnose:
     mitarbeiter_beleg: str | None
     regel_felder: dict[str, bool]
     aufzeichnung: ExtraktionsAntwort | None
+    vertreter_namen: list[str] = field(default_factory=list)
+    # Berufsträger nach der Zusammenführung (mit Aufzeichnung, sonst nur Regeln): (Name, Funktion, Herkunft)
+    berufstraeger: list[tuple[str, str, str]] = field(default_factory=list)
+    erster_ansprechpartner: str | None = None
+    versteckt: dict = field(default_factory=dict)  # Seitentyp → personen.VersteckteQuellen (Teamseiten)
 
     @property
     def prompt_zeichen(self) -> int:
@@ -359,13 +364,20 @@ def prompt_diagnose(fx: Fixture, llm_cfg, ausschluss: Ausschluss, modell: str | 
     from .crawl import link_kandidaten
     from .extract.merge import (
         _text,
+        ansprechpartner,
+        gleiche_person,
         ist_berufstraeger,
         ist_leitung,
         vertretungsberechtigte,
     )
     from .extract.ollama import SYSTEM_PROMPT
-    from .extract.personen import mitarbeiterzahl
-    from .extract.prompt import baue_prompt, text_budget
+    from .extract.personen import (
+        erkenne_personen,
+        mitarbeiterzahl,
+        personen_aus_json_ld,
+        versteckte_quellen,
+    )
+    from .extract.prompt import baue_prompt, seiten_rahmen, text_budget
 
     prompt = baue_prompt(fx.seiten, text_budget(llm_cfg))
     links: dict = {}
@@ -375,18 +387,44 @@ def prompt_diagnose(fx: Fixture, llm_cfg, ausschluss: Ausschluss, modell: str | 
         for typ, liste in link_kandidaten(start.html, start.url, fx.domain).items():
             links[typ] = [(p, urlsplit(u).path or "/", text[:40], u in gewaehlt) for p, _, u, text in liste[:3]]
     arten = {"Berufsträger": 0, "Leitung (ohne Berufstitel)": 0, "weitere Mitarbeitende": 0}
-    from .extract.base import LlmPerson
 
     for q in prompt.personen:
         lp = LlmPerson(name=q.name, titel=q.titel, funktion=q.funktion)
         art = "Berufsträger" if ist_berufstraeger(lp) else "Leitung (ohne Berufstitel)" if ist_leitung(lp) else "weitere Mitarbeitende"
         arten[art] += 1
     impressum = _text(fx.seiten[Seitentyp.IMPRESSUM]) if Seitentyp.IMPRESSUM in fx.seiten else ""
-    vertreter, bezeichnung = vertretungsberechtigte(impressum, ausschluss.fremd_zeilen(impressum.splitlines()))
+    fremd = ausschluss.fremd_zeilen(impressum.splitlines())
+    rahmen = seiten_rahmen(fx.seiten)
+    vertreter, bezeichnung = vertretungsberechtigte(impressum, fremd, rahmen)
     angabe = mitarbeiterzahl([_text(s) for s in fx.seiten.values()])
     regel = regeln_fuer(fx.seiten, ausschluss, fx.domain)
     felder = {k: bool(getattr(regel, k)) for k in ("strasse", "adresszusatz", "plz", "ort", "telefon", "email")} if regel else {}
+    aufzeichnung = fx.aufzeichnung(modell) if modell else None
+    # Berufsträger wie in der Zusammenführung – mit Herkunft, um Fehlzählungen zu finden
+    llm = aufzeichnung.ergebnis if aufzeichnung else None
+    erkannte: list = []
+    versteckt = {}
+    for typ in (Seitentyp.TEAM, Seitentyp.TEAM2):
+        if (s := fx.seiten.get(typ)) is not None:
+            versteckt[typ] = versteckte_quellen(s.html, _text(s))
+            for q in erkenne_personen(_text(s), rahmen=rahmen) + personen_aus_json_ld(s.html):
+                if not any(gleiche_person(q.name, x.name) for x in erkannte):
+                    erkannte.append(q)
+    aps = ansprechpartner(llm, erkannte, impressum or None, fremd, rahmen)
+    berufstraeger = []
+    for a in aps:
+        if not ist_berufstraeger(a):
+            continue
+        herkunft = [quelle for quelle, treffer in (
+            ("LLM", llm and any(gleiche_person(a.name, x.name) and ist_berufstraeger(x) for x in llm.personen)),
+            ("Teamseite", any(gleiche_person(a.name, x.name) and ist_berufstraeger(LlmPerson(name=x.name, titel=x.titel,
+                                                                                            funktion=x.funktion))
+                              for x in erkannte)),
+            ("Impressum-Berufsbezeichnung", "(laut Impressum)" in (a.funktion or "")),
+        ) if treffer]  # fmt: skip
+        berufstraeger.append((a.name, a.funktion or "", ", ".join(herkunft) or "Titel"))
     return PromptDiagnose(
         fx.domain, prompt, len(SYSTEM_PROMPT), links, arten, len(vertreter), bezeichnung,
-        angabe.beleg if angabe else None, felder, fx.aufzeichnung(modell) if modell else None,
+        angabe.beleg if angabe else None, felder, aufzeichnung, vertreter, berufstraeger,
+        aps[0].name if aps else None, versteckt,
     )  # fmt: skip

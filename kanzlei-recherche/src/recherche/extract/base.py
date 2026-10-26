@@ -74,6 +74,13 @@ class ExtraktionsAntwort(BaseModel):
     prompt_zeichen: int | None = None  # Systemprompt + Seitentext
     kuerzung: str | None = None  # z. B. "team 9000/14000" – None, wenn nichts gekürzt wurde
     num_ctx: int | None = None
+    abbruchgrund: str | None = None  # Ollama done_reason: "stop" (fertig) oder "length" (num_predict erreicht)
+
+    @property
+    def belegte_felder(self) -> tuple[int, int]:
+        """(belegte, alle) Felder der Antwort – zeigt fast leere Antworten."""
+        werte = self.ergebnis.model_dump()
+        return sum(1 for v in werte.values() if v not in (None, [], "")), len(werte)
 
     @property
     def kontext_voll(self) -> bool:

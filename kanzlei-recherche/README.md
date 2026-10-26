@@ -64,7 +64,7 @@ recherche orte    -b SH [--dry-run] [--force] [--out datei.csv] [--gv pfad-oder-
 # Extraktion an echten Kanzleiseiten messen (Fixtures nur lokal, siehe unten)
 recherche fixture-add  --domain kanzlei-beispiel.de
 recherche fixture-eval [--live] [--modell gemma4:26b] [--nur beispiele|echt] [--offline]
-recherche fixture-prompt --domain kanzlei-beispiel.de [--live] [--speichern]  # Prompt-Aufbau prüfen
+recherche fixture-prompt --domain kanzlei-beispiel.de [--live] [--namen] [--speichern]  # Prompt-Aufbau prüfen
 ```
 
 **Extraktion:** `crawl` liest für jeden Kandidaten mit Website Start-, Impressum-, Kontakt-
