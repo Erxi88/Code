@@ -141,6 +141,11 @@ def test_rechtsform_aus_name(name, form):
     ("Wall 5\nGebäude B\nEingang Süd\n24103 Kiel", ("Wall 5", "Gebäude B, Eingang Süd")),
     ("Holstenstraße 42\n24103 Kiel", ("Holstenstraße 42", None)),
     ("Lange Str. 26-28, 24306 Plön", ("Lange Str. 26-28", None)),
+    # Zeilenumbruch nach dem Schrägstrich (<br>), Klammer, mehrteiliger Zusatz
+    ("OMM GmbH\nLuruper Chaussee 125 /\nHaus 8 Süd\n22761 Hamburg", ("Luruper Chaussee 125", "Haus 8 Süd")),
+    ("Luruper Chaussee 125 (Haus 8 Süd)\n22761 Hamburg", ("Luruper Chaussee 125", "Haus 8 Süd")),
+    ("Luruper Chaussee 125 · Haus 8 · Süd\n22761 Hamburg", ("Luruper Chaussee 125", "Haus 8, Süd")),
+    ("Haus 8\nWall 5\n24103 Kiel", ("Wall 5", None)),
 ])  # fmt: skip
 def test_adresszusatz(text, erwartet):
     r = extract_impressum("Kanzlei\n" + text, Ausschluss())

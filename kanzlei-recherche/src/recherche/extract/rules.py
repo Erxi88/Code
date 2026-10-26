@@ -85,7 +85,7 @@ _ZUSATZ_WORT = (
 )
 _ZUSATZ_ZEILE = re.compile(rf"^{_ZUSATZ_WORT}(?=\b|\s|$)", re.I)
 _STRASSE_MIT_ZUSATZ = re.compile(
-    rf"^(?P<strasse>.+?\d{{1,4}}\s*[a-zA-Z]?(?:\s*-\s*\d{{1,4}}\s*[a-zA-Z]?)?)\s*(?:/|,|\s-\s|–|\s)\s*"
+    rf"^(?P<strasse>.+?\d{{1,4}}\s*[a-zA-Z]?(?:\s*-\s*\d{{1,4}}\s*[a-zA-Z]?)?)\s*(?:/|,|\s-\s|–|\(|\s)\s*"
     rf"(?P<zusatz>{_ZUSATZ_WORT}(?=\b|\s|$).*)$",
     re.I,
 )
@@ -102,22 +102,43 @@ def strasse_zerlegen(text: str) -> tuple[str, str | None] | None:
     if _ist_strasse(text):
         return text, None
     if (m := _STRASSE_MIT_ZUSATZ.match(text)) and _ist_strasse(m.group("strasse").strip()):
-        return m.group("strasse").strip(), m.group("zusatz").strip(" ,/")
+        zusatz = m.group("zusatz").strip(" ,/")
+        if zusatz.endswith(")") and "(" not in zusatz:
+            zusatz = zusatz[:-1].strip()
+        return m.group("strasse").strip(), zusatz
     return None
 
 
 def _strasse_aus_segmenten(segmente: list[str]) -> tuple[str, str | None] | None:
-    """Letzte Straße in einer Segmentliste; nachfolgende Zusätze („Haus 8") werden mitgenommen."""
-    zusaetze: list[str] = []
-    for seg in reversed([s for s in segmente if s]):
-        if ist_zusatz(seg):
-            zusaetze.insert(0, seg)
+    """Letzte Straße in einer Segmentliste; nachfolgende Zusätze werden mitgenommen
+    („Haus 8", auch in mehreren Teilen: „Haus 8 · Süd")."""
+    segmente = [s for s in segmente if s]
+    for k in range(len(segmente) - 1, -1, -1):
+        if ist_zusatz(segmente[k]) or not (zerlegt := strasse_zerlegen(segmente[k])):
             continue
-        if zerlegt := strasse_zerlegen(seg):
-            strasse, zusatz = zerlegt
-            return strasse, ", ".join(x for x in [zusatz, *zusaetze] if x) or None
-        return None
+        rest = segmente[k + 1:]
+        # dahinter nur Zusätze: erstes Segment mit Zusatzwort, danach kurze Ergänzungen („Süd")
+        if rest and not (ist_zusatz(rest[0]) or zerlegt[1]):
+            return None
+        if any(len(s) > 30 for s in rest[1:]):
+            return None
+        strasse, zusatz = zerlegt
+        return strasse, ", ".join(x for x in [zusatz, *rest] if x) or None
     return None
+
+
+_ZEILE_OFFEN = re.compile(r"\s[/,;·•–-]\s*$|/$")
+
+
+def _offene_zeilen_verbinden(zeilen: list[str]) -> list[str]:
+    """„Luruper Chaussee 125 /" + Zeilenumbruch + „Haus 8 Süd" → eine Zeile; die Folgezeile
+    bleibt leer, damit die Zeilennummern (Fremd-Abschnitte) stimmen."""
+    zeilen = list(zeilen)
+    for i in range(len(zeilen) - 1):
+        if _ZEILE_OFFEN.search(zeilen[i]) and zeilen[i + 1].strip() and _ist_strasse(_ZEILE_OFFEN.sub("", zeilen[i])):
+            zeilen[i] = f"{_ZEILE_OFFEN.sub('', zeilen[i]).rstrip()} / {zeilen[i + 1].strip()}"
+            zeilen[i + 1] = ""
+    return zeilen
 
 
 def adressen(zeilen: list[str]) -> list[Adresse]:
@@ -127,6 +148,7 @@ def adressen(zeilen: list[str]) -> list[Adresse]:
     oder vor der Straße – werden toleriert und als Adresszusatz zurückgegeben.
     """
     gefunden = []
+    zeilen = _offene_zeilen_verbinden(zeilen)
     for i, z in enumerate(zeilen):
         for m in _PLZ_ORT.finditer(z):
             plz, ort = m.group(1), _ort_bereinigen(m.group(2))
