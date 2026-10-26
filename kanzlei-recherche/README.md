@@ -1,23 +1,26 @@
 # kanzlei-recherche
 
-Automatisierte Web-Recherche von Steuerberaterkanzleien je Bundesland. Für jeden Ort wird
-im Web nach Kanzleien gesucht, deren Homepages (Impressum, Kontakt, Team) werden ausgelesen
-und die Daten landen in einer Excel-Liste. Keine laufenden Kosten, kein API-Key im
-Standardbetrieb (DuckDuckGo-Suche über `ddgs`, lokales LLM über Ollama).
+Automatisierte Recherche von Steuerberaterkanzleien je Bundesland mit dem Ziel maximaler
+Vollständigkeit. Die Discovery vereinigt mehrere Quellen: zuerst eine Websuche je Ort
+(Stufe A, Brave Search API), dann – nur für Orte unter der Referenzzahl – Lückenfüller
+(Stufe B: Google Places, Branchenverzeichnisse, amtliches Verzeichnis). Danach werden die
+Homepages (Impressum, Kontakt, Team) ausgelesen (lokales LLM über Ollama) und die Daten
+landen in einer Excel-Liste.
 
 Projektregeln und Arbeitsweise: siehe [CLAUDE.md](CLAUDE.md).
 
-## Stand (Stufe 1 – Gerüst)
+## Stand
 
 | Baustein | Stand |
 |---|---|
-| Modelle, SQLite-Speicher | fertig |
-| Excel-Export (4 Blätter) | fertig |
-| Suche: Interface, Pipeline (Blocklist, Dubletten), ddgs-Adapter | fertig |
-| Suche: Google-CSE-, Brave-Adapter | nur Interface + Konfiguration |
-| `search-compare` | fertig |
+| Modelle, SQLite-Speicher (Schema v2 mit Migration), Excel-Export | fertig |
+| Discovery: Interface, Pipeline, Dubletten-Logik (Domain, Telefon, Adresse, PLZ+Name) | fertig |
+| Stufe A: Brave (Standard), Google CSE (nur Alt-Key), ddgs (Entwicklung) | fertig |
+| Stufe A: SerpAPI | Platzhalter |
+| Stufe B: Places (Raster fertig), Gelbe Seiten, Das Örtliche, 11880, amtl. Verzeichnis | Platzhalter |
+| `coverage`, `fill`, `search-compare` (alle aktiven Adapter) | fertig |
 | Crawling, Extraktion (Regeln + Ollama), Normalisierung | Platzhalter |
-| `orte` (vollständige Ortsliste aus OpenPLZ) | Platzhalter; Startliste mit 80 Orten in `config/orte_SH.csv` |
+| `orte` (Ortsliste aus OpenPLZ, Einwohner aus GV-ISys) | Platzhalter; Startliste mit 80 Orten |
 
 ## Installation
 
@@ -37,33 +40,47 @@ Manuell: `python3.12 -m venv .venv && .venv/bin/pip install -e ".[dev]"`.
 Alle Befehle kennen `--bundesland/-b` (Standard aus `settings.yaml`), `--db` und `--config`.
 
 ```bash
-recherche search  -b SH [--orte Kiel,Husum] [--adapter ddgs]   # Websuche → Kandidaten
-recherche crawl   -b SH                                         # Websites laden (Platzhalter)
-recherche extract -b SH                                         # Daten extrahieren (Platzhalter)
-recherche export  -b SH [--out liste.xlsx]                      # Excel schreiben
-recherche run     -b SH [--orte …] [--out …]                    # alles nacheinander
-recherche search-compare --orte Kiel,Flensburg,Lübeck,Neumünster,Husum [--out vergleich.csv]
-recherche orte    -b SH                                         # Ortsliste (Platzhalter)
+# Stufe A – Websuche je Ort (Standard: Brave)
+recherche search  -b SH [--orte Kiel,Husum] [--adapter brave|google_cse|ddgs]
+# Abdeckung prüfen
+recherche coverage -b SH [--out coverage.xlsx]
+# Stufe B – Lückenfüller, nie flächendeckend ohne --alle
+recherche fill -b SH --quelle places (--luecken | --orte Kiel,Husum | --alle)
+# Quellen vergleichen (alle aktiven Adapter oder Auswahl)
+recherche search-compare --orte Kiel,Flensburg,Lübeck,Neumünster,Husum [--adapter brave,ddgs] [--out vergleich.csv]
+
+recherche crawl   -b SH                     # Websites laden (Platzhalter)
+recherche extract -b SH                     # Daten extrahieren (Platzhalter)
+recherche export  -b SH [--out liste.xlsx]  # Excel schreiben
+recherche run     -b SH [--orte …] [--adapter ddgs]  # Stufe A + crawl + extract + export
+recherche orte    -b SH                     # Ortsliste (Platzhalter)
 ```
 
-**Wiederaufnahme:** Jeder Schritt speichert seinen Fortschritt in SQLite. Nach einem
-Abbruch denselben Befehl erneut starten: Schon erfolgreiche Queries werden übersprungen,
-fehlgeschlagene wiederholt.
+**Wiederaufnahme:** Jeder Schritt speichert seinen Fortschritt in SQLite, jede API-Antwort
+wird gecacht. Nach einem Abbruch (auch Tages-/Monatslimit oder Budget) denselben Befehl
+erneut starten: erledigte Abfragen werden übersprungen, nichts wird doppelt bezahlt.
 
-**search-compare** lässt alle Adapter aus `search.compare_adapters` mit denselben Queries
-laufen. Blocklist und Dubletten-Filter gelten für alle gleich. Ausgabe: Kanzlei-Domains je
-Adapter und Ort, Überschneidung, nur-in-A / nur-in-B. Adapter ohne Key oder noch ohne
-Implementierung werden mit Grund übersprungen. Der Vergleich schreibt nichts in die Datenbank.
+**Kosten:** Jeder Lauf gibt die Zahl der gesendeten Anfragen und die geschätzten Kosten
+aus (`kosten_je_1000` je Adapter); `max_anfragen_je_lauf` (Standard 1000) begrenzt das
+Budget je Lauf und Adapter. Die Werte stehen auch im Blatt „Lauf-Protokoll".
+
+**coverage** zeigt gefundene Kanzleien je Kreis und Quelle, den Anteil der Kanzleien, die
+nur eine Quelle kennt, und – sobald `config/referenz_kammern.yaml` ausgefüllt ist – Quote
+und Lücke je Kreis sowie die Orte mit der größten Lücke (Eingabe für `fill --luecken`).
 
 ## Konfiguration
 
-- `config/settings.yaml`: Bundesländer und Ortslisten, Pfade, Such-Adapter samt Drosselung,
-  Crawl-Parallelität, LLM-Modell und Ollama-URL.
+- `config/settings.yaml`: Bundesländer und Ortslisten, Pfade, Discovery (Stufe-A-Adapter,
+  Budget, je Quelle `aktiv`, Drosselung, Retry, `kosten_je_1000`), Crawl-Parallelität,
+  LLM-Modell und Ollama-URL.
+- `config/referenz_kammern.yaml`: Referenzzahlen für `coverage` (`kanzleien` oder
+  `mitglieder` mit `faktor`, Land gesamt und optional je Kreis).
 - `config/queries.yaml`: Query-Vorlagen mit `{ort}`, `{plz}`, `{kreis}`.
 - `config/domain_blocklist.txt`: Portale, Verzeichnisse, Social Media (Subdomains inklusive).
-- `config/orte_SH.csv`: `ort;plz;kreis`, eine Zeile je Ort.
-- `.env` (aus `.env.example`): nur für die optionalen Adapter
-  `GOOGLE_CSE_API_KEY`, `GOOGLE_CSE_ID`, `BRAVE_API_KEY`.
+- `config/orte_SH.csv`: `ort;plz;kreis;einwohner`, eine Zeile je Ort (`einwohner` optional,
+  wird später von `orte` aus GV-ISys befüllt).
+- `.env` (aus `.env.example`): `BRAVE_API_KEY` (Stufe A), optional `GOOGLE_CSE_API_KEY` +
+  `GOOGLE_CSE_ID`, `SERPAPI_KEY`, `GOOGLE_PLACES_API_KEY`.
 
 ### LLM-Modelle
 
@@ -83,8 +100,9 @@ Excel mit vier Blättern:
 - **Kanzleien**: Autofilter, fixierte Kopfzeile, Status-Dropdown
   (`neu / geprüft / kontaktiert / kein Interesse / ungültig`)
 - **Nicht gefunden**: Domain und Grund
-- **Dubletten**: welche Domain behalten wurde, welche zusammengeführt, nach welchem Kriterium
-- **Lauf-Protokoll**: Suchbegriff, Trefferzahl, neue Domains, Laufzeit, Fehler
+- **Dubletten**: welcher Datensatz behalten wurde, welcher zusammengeführt oder nur
+  verdächtig ist, Kriterium und Art (`zusammengeführt` / `unsicher` / `verdacht`)
+- **Lauf-Protokoll**: Suchbegriff, Trefferzahl, neue Kandidaten, Anfragen, Kosten, Laufzeit, Fehler
 
 ## Entwicklung
 
@@ -92,5 +110,6 @@ Excel mit vier Blättern:
 pytest
 ```
 
-Tests laufen nur gegen Fixtures in `tests/fixtures/`: keine Netzwerkzugriffe, kein Ollama.
+Tests laufen nur gegen Fixtures in `tests/fixtures/` (u. a. gespeicherte Brave- und
+CSE-Antworten): keine Netzwerkzugriffe, kein Ollama.
 Die 20 Testkanzleien sind erfunden (`.example`-Domains), nur Orte und PLZ sind echt.

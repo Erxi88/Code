@@ -24,39 +24,73 @@ Status-Werte (Excel-Dropdown): `neu` / `geprüft` / `kontaktiert` / `kein Intere
 
 ## Technische Regeln
 
-Keine laufenden Kosten, kein API-Key für den Standardbetrieb.
+Lokale Verarbeitung (Crawling, Ollama) ohne laufende Kosten. Die Discovery nutzt
+bezahlte APIs (Stufe A: Brave), deshalb gibt es Budget und Kostenlog je Lauf.
 
 - **Stack:** Python 3.12+, Typer-CLI, httpx (async), BeautifulSoup/trafilatura,
   Pydantic v2, SQLite, openpyxl, pytest.
 - **Konfiguration:** Alles Konfigurierbare (Modell, Ollama-URL, Ortsliste,
-  Ausgabepfad, Parallelität, Suchadapter, Drosselung) steht in
+  Ausgabepfad, Parallelität, Quellen, Drosselung, Budget, Kosten) steht in
   `config/settings.yaml`, damit derselbe Code lokal und auf einem Mietserver läuft.
   Geheimnisse (API-Keys) nur in `.env` (nie committen, Vorlage `.env.example`).
 
-### Suche (`src/recherche/search/`)
+### Discovery (`src/recherche/search/`)
 
-- Austauschbare Adapter über ein gemeinsames Interface (`search/base.py`,
-  `SearchAdapter`). Der aktive Adapter wird per `search.adapter` in
-  `settings.yaml` gewählt.
-- Alle Adapter liefern dasselbe Ergebnisformat `SearchHit`
-  (`url`, `titel`, `snippet`, `quelle`).
-- Adapter:
-  1. `ddgs` (DuckDuckGo, ohne Key) – Standard für lokale Tests und den Pilot.
-     Drosselung (Pause zwischen Anfragen + Zufallsanteil) und Retry mit
-     exponentiellem Backoff, weil DuckDuckGo bei vielen Anfragen bremst.
-  2. `google` (Custom Search JSON API) – API-Key und Search-Engine-ID aus `.env`
-     (`GOOGLE_CSE_API_KEY`, `GOOGLE_CSE_ID`), 10 Treffer je Anfrage, Paging bis
-     maximal 30 Treffer je Query. **Bis zur Suche-Sitzung nur Platzhalter.**
-  3. `brave` (Brave Search API) – API-Key aus `.env` (`BRAVE_API_KEY`), bis 20
-     Treffer je Anfrage. **Bis zur Suche-Sitzung nur Platzhalter.**
-- Je Ort mehrere Query-Varianten aus `config/queries.yaml`.
-- Blocklist (`config/domain_blocklist.txt`: Portale, Verzeichnisse, Social Media)
-  und Dubletten-Logik (jede Domain genau einmal als Kandidat) liegen
-  **außerhalb der Adapter** (`search/pipeline.py`), damit sie für alle gleich gelten.
-- `recherche search-compare --orte Kiel,Flensburg,…` lässt alle konfigurierten
-  Adapter für die genannten Orte laufen und zeigt: Kanzlei-Domains je Adapter,
-  Überschneidung, nur-in-A / nur-in-B. Entscheidungsgrundlage nach dem Pilot, ob
-  DuckDuckGo für den Gesamtlauf reicht.
+**Ziel ist maximale Vollständigkeit je Bundesland, nicht Schnelligkeit.** Eine Websuche
+allein findet nur Kanzleien mit Website und gutem Ranking; die Discovery ist deshalb die
+Vereinigung mehrerer Quellen.
+
+**Prinzip: zuerst die günstigste Quelle vollständig ausschöpfen, dann nur die Lücken mit
+der nächsten Quelle füllen.**
+
+- **Stufe A – Websuche** (`recherche search`, `run`): je Ort alle Query-Varianten aus
+  `config/queries.yaml`. Adapter per `discovery.stufe_a.adapter`:
+  1. `brave` (Brave Search API) – **Standard**. Key `BRAVE_API_KEY` aus `.env`,
+     bis 20 Treffer je Anfrage (`count`), Paging über `offset` (Seitenindex 0..9),
+     `country=DE`, `search_lang=de`, Retry mit Backoff bei 5xx und 429.
+  2. `google_cse` (Custom Search JSON API) – nur für Alt-Keys: für Neukunden gesperrt,
+     Abschaltung 01.01.2027. 10 Treffer je Anfrage, Paging bis 30, Tageslimit beendet den
+     Lauf sauber.
+  3. `serpapi` – Platzhalter für den Pilot-Vergleich (Google-Trefferseite).
+  4. `ddgs` (DuckDuckGo, ohne Key) – **nur lokale Entwicklung**.
+- **Danach `recherche coverage`**: gefundene Kanzleien je Kreis gegen
+  `config/referenz_kammern.yaml` (Einheit `kanzleien` oder `mitglieder` × `faktor`, Land
+  gesamt und optional je Kreis; Rest nach Einwohnern verteilt), Anteil je Quelle und
+  „nur in einer Quelle", Kreise und Orte mit der größten Lücke.
+- **Stufe B – Lückenfüller** (`recherche fill --quelle <name>`), **nur für Orte unter der
+  Referenz** (`--luecken`) oder ausdrücklich genannte Orte (`--orte`); flächendeckend nur
+  mit `--alle`. Reihenfolge: `places` (Google Places Text Search (New) über ein
+  adaptives Rechteck-Raster) → `gelbeseiten`, `dasoertliche`, `elf880` →
+  `stb_verzeichnis` (amtliches Verzeichnis PLZ für PLZ, **standardmäßig aus**, sehr
+  langsam). Ob und welche Stufe-B-Quellen gebaut werden, entscheidet sich nach den
+  Coverage-Zahlen aus Stufe A. Nutzungsbedingungen (Speichern von Places-Inhalten,
+  automatisierte Abfragen der Verzeichnisse) vor dem Bau klären.
+- **Interface** (`search/base.py`): `QueryAdapter.search(query, max_results)` (Stufe A)
+  und `OrtsAdapter.search_ort(ort)` (Stufe B). Alle liefern `SearchHit` mit Name,
+  Straße, PLZ, Ort, Telefon, Website, Quelle, Quell-ID (+ Snippet, Fundstelle). Jede
+  Quelle ist in `settings.yaml` unter `discovery.quellen.<name>.aktiv` einzeln
+  schaltbar.
+- **Kosten**: Jeder Adapter zählt tatsächlich gesendete Anfragen (Cache-Treffer zählen
+  nicht). `max_anfragen_je_lauf` (Standard 1000) ist das Budget je Lauf und Adapter;
+  `kosten_je_1000` steht beim jeweiligen Adapter. Anfragen und Kosten landen je Query im
+  Lauf-Protokoll und werden am Ende ausgegeben.
+- **Limits**: `LimitErreicht` (Kontingent/Tageslimit, Budget, ungültiger Key) beendet
+  den Lauf sauber; ein erneuter Aufruf macht dort weiter. Jede API-Antwort wird in
+  `api_cache` gespeichert, damit eine Wiederaufnahme nichts doppelt bezahlt.
+- **Blocklist** (`config/domain_blocklist.txt`) und **Dubletten-Logik**
+  (`search/dedupe.py`) liegen außerhalb der Adapter (`search/pipeline.py`) und gelten
+  für alle gleich:
+  - Blocklist: Websuche-Treffer auf Portalen werden verworfen; bei Verzeichnis-/Places-
+    Treffern wird nur die Portal-Website entfernt, die Kanzlei bleibt.
+  - Zusammenführen: Domain gleich → Telefon gleich → Adresse gleich und Name passt
+    (sicher); **gleiche Adresse, anderer Name → nicht zusammenführen, nur Verdacht**
+    (Bürogemeinschaft); PLZ gleich und Name ähnlich → zusammenführen, aber „unsicher".
+    Verdacht und unsicher landen im Blatt „Dubletten".
+  - Beim Zusammenführen werden nur leere Felder ergänzt, nie überschrieben. Jeder Fund
+    bleibt mit Quelle in der Tabelle `funde` erhalten.
+- `recherche search-compare --orte …` vergleicht **alle aktiven Adapter** (oder
+  `--adapter a,b,…`): Kanzleien je Adapter und Ort, Schnittmenge, „nur in diesem
+  Adapter", Paar-Matrix. Treffer werden über die Dubletten-Logik zusammengefasst.
 
 ### Crawling (`crawl.py`)
 
@@ -93,11 +127,11 @@ Keine laufenden Kosten, kein API-Key für den Standardbetrieb.
 - Blatt „Kanzleien": Autofilter, feste Kopfzeile, Dropdown für Status.
 - Blatt „Nicht gefunden": Domains ohne lesbares Impressum oder mit Fehler, mit Grund.
 - Blatt „Dubletten".
-- Blatt „Lauf-Protokoll": Suchbegriff, Trefferzahl, Laufzeit.
+- Blatt „Lauf-Protokoll": Suchbegriff, Trefferzahl, neue Kandidaten, Anfragen, Kosten, Laufzeit.
 
 ### CLI (`cli.py`)
 
-`recherche search | crawl | extract | export | run | search-compare | orte`,
+`recherche search | fill | coverage | crawl | extract | export | run | search-compare | orte`,
 jeweils mit `--bundesland` und `--db`. **Jeder Schritt muss nach Abbruch
 wiederaufnehmbar sein**: Fortschritt steht in SQLite (Status je Domain und
 Schritt, erledigte Queries im Lauf-Protokoll); ein erneuter Aufruf macht nur das,
@@ -105,9 +139,10 @@ was noch offen ist.
 
 ### Speicher (`storage.py`)
 
-SQLite-Tabellen: `kandidaten`, `seiten` (Rohseiten-Cache), `kanzleien`,
-`nicht_gefunden`, `dubletten`, `lauf_protokoll`. Schemaversion über
-`PRAGMA user_version`.
+SQLite-Tabellen: `kandidaten` (eigene ID, Domain optional), `funde` (jeder Treffer je
+Quelle), `api_cache`, `seiten` (Rohseiten-Cache), `kanzleien`, `nicht_gefunden`,
+`dubletten`, `lauf_protokoll` (inkl. Anfragen und Kosten). Schemaversion über
+`PRAGMA user_version` (aktuell 2); ältere Datenbanken werden beim Öffnen migriert.
 
 ## Arbeitsweise
 
@@ -126,6 +161,9 @@ SQLite-Tabellen: `kandidaten`, `seiten` (Rohseiten-Cache), `kanzleien`,
 
 ## Stand
 
-- Stufe 1 (Gerüst): Modelle, SQLite-Speicher, Excel-Export, CLI, Such-Interface mit
-  ddgs-Adapter und `search-compare`. `crawl`, `extract`, `orte` sind Platzhalter;
-  Google- und Brave-Adapter nur Interface + Konfiguration.
+- Stufe 1 (Gerüst): Modelle, SQLite-Speicher, Excel-Export, CLI.
+- Discovery-Sitzung: Ergebnisformat und Dubletten-Logik über Adresse/Telefon, Schema v2,
+  Brave- und Google-CSE-Adapter fertig, `coverage`, `fill`, `search-compare` für alle
+  aktiven Adapter. Platzhalter: `serpapi`, `places` (Raster fertig), `gelbeseiten`,
+  `dasoertliche`, `elf880`, `stb_verzeichnis`.
+- Noch Platzhalter: `crawl`, `extract`, `orte` (OpenPLZ + Einwohner aus GV-ISys).
