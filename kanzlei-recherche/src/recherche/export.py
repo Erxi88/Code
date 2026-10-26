@@ -41,14 +41,17 @@ KANZLEI_SPALTEN: list[Spalte] = [
     ("Telefon", 18, lambda k: k.telefon),
     ("E-Mail", 30, lambda k: k.email),
     ("Website", 30, lambda k: k.website),
+    ("Website vorhanden", 10, lambda k: "ja" if k.website_vorhanden else "nein"),
     ("Hauptansprechpartner", 26, lambda k: _ap(k, "name")),
     ("Titel", 14, lambda k: _ap(k, "titel")),
     ("Funktion", 22, lambda k: _ap(k, "funktion")),
     ("Weitere Ansprechpartner", 45, lambda k: "; ".join(a.anzeige() for a in k.ansprechpartner[1:]) or None),
+    ("Berufsträger (Anzahl)", 11, lambda k: k.berufstraeger_anzahl),
     ("Teamgröße", 10, lambda k: k.teamgroesse_anzeige),
     ("Größenklasse", 12, lambda k: k.teamgroesse_klasse.value if k.teamgroesse_klasse else None),
     ("Teamgröße-Basis", 30, lambda k: k.teamgroesse_basis),
     ("Konfidenz", 10, lambda k: k.konfidenz.value),
+    ("Abweichung", 45, lambda k: k.abweichung),
     ("Quell-URLs", 50, lambda k: "\n".join(k.quell_urls) or None),
     ("Abrufdatum", 12, lambda k: k.abrufdatum),
     ("Status", 14, lambda k: k.status.value),
@@ -57,8 +60,15 @@ KANZLEI_SPALTEN: list[Spalte] = [
 
 NICHT_GEFUNDEN_SPALTEN: list[Spalte] = [
     ("Domain", 30, lambda n: n.domain),
-    ("Grund", 50, lambda n: n.grund),
-    ("URL", 45, lambda n: n.url),
+    ("Grund", 40, lambda n: n.grund),
+    # Discovery-Daten zum Nachpflegen von Hand
+    ("Name (Suche)", 34, lambda n: n.name),
+    ("Straße", 26, lambda n: n.strasse),
+    ("PLZ", 8, lambda n: n.plz),
+    ("Ort", 18, lambda n: n.ort),
+    ("Telefon", 18, lambda n: n.telefon),
+    ("Website", 30, lambda n: n.website),
+    ("URL", 40, lambda n: n.url),
     ("Zeitpunkt", 19, lambda n: n.zeitpunkt.replace(microsecond=0)),
 ]
 
@@ -108,7 +118,7 @@ def _blatt(ws: Worksheet, spalten: Sequence[Spalte], zeilen: Sequence[Any]) -> N
                 zelle.number_format = "DD.MM.YYYY"
             elif titel == "Zeitpunkt":
                 zelle.number_format = "DD.MM.YYYY HH:MM:SS"
-            elif titel == "Quell-URLs":
+            elif titel in ("Quell-URLs", "Abweichung"):
                 zelle.alignment = Alignment(wrap_text=True, vertical="top")
     letzte_spalte = get_column_letter(len(spalten))
     ws.auto_filter.ref = f"A1:{letzte_spalte}{max(len(zeilen) + 1, 1)}"

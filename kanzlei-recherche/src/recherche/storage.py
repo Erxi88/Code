@@ -6,6 +6,7 @@ abgebrochener Lauf beim nächsten Aufruf dort weitermacht, wo er aufgehört hat.
 
 from __future__ import annotations
 
+import gzip
 import json
 import sqlite3
 from collections.abc import Iterable
@@ -22,11 +23,14 @@ from .models import (
     NichtGefunden,
     SchrittStatus,
     Seite,
+    Seitentyp,
+    Status,
 )
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
-SCHEMA = """
+# Schema v2 eingefroren – Grundlage der Migration v1 → v2
+_SCHEMA_V2 = """
 CREATE TABLE IF NOT EXISTS kandidaten (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     bundesland      TEXT NOT NULL,
@@ -150,6 +154,83 @@ CREATE TABLE IF NOT EXISTS lauf_protokoll (
 CREATE INDEX IF NOT EXISTS ix_lauf_query ON lauf_protokoll (bundesland, schritt, adapter, suchbegriff);
 """
 
+def _schema_v3() -> str:
+    s = _SCHEMA_V2
+    s = s.replace(
+        """    text            TEXT,
+    abgerufen_am    TEXT NOT NULL
+);""",
+        """    text            TEXT,
+    abgerufen_am    TEXT NOT NULL,
+    html_gz         BLOB,
+    final_url       TEXT
+);""",
+    )
+    a, e = s.index("CREATE TABLE IF NOT EXISTS kanzleien ("), s.index("CREATE TABLE IF NOT EXISTS nicht_gefunden (")
+    s = s[:a] + _KANZLEIEN_V3 + s[e:]
+    a, e = s.index("CREATE TABLE IF NOT EXISTS nicht_gefunden ("), s.index("CREATE TABLE IF NOT EXISTS dubletten (")
+    return s[:a] + _NICHT_GEFUNDEN_V3 + _KANDIDAT_SEITEN + s[e:]
+
+
+_KANZLEIEN_V3 = """CREATE TABLE IF NOT EXISTS kanzleien (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    kandidat_id         INTEGER UNIQUE,
+    domain              TEXT UNIQUE,
+    lauf_bundesland     TEXT NOT NULL,
+    kanzleiname         TEXT,
+    rechtsform          TEXT,
+    strasse             TEXT,
+    plz                 TEXT,
+    ort                 TEXT,
+    bundesland          TEXT,
+    plz_verifiziert     INTEGER,
+    telefon             TEXT,
+    email               TEXT,
+    website             TEXT,
+    website_vorhanden   INTEGER NOT NULL DEFAULT 1,
+    ansprechpartner     TEXT NOT NULL DEFAULT '[]',
+    berufstraeger_anzahl INTEGER,
+    teamgroesse         INTEGER,
+    teamgroesse_klasse  TEXT,
+    teamgroesse_basis   TEXT,
+    konfidenz           TEXT NOT NULL,
+    abweichung          TEXT,
+    quell_urls          TEXT NOT NULL DEFAULT '[]',
+    abrufdatum          TEXT,
+    status              TEXT NOT NULL DEFAULT 'neu'
+);
+CREATE INDEX IF NOT EXISTS ix_kanzleien_bl ON kanzleien (lauf_bundesland);
+
+"""
+
+_NICHT_GEFUNDEN_V3 = """CREATE TABLE IF NOT EXISTS nicht_gefunden (
+    domain          TEXT PRIMARY KEY,
+    bundesland      TEXT NOT NULL,
+    grund           TEXT NOT NULL,
+    url             TEXT,
+    zeitpunkt       TEXT NOT NULL,
+    kandidat_id     INTEGER,
+    name            TEXT,
+    strasse         TEXT,
+    plz             TEXT,
+    ort             TEXT,
+    telefon         TEXT,
+    website         TEXT
+);
+
+"""
+
+_KANDIDAT_SEITEN = """CREATE TABLE IF NOT EXISTS kandidat_seiten (
+    kandidat_id     INTEGER NOT NULL REFERENCES kandidaten (id) ON DELETE CASCADE,
+    seitentyp       TEXT NOT NULL,
+    url             TEXT NOT NULL,
+    PRIMARY KEY (kandidat_id, seitentyp)
+);
+
+"""
+
+SCHEMA = _schema_v3()
+
 # Schema v1 → v2: Kandidaten mit eigener ID (Domain optional), Tabelle funde,
 # api_cache, Dubletten mit Art, Kostenlog im Lauf-Protokoll.
 MIGRATION_V1_V2 = """
@@ -159,7 +240,7 @@ DROP INDEX IF EXISTS ix_kandidaten_bl;
 ALTER TABLE lauf_protokoll RENAME COLUMN neue_domains TO neue_kandidaten;
 ALTER TABLE lauf_protokoll ADD COLUMN anfragen INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE lauf_protokoll ADD COLUMN kosten REAL NOT NULL DEFAULT 0;
-""" + SCHEMA + """
+""" + _SCHEMA_V2 + """
 INSERT INTO kandidaten (bundesland, domain, website, name, suchort, quelle, gefunden_am,
                         crawl_status, extract_status, fehler)
     SELECT bundesland, domain, url, titel, ort, quelle, gefunden_am, crawl_status,
@@ -178,6 +259,39 @@ DROP TABLE kandidaten_v1;
 DROP TABLE dubletten_v1;
 """
 
+# Schema v2 → v3: Rohes HTML im Seiten-Cache, Seiten je Kandidat, Kanzleien je Kandidat
+# (Domain optional) mit Abweichung/Berufsträgern, Discovery-Daten bei „Nicht gefunden".
+_KANZLEI_SPALTEN_V2 = (
+    "domain, lauf_bundesland, kanzleiname, rechtsform, strasse, plz, ort, bundesland, telefon, email, "
+    "website, ansprechpartner, teamgroesse, teamgroesse_klasse, teamgroesse_basis, konfidenz, "
+    "quell_urls, abrufdatum, status"
+)
+MIGRATION_V2_V3 = (
+    """
+ALTER TABLE seiten ADD COLUMN html_gz BLOB;
+ALTER TABLE seiten ADD COLUMN final_url TEXT;
+ALTER TABLE nicht_gefunden ADD COLUMN kandidat_id INTEGER;
+ALTER TABLE nicht_gefunden ADD COLUMN name TEXT;
+ALTER TABLE nicht_gefunden ADD COLUMN strasse TEXT;
+ALTER TABLE nicht_gefunden ADD COLUMN plz TEXT;
+ALTER TABLE nicht_gefunden ADD COLUMN ort TEXT;
+ALTER TABLE nicht_gefunden ADD COLUMN telefon TEXT;
+ALTER TABLE nicht_gefunden ADD COLUMN website TEXT;
+ALTER TABLE kanzleien RENAME TO kanzleien_v2;
+DROP INDEX IF EXISTS ix_kanzleien_bl;
+"""
+    + _KANZLEIEN_V3
+    + _KANDIDAT_SEITEN
+    + f"""
+INSERT INTO kanzleien ({_KANZLEI_SPALTEN_V2})
+    SELECT {_KANZLEI_SPALTEN_V2} FROM kanzleien_v2;
+DROP TABLE kanzleien_v2;
+"""
+)
+
+# Version → Migrationsskript auf Version + 1
+MIGRATIONEN = {1: MIGRATION_V1_V2, 2: MIGRATION_V2_V3}
+
 _KANDIDAT_FELDER = [
     "bundesland", "domain", "website", "name", "strasse", "plz", "ort", "telefon",
     "suchort", "quelle", "gefunden_am", "crawl_status", "extract_status", "fehler",
@@ -191,10 +305,14 @@ _FUND_FELDER = [
 ]  # fmt: skip
 
 _KANZLEI_FELDER = [
-    "domain", "lauf_bundesland", "kanzleiname", "rechtsform", "strasse", "plz", "ort",
-    "bundesland", "telefon", "email", "website", "ansprechpartner", "teamgroesse",
-    "teamgroesse_klasse", "teamgroesse_basis", "konfidenz", "quell_urls", "abrufdatum",
-    "status",
+    "kandidat_id", "domain", "lauf_bundesland", "kanzleiname", "rechtsform", "strasse", "plz",
+    "ort", "bundesland", "plz_verifiziert", "telefon", "email", "website", "website_vorhanden",
+    "ansprechpartner", "berufstraeger_anzahl", "teamgroesse", "teamgroesse_klasse",
+    "teamgroesse_basis", "konfidenz", "abweichung", "quell_urls", "abrufdatum", "status",
+]  # fmt: skip
+_NG_FELDER = [
+    "domain", "bundesland", "grund", "url", "zeitpunkt", "kandidat_id", "name", "strasse", "plz",
+    "ort", "telefon", "website",
 ]  # fmt: skip
 
 
@@ -221,17 +339,21 @@ class Storage:
             raise RuntimeError(
                 f"Datenbank hat Schemaversion {version}, dieses Programm kennt nur {SCHEMA_VERSION}"
             )
-        if version == 1:
-            # executescript committet selbst; Migration läuft in einer expliziten Transaktion
+        if version == 0:
+            self.conn.executescript(SCHEMA)
+            self.conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+            self.conn.commit()
+            return
+        while version < SCHEMA_VERSION:
+            # executescript committet selbst; jede Migration läuft in einer expliziten Transaktion
             try:
-                self.conn.executescript("BEGIN;\n" + MIGRATION_V1_V2 + "\nPRAGMA user_version = 2;\nCOMMIT;")
+                self.conn.executescript(
+                    f"BEGIN;\n{MIGRATIONEN[version]}\nPRAGMA user_version = {version + 1};\nCOMMIT;"
+                )
             except sqlite3.Error:
                 self.conn.rollback()
                 raise
-            return
-        self.conn.executescript(SCHEMA)
-        self.conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
-        self.conn.commit()
+            version += 1
 
     def close(self) -> None:
         self.conn.close()
@@ -312,6 +434,16 @@ class Storage:
                 (status.value, fehler, kid),
             )
 
+    def fehler_zuruecksetzen(self, bundesland: str, schritt: str) -> int:
+        """Setzt Kandidaten mit Status „fehler" im Schritt crawl/extract wieder auf „offen"."""
+        spalte = {"crawl": "crawl_status", "extract": "extract_status"}[schritt]
+        with self.conn:
+            cur = self.conn.execute(
+                f"UPDATE kandidaten SET {spalte} = 'offen', fehler = NULL WHERE bundesland = ? AND {spalte} = 'fehler'",
+                (bundesland,),
+            )
+        return cur.rowcount
+
     # ------------------------------------------------------------------ Funde
 
     def add_fund(self, f: Fund) -> bool:
@@ -331,6 +463,10 @@ class Storage:
             (bundesland, quelle, quell_id),
         ).fetchone()
         return row is not None
+
+    def funde_kandidat(self, kid: int) -> list[Fund]:
+        rows = self.conn.execute("SELECT * FROM funde WHERE kandidat_id = ? ORDER BY id", (kid,))
+        return [Fund(**dict(r)) for r in rows]
 
     def funde(self, bundesland: str, quelle: str | None = None) -> list[Fund]:
         sql = "SELECT * FROM funde WHERE bundesland = ?"
@@ -361,40 +497,85 @@ class Storage:
         return self.conn.execute("SELECT 1 FROM seiten WHERE url = ?", (url,)).fetchone() is not None
 
     def save_seite(self, s: Seite) -> bool:
-        """Speichert eine Rohseite. Bereits gecachte URLs werden nie überschrieben."""
+        """Speichert eine Seite. Bereits gecachte URLs werden nie überschrieben."""
+        html_gz = gzip.compress(s.html.encode("utf-8")) if s.html is not None else None
         with self.conn:
             cur = self.conn.execute(
-                """INSERT OR IGNORE INTO seiten (url, domain, seitentyp, http_status, text, abgerufen_am)
-                   VALUES (?,?,?,?,?,?)""",
-                (s.url, s.domain, s.seitentyp.value, s.http_status, s.text, _iso(s.abgerufen_am)),
-            )
+                """INSERT OR IGNORE INTO seiten
+                   (url, domain, seitentyp, http_status, text, abgerufen_am, html_gz, final_url)
+                   VALUES (?,?,?,?,?,?,?,?)""",
+                (s.url, s.domain, s.seitentyp.value, s.http_status, s.text, _iso(s.abgerufen_am),
+                 html_gz, s.final_url),
+            )  # fmt: skip
         return cur.rowcount == 1
+
+    @staticmethod
+    def _seite_aus_row(row: sqlite3.Row) -> Seite:
+        d = dict(row)
+        roh = d.pop("html_gz", None)
+        d["html"] = gzip.decompress(roh).decode("utf-8") if roh else None
+        return Seite(**d)
 
     def get_seite(self, url: str) -> Seite | None:
         row = self.conn.execute("SELECT * FROM seiten WHERE url = ?", (url,)).fetchone()
-        return Seite(**dict(row)) if row else None
+        return self._seite_aus_row(row) if row else None
 
     def seiten(self, domain: str) -> list[Seite]:
         rows = self.conn.execute("SELECT * FROM seiten WHERE domain = ? ORDER BY url", (domain,))
-        return [Seite(**dict(r)) for r in rows]
+        return [self._seite_aus_row(r) for r in rows]
+
+    def setze_kandidat_seite(self, kid: int, typ: Seitentyp, url: str) -> None:
+        with self.conn:
+            self.conn.execute(
+                "INSERT OR REPLACE INTO kandidat_seiten (kandidat_id, seitentyp, url) VALUES (?,?,?)",
+                (kid, typ.value, url),
+            )
+
+    def kandidat_seiten(self, kid: int) -> dict[Seitentyp, Seite]:
+        """Gecachte Seiten eines Kandidaten je Typ (Start, Impressum, Kontakt, Team)."""
+        rows = self.conn.execute(
+            """SELECT ks.seitentyp AS typ, s.* FROM kandidat_seiten ks JOIN seiten s ON s.url = ks.url
+               WHERE ks.kandidat_id = ?""",
+            (kid,),
+        )
+        ergebnis = {}
+        for r in rows:
+            d = dict(r)
+            typ = Seitentyp(d.pop("typ"))
+            ergebnis[typ] = self._seite_aus_row(d)
+        return ergebnis
 
     # ------------------------------------------------------------------ Kanzleien
 
     def upsert_kanzlei(self, k: Kanzlei) -> int:
-        """Legt eine Kanzlei an oder aktualisiert sie (Schlüssel: Domain). Gibt die ID zurück."""
-        werte = self._kanzlei_werte(k)
-        spalten = ", ".join(_KANZLEI_FELDER)
-        platzhalter = ", ".join("?" for _ in _KANZLEI_FELDER)
-        update = ", ".join(f"{f} = excluded.{f}" for f in _KANZLEI_FELDER if f != "domain")
+        """Legt eine Kanzlei an oder aktualisiert sie (Schlüssel: Kandidat, sonst Domain).
+
+        Der Status (Excel-Dropdown) einer bestehenden Kanzlei bleibt erhalten, wenn die neue
+        Fassung nur den Standardwert „neu" trägt – eine erneute Extraktion setzt also keine
+        bereits gepflegten Status zurück.
+        """
+        if k.kandidat_id is not None:
+            row = self.conn.execute("SELECT id, status FROM kanzleien WHERE kandidat_id = ?", (k.kandidat_id,)).fetchone()
+        else:
+            row = None
+        if row is None and k.domain:
+            row = self.conn.execute("SELECT id, status FROM kanzleien WHERE domain = ?", (k.domain,)).fetchone()
+        werte = dict(zip(_KANZLEI_FELDER, self._kanzlei_werte(k), strict=True))
         with self.conn:
+            if row is None:
+                cur = self.conn.execute(
+                    f"INSERT INTO kanzleien ({', '.join(_KANZLEI_FELDER)}) "
+                    f"VALUES ({', '.join('?' for _ in _KANZLEI_FELDER)})",
+                    list(werte.values()),
+                )
+                return cur.lastrowid
+            if k.status == Status.NEU:
+                werte["status"] = row["status"]
             self.conn.execute(
-                f"INSERT INTO kanzleien ({spalten}) VALUES ({platzhalter}) "
-                f"ON CONFLICT(domain) DO UPDATE SET {update}",
-                werte,
+                f"UPDATE kanzleien SET {', '.join(f'{f} = ?' for f in werte)} WHERE id = ?",
+                [*werte.values(), row["id"]],
             )
-        return self.conn.execute(
-            "SELECT id FROM kanzleien WHERE domain = ?", (k.domain,)
-        ).fetchone()[0]
+            return row["id"]
 
     @staticmethod
     def _kanzlei_werte(k: Kanzlei) -> list:
@@ -414,6 +595,10 @@ class Storage:
         row = self.conn.execute("SELECT * FROM kanzleien WHERE domain = ?", (domain,)).fetchone()
         return self._kanzlei_aus_row(row) if row else None
 
+    def kanzlei_fuer_kandidat(self, kid: int) -> Kanzlei | None:
+        row = self.conn.execute("SELECT * FROM kanzleien WHERE kandidat_id = ?", (kid,)).fetchone()
+        return self._kanzlei_aus_row(row) if row else None
+
     def kanzleien(self, bundesland: str) -> list[Kanzlei]:
         rows = self.conn.execute(
             "SELECT * FROM kanzleien WHERE lauf_bundesland = ? ORDER BY plz, kanzleiname, domain",
@@ -429,12 +614,17 @@ class Storage:
 
     def add_nicht_gefunden(self, n: NichtGefunden) -> None:
         """Ein Eintrag je Domain; ein erneuter Fehler ersetzt den alten Grund."""
+        d = n.model_dump(mode="json")
         with self.conn:
             self.conn.execute(
-                "INSERT OR REPLACE INTO nicht_gefunden (domain, bundesland, grund, url, zeitpunkt) "
-                "VALUES (?,?,?,?,?)",
-                (n.domain, n.bundesland, n.grund, n.url, _iso(n.zeitpunkt)),
+                f"INSERT OR REPLACE INTO nicht_gefunden ({', '.join(_NG_FELDER)}) "
+                f"VALUES ({', '.join('?' for _ in _NG_FELDER)})",
+                [d[f] for f in _NG_FELDER],
             )
+
+    def entferne_nicht_gefunden(self, domain: str) -> None:
+        with self.conn:
+            self.conn.execute("DELETE FROM nicht_gefunden WHERE domain = ?", (domain,))
 
     def nicht_gefunden(self, bundesland: str) -> list[NichtGefunden]:
         rows = self.conn.execute(

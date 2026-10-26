@@ -130,19 +130,22 @@ class Fund(BaseModel):
 
 
 class Seite(BaseModel):
-    """Gecachte Rohseite (als Text)."""
+    """Gecachte Seite: bereinigter Text plus rohes HTML (in SQLite gzip-komprimiert)."""
 
-    url: str
+    url: str  # angefragte URL (Cache-Schlüssel)
     domain: str
     seitentyp: Seitentyp = Seitentyp.SONSTIGE
     http_status: int | None = None
     text: str | None = None
+    html: str | None = None
+    final_url: str | None = None  # nach Weiterleitungen
     abgerufen_am: datetime = Field(default_factory=datetime.now)
 
 
 class Kanzlei(BaseModel):
     id: int | None = None
-    domain: str
+    kandidat_id: int | None = None
+    domain: str | None = None  # None bei Kanzleien ohne Website (nur Discovery-Daten)
     lauf_bundesland: str  # Kürzel des Recherche-Laufs (Filter für Export)
     kanzleiname: str | None = None
     rechtsform: str | None = None
@@ -150,14 +153,18 @@ class Kanzlei(BaseModel):
     plz: str | None = None
     ort: str | None = None
     bundesland: str | None = None  # tatsächliches Bundesland laut PLZ
+    plz_verifiziert: bool | None = None  # PLZ/Ort gegen OpenPLZ geprüft (None: nicht prüfbar)
     telefon: str | None = None
     email: str | None = None
     website: str | None = None
-    ansprechpartner: list[Ansprechpartner] = Field(default_factory=list)
+    website_vorhanden: bool = True
+    ansprechpartner: list[Ansprechpartner] = Field(default_factory=list)  # Berufsträger und Leitung
+    berufstraeger_anzahl: int | None = None
     teamgroesse: int | None = None
     teamgroesse_klasse: TeamKlasse | None = None
     teamgroesse_basis: str | None = None
     konfidenz: Konfidenz = Konfidenz.NIEDRIG
+    abweichung: str | None = None  # Unterschiede zwischen Discovery-Quelle und Website
     quell_urls: list[str] = Field(default_factory=list)
     abrufdatum: date | None = None
     status: Status = Status.NEU
@@ -181,11 +188,20 @@ class Kanzlei(BaseModel):
 
 
 class NichtGefunden(BaseModel):
+    """Domain ohne lesbares Impressum oder mit Fehler – mit den Discovery-Daten zum Nachpflegen."""
+
     domain: str
     bundesland: str
     grund: str
     url: str | None = None
     zeitpunkt: datetime = Field(default_factory=datetime.now)
+    kandidat_id: int | None = None
+    name: str | None = None
+    strasse: str | None = None
+    plz: str | None = None
+    ort: str | None = None
+    telefon: str | None = None
+    website: str | None = None
 
 
 class DublettenArt(StrEnum):

@@ -154,3 +154,20 @@ def test_export_filtert_bundesland(befuellt, tmp_path):
     wb = load_workbook(pfad)
     assert wb[BLATT_KANZLEIEN].max_row == 1
     assert wb[BLATT_PROTOKOLL].max_row == 1
+
+
+def test_neue_spalten(befuellt, tmp_path):
+    from recherche.models import Ansprechpartner, Kanzlei, NichtGefunden
+
+    befuellt.upsert_kanzlei(Kanzlei(lauf_bundesland="SH", kandidat_id=99, kanzleiname="Kanzlei Ohneweb",
+                                    website_vorhanden=False, abweichung="Telefon: places 1 / Website 2",
+                                    ansprechpartner=[Ansprechpartner(name="A", funktion="StB")], berufstraeger_anzahl=1))
+    befuellt.add_nicht_gefunden(NichtGefunden(domain="weg.example", bundesland="SH", grund="Timeout", name="Kanzlei Weg",
+                                              strasse="Wall 5", plz="24103", ort="Kiel", telefon="0431 1"))
+    wb = load_workbook(export_excel(befuellt, "SH", tmp_path / "x.xlsx"))
+    zeilen = {z["Kanzleiname"]: z for z in _zeilen(wb[BLATT_KANZLEIEN])}
+    z = zeilen["Kanzlei Ohneweb"]
+    assert (z["Website vorhanden"], z["Berufsträger (Anzahl)"], z["Abweichung"]) == ("nein", 1, "Telefon: places 1 / Website 2")
+    assert zeilen["Steuerbüro Schütt"]["Website vorhanden"] == "ja"
+    ng = {r["Domain"]: r for r in _zeilen(wb[BLATT_NICHT_GEFUNDEN])}["weg.example"]
+    assert (ng["Name (Suche)"], ng["Straße"], ng["PLZ"], ng["Ort"], ng["Telefon"]) == ("Kanzlei Weg", "Wall 5", "24103", "Kiel", "0431 1")

@@ -224,3 +224,74 @@ def test_lauf_protokoll_reihenfolge(storage):
     for i in range(3):
         storage.log_lauf(LaufEintrag(lauf_id="x", schritt="search", bundesland="SH", suchbegriff=f"q{i}"))
     assert [e.suchbegriff for e in storage.lauf_protokoll("SH")] == ["q0", "q1", "q2"]
+
+
+def test_migration_v2_auf_v3(db_pfad):
+    from recherche.storage import _SCHEMA_V2
+
+    con = sqlite3.connect(db_pfad)
+    con.executescript(_SCHEMA_V2)
+    con.execute("PRAGMA user_version = 2")
+    con.execute(
+        "INSERT INTO kanzleien (domain, lauf_bundesland, kanzleiname, konfidenz, status) "
+        "VALUES ('a.example', 'SH', 'Kanzlei A', 'mittel', 'kontaktiert')"
+    )
+    con.execute("INSERT INTO seiten VALUES ('https://a.example/', 'a.example', 'start', 200, 'Text', '2026-10-20T09:00:00')")
+    con.execute("INSERT INTO nicht_gefunden VALUES ('b.example', 'SH', 'Timeout', NULL, '2026-10-20T09:00:00')")
+    con.commit()
+    con.close()
+    with Storage(db_pfad) as st:
+        assert st.conn.execute("PRAGMA user_version").fetchone()[0] == 3
+        k = st.get_kanzlei("a.example")
+        assert (k.kanzleiname, k.status, k.website_vorhanden, k.kandidat_id) == ("Kanzlei A", Status.KONTAKTIERT, True, None)
+        s = st.get_seite("https://a.example/")
+        assert (s.text, s.html, s.final_url) == ("Text", None, None)
+        (ng,) = st.nicht_gefunden("SH")
+        assert (ng.grund, ng.name) == ("Timeout", None)
+
+
+def test_seite_mit_html_komprimiert(storage):
+    html = "<html><body>" + "Holstenstraße 42 " * 500 + "</body></html>"
+    storage.save_seite(Seite(url="https://a.example/", domain="a.example", html=html, text="t", final_url="https://www.a.example/"))
+    s = storage.get_seite("https://a.example/")
+    assert s.html == html and s.final_url == "https://www.a.example/"
+    roh = storage.conn.execute("SELECT length(html_gz) FROM seiten").fetchone()[0]
+    assert roh < len(html.encode()) / 10
+
+
+def test_kandidat_seiten(storage):
+    kid = storage.add_kandidat(Kandidat(bundesland="SH", domain="a.example"))
+    for typ, url in ((Seitentyp.START, "https://a.example/"), (Seitentyp.IMPRESSUM, "https://a.example/impressum"),
+                     (Seitentyp.KONTAKT, "https://a.example/impressum")):
+        storage.save_seite(Seite(url=url, domain="a.example", seitentyp=typ, text=url))
+        storage.setze_kandidat_seite(kid, typ, url)
+    seiten = storage.kandidat_seiten(kid)
+    assert seiten[Seitentyp.KONTAKT].url == seiten[Seitentyp.IMPRESSUM].url == "https://a.example/impressum"
+    assert set(seiten) == {Seitentyp.START, Seitentyp.IMPRESSUM, Seitentyp.KONTAKT}
+
+
+def test_kanzlei_je_kandidat_auch_ohne_domain(storage):
+    a = storage.add_kandidat(Kandidat(bundesland="SH", name="Ohne Web A"))
+    b = storage.add_kandidat(Kandidat(bundesland="SH", name="Ohne Web B"))
+    ida = storage.upsert_kanzlei(Kanzlei(kandidat_id=a, lauf_bundesland="SH", kanzleiname="A", website_vorhanden=False))
+    storage.upsert_kanzlei(Kanzlei(kandidat_id=b, lauf_bundesland="SH", kanzleiname="B", website_vorhanden=False))
+    assert storage.upsert_kanzlei(Kanzlei(kandidat_id=a, lauf_bundesland="SH", kanzleiname="A2")) == ida
+    assert sorted(k.kanzleiname for k in storage.kanzleien("SH")) == ["A2", "B"]
+
+
+def test_upsert_behaelt_gepflegten_status(storage):
+    storage.upsert_kanzlei(Kanzlei(domain="a.example", lauf_bundesland="SH", status=Status.KONTAKTIERT))
+    storage.upsert_kanzlei(Kanzlei(domain="a.example", lauf_bundesland="SH", kanzleiname="neu extrahiert"))
+    k = storage.get_kanzlei("a.example")
+    assert (k.kanzleiname, k.status) == ("neu extrahiert", Status.KONTAKTIERT)
+    storage.upsert_kanzlei(k.model_copy(update={"status": Status.UNGUELTIG}))
+    assert storage.get_kanzlei("a.example").status == Status.UNGUELTIG
+
+
+def test_nicht_gefunden_mit_discovery_daten(storage):
+    storage.add_nicht_gefunden(NichtGefunden(domain="a.example", bundesland="SH", grund="Kein Impressum gefunden",
+                                             name="Kanzlei A", strasse="Wall 5", plz="24103", ort="Kiel", telefon="0431 1"))
+    (ng,) = storage.nicht_gefunden("SH")
+    assert (ng.name, ng.strasse, ng.plz, ng.telefon) == ("Kanzlei A", "Wall 5", "24103", "0431 1")
+    storage.entferne_nicht_gefunden("a.example")
+    assert storage.nicht_gefunden("SH") == []
