@@ -1,11 +1,10 @@
 import pytest
-from fakes import FakeAdapter
+from fakes import FakeOrtsAdapter, FakeQueryAdapter, hit
 
-from recherche.models import SchrittStatus
-from recherche.search.base import SearchHit
+from recherche.models import DublettenArt, SchrittStatus
+from recherche.search.base import BudgetErschoepft, KontingentErschoepft, SearchError
 from recherche.search.pipeline import (
     Ort,
-    filter_hits,
     ist_blockiert,
     load_blocklist,
     load_orte,
@@ -17,6 +16,8 @@ from recherche.search.pipeline import (
 )  # fmt: skip
 
 KIEL = Ort("Kiel", "24103", "Kreisfreie Stadt Kiel")
+VORLAGEN = ["Steuerberater {ort}", "Steuerkanzlei {ort}"]
+BLOCK = {"gelbeseiten.de", "facebook.com"}
 
 
 @pytest.mark.parametrize(
@@ -44,36 +45,8 @@ def test_blocklist_datei(settings):
 
 
 def test_blocklist_mit_subdomains():
-    bl = {"facebook.com", "gelbeseiten.de"}
-    assert ist_blockiert("facebook.com", bl)
-    assert ist_blockiert("de-de.facebook.com", bl)
-    assert not ist_blockiert("notfacebook.com", bl)
-    assert not ist_blockiert("hansen.example", bl)
-
-
-def test_filter_hits_blocklist_und_dubletten(ddgs_antworten):
-    hits = [SearchHit(url=r["href"], titel=r["title"], quelle="ddgs") for r in ddgs_antworten["Steuerberater Kiel"]]
-    bl = {"dasoertliche.de", "gelbeseiten.de", "facebook.com"}
-    ergebnis = filter_hits(hits, bl)
-    assert [d for d, _ in ergebnis] == [
-        "hansen-steuerberatung.example",
-        "foerde-steuer.example",
-        "kanzlei-holtenau.example",
-    ]
-    # erster Treffer je Domain bleibt erhalten
-    assert ergebnis[0][1].url == "https://www.hansen-steuerberatung.example/"
-
-
-def test_filter_hits_ueber_mehrere_queries_und_adapter():
-    bekannt: set[str] = set()
-    a = filter_hits([SearchHit(url="https://x.example/", quelle="ddgs")], set(), bekannt)
-    b = filter_hits(
-        [SearchHit(url="https://www.x.example/kontakt", quelle="google"),
-         SearchHit(url="https://y.example/", quelle="google")],
-        set(), bekannt,
-    )  # fmt: skip
-    assert [d for d, _ in a] == ["x.example"]
-    assert [d for d, _ in b] == ["y.example"]
+    assert ist_blockiert("de-de.facebook.com", BLOCK)
+    assert not ist_blockiert("notfacebook.com", BLOCK)
 
 
 def test_queries_fuer_ort():
@@ -81,17 +54,24 @@ def test_queries_fuer_ort():
     assert queries_fuer_ort(vorlagen, KIEL) == [
         "Steuerberater Kiel", "Steuerberatung 24103 Kiel", "Kanzlei Kreisfreie Stadt Kiel",
     ]  # fmt: skip
-    # Ort ohne PLZ: Vorlagen mit {plz} entfallen
     assert queries_fuer_ort(vorlagen, Ort("Kiel", "")) == ["Steuerberater Kiel"]
 
 
 def test_config_dateien(settings):
     orte = load_orte(settings.pfad(settings.bundesland("SH").orte_datei))
     assert 60 <= len(orte) <= 80
-    assert len({o.name for o in orte}) == len(orte)  # eine Zeile je Ort
+    assert len({o.name for o in orte}) == len(orte)
     assert all(o.plz.isdigit() and len(o.plz) == 5 and o.kreis for o in orte)
+    assert all(o.einwohner is None for o in orte)  # Spalte vorgesehen, Werte folgen (orte/GV-ISys)
     assert {"Kiel", "Flensburg", "Lübeck", "Neumünster", "Husum"} <= {o.name for o in orte}
     assert len(load_vorlagen(settings.pfad(settings.pfade.queries))) >= 2
+
+
+def test_orte_mit_einwohnern(tmp_path):
+    p = tmp_path / "orte.csv"
+    p.write_text("ort;plz;kreis;einwohner\nKiel;24103;Kreisfreie Stadt Kiel;247000\nHusum;25813;Kreis Nordfriesland;\n",
+                 encoding="utf-8")
+    assert load_orte(p) == [Ort("Kiel", "24103", "Kreisfreie Stadt Kiel", 247000), Ort("Husum", "25813", "Kreis Nordfriesland")]
 
 
 def test_orte_filtern():
@@ -101,46 +81,106 @@ def test_orte_filtern():
     assert orte_filtern(orte, ["Sylt"]) == [Ort("Sylt", "")]
 
 
-def _adapter(fehler_bei=None):
-    return FakeAdapter(
-        "fake",
-        {
-            "Steuerberater Kiel": ["https://www.a.example/", "https://gelbeseiten.de/x", "https://b.example/impressum"],
-            "Steuerkanzlei Kiel": ["https://a.example/team", "https://c.example/"],
-        },
-        fehler_bei=fehler_bei,
-    )
+def _web(fehler_bei=None):
+    return FakeQueryAdapter("brave", {
+        "Steuerberater Kiel": ["https://www.a.example/", "https://gelbeseiten.de/x", "https://b.example/impressum"],
+        "Steuerkanzlei Kiel": ["https://a.example/team", "https://c.example/"],
+    }, fehler_bei=fehler_bei, kosten_je_1000=5.0)  # fmt: skip
 
 
-def test_run_search_speichert_kandidaten_und_protokoll(storage):
-    stat = run_search(storage, _adapter(), [KIEL], ["Steuerberater {ort}", "Steuerkanzlei {ort}"],
-                      {"gelbeseiten.de"}, "SH", "lauf1", 20)
-    assert (stat.queries, stat.treffer, stat.neue_domains, stat.fehler) == (2, 5, 3, 0)
+def test_websuche_speichert_kandidaten_funde_und_protokoll(storage):
+    stat = run_search(storage, _web(), [KIEL], VORLAGEN, BLOCK, "SH", "lauf1", 20)
+    assert (stat.queries, stat.treffer, stat.neue_kandidaten, stat.fehler) == (2, 5, 3, 0)
+    assert (stat.anfragen, stat.kosten) == (2, 0.01)
     kandidaten = storage.kandidaten("SH")
     assert [k.domain for k in kandidaten] == ["a.example", "b.example", "c.example"]
-    assert all(k.crawl_status == SchrittStatus.OFFEN for k in kandidaten)
-    a = storage.get_kandidat("a.example")
-    assert (a.suchbegriff, a.ort, a.quelle) == ("Steuerberater Kiel", "Kiel", "fake")
+    assert all(k.crawl_status == SchrittStatus.OFFEN and k.suchort == "Kiel" for k in kandidaten)
+    # Portal-Treffer werden verworfen, zweite URL derselben Domain wird zusätzlicher Fund
+    funde = storage.funde("SH")
+    assert [f.quell_id for f in funde] == ["https://www.a.example/", "https://b.example/impressum",
+                                          "https://a.example/team", "https://c.example/"]
+    assert funde[2].kandidat_id == funde[0].kandidat_id
     protokoll = storage.lauf_protokoll("SH")
-    assert [(e.suchbegriff, e.trefferzahl, e.neue_domains) for e in protokoll] == [
-        ("Steuerberater Kiel", 3, 2), ("Steuerkanzlei Kiel", 2, 1),
+    assert [(e.suchbegriff, e.trefferzahl, e.neue_kandidaten, e.anfragen, e.kosten) for e in protokoll] == [
+        ("Steuerberater Kiel", 3, 2, 1, 0.005), ("Steuerkanzlei Kiel", 2, 1, 1, 0.005),
     ]  # fmt: skip
 
 
-def test_run_search_wiederaufnahme(storage):
-    vorlagen = ["Steuerberater {ort}", "Steuerkanzlei {ort}"]
-    erster = _adapter(fehler_bei={"Steuerkanzlei Kiel"})
-    stat1 = run_search(storage, erster, [KIEL], vorlagen, set(), "SH", "lauf1", 20)
+def test_wiederaufnahme_nach_fehler(storage):
+    erster = _web(fehler_bei={"Steuerkanzlei Kiel": SearchError("brave: HTTP 500")})
+    stat1 = run_search(storage, erster, [KIEL], VORLAGEN, set(), "SH", "lauf1", 20)
     assert (stat1.queries, stat1.fehler) == (1, 1)
-    assert storage.get_kandidat("c.example") is None
-
-    zweiter = _adapter()
-    stat2 = run_search(storage, zweiter, [KIEL], vorlagen, set(), "SH", "lauf2", 20)
-    # erledigte Query wird übersprungen, fehlgeschlagene wiederholt
+    assert storage.kandidat_nach_domain("c.example") is None
+    zweiter = _web()
+    stat2 = run_search(storage, zweiter, [KIEL], VORLAGEN, set(), "SH", "lauf2", 20)
     assert zweiter.aufrufe == ["Steuerkanzlei Kiel"]
-    assert (stat2.queries, stat2.uebersprungen, stat2.neue_domains) == (1, 1, 1)
-    assert storage.get_kandidat("c.example") is not None
-
-    dritter = _adapter()
-    run_search(storage, dritter, [KIEL], vorlagen, set(), "SH", "lauf3", 20)
+    assert (stat2.queries, stat2.uebersprungen, stat2.neue_kandidaten) == (1, 1, 1)
+    dritter = _web()
+    run_search(storage, dritter, [KIEL], VORLAGEN, set(), "SH", "lauf3", 20)
     assert dritter.aufrufe == []
+
+
+@pytest.mark.parametrize("fehler", [KontingentErschoepft("brave: Monatskontingent erschöpft"),
+                                    BudgetErschoepft("brave: Budget erreicht")])
+def test_limit_beendet_lauf_sauber_und_wiederaufnehmbar(storage, fehler):
+    husum = Ort("Husum", "25813")
+    erster = _web(fehler_bei={"Steuerkanzlei Kiel": fehler})
+    stat = run_search(storage, erster, [KIEL, husum], VORLAGEN, set(), "SH", "lauf1", 20)
+    assert stat.abbruch == str(fehler)
+    assert erster.aufrufe == ["Steuerberater Kiel", "Steuerkanzlei Kiel"]  # Husum nicht mehr versucht
+    assert stat.fehler == 0
+    zweiter = _web()
+    run_search(storage, zweiter, [KIEL, husum], VORLAGEN, set(), "SH", "lauf2", 20)
+    assert zweiter.aufrufe == ["Steuerkanzlei Kiel", "Steuerberater Husum", "Steuerkanzlei Husum"]
+
+
+def test_budget_ueber_adapter(storage):
+    adapter = _web()
+    adapter.max_anfragen = 1
+    stat = run_search(storage, adapter, [KIEL], VORLAGEN, set(), "SH", "lauf1", 20)
+    assert stat.abbruch and "Budget" in stat.abbruch
+    assert (stat.queries, stat.anfragen) == (1, 1)
+
+
+def test_lueckenfueller_fuehrt_zusammen(storage):
+    run_search(storage, _web(), [KIEL], VORLAGEN, BLOCK, "SH", "lauf1", 20)
+    a = storage.kandidat_nach_domain("a.example")
+    places = FakeOrtsAdapter("places", {"Kiel": [
+        # gleiche Domain → ergänzt Adresse und Telefon
+        hit("places", "https://a.example/", quell_id="p1", name="A Steuerberatung", strasse="Holstenstraße 1",
+            plz="24103", ort="Kiel", telefon="0431 111111"),
+        # ohne Website, gleiche Telefonnummer wie oben → derselbe Kandidat
+        hit("places", None, quell_id="p2", name="A Steuerberatung Filiale", telefon="+49 431 111111"),
+        # Website ist Facebook → Website verworfen, Kanzlei bleibt
+        hit("places", "https://facebook.com/kanzlei.xaver", quell_id="p3", name="Kanzlei Xaver", strasse="Wall 5",
+            plz="24103", ort="Kiel"),
+        # gleiche Adresse wie p3, anderer Name → Verdacht, nicht zusammengeführt
+        hit("places", None, quell_id="p4", name="Steuerbüro Möller", strasse="Wall 5", plz="24103", ort="Kiel"),
+        # PLZ + ähnlicher Name wie p3 → unsicher zusammengeführt
+        hit("places", None, quell_id="p5", name="Xaver Kanzlei Kiel", plz="24103", ort="Kiel"),
+    ]})  # fmt: skip
+    stat = run_search(storage, places, [KIEL], VORLAGEN, BLOCK, "SH", "lauf2", 20)
+    assert places.aufrufe == ["Kiel"]
+    assert (stat.treffer, stat.neue_kandidaten) == (5, 2)
+    a = storage.get_kandidat(a.id)
+    assert (a.strasse, a.plz, a.telefon) == ("Holstenstraße 1", "24103", "0431 111111")
+    x = next(k for k in storage.kandidaten("SH") if k.name == "Kanzlei Xaver")
+    assert x.website is None and x.domain is None
+    assert {f.quell_id for f in storage.funde("SH", "places") if f.kandidat_id == a.id} == {"p1", "p2"}
+    dubletten = {(d.kriterium, d.art) for d in storage.dubletten("SH")}
+    assert dubletten == {("adresse", DublettenArt.VERDACHT), ("plz+name", DublettenArt.UNSICHER)}
+    assert len(storage.kandidaten("SH")) == 5  # a, b, c, X, Möller
+    # Protokoll als Schritt "fill" je Ort, wiederaufnehmbar
+    assert storage.query_erledigt("SH", "places", "ort:Kiel", schritt="fill")
+    zweiter = FakeOrtsAdapter("places", {})
+    run_search(storage, zweiter, [KIEL], VORLAGEN, BLOCK, "SH", "lauf3", 20)
+    assert zweiter.aufrufe == []
+
+
+def test_bekannter_fund_wird_nicht_doppelt_verarbeitet(storage):
+    run_search(storage, _web(), [KIEL], VORLAGEN, set(), "SH", "lauf1", 20)
+    n = len(storage.funde("SH"))
+    adapter = FakeQueryAdapter("brave", {"Steuerberater Husum": ["https://c.example/"]})
+    stat = run_search(storage, adapter, [Ort("Husum", "25813")], ["Steuerberater {ort}"], set(), "SH", "lauf2", 20)
+    assert stat.neue_kandidaten == 0
+    assert len(storage.funde("SH")) == n

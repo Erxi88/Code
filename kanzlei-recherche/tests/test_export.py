@@ -114,22 +114,24 @@ def test_nicht_gefunden_blatt(wb):
 def test_dubletten_blatt(wb):
     zeilen = _zeilen(wb[BLATT_DUBLETTEN])
     assert len(zeilen) == 2
-    assert {(z["Behalten (Domain)"], z["Dublette (Domain)"], z["Kriterium"]) for z in zeilen} == {
-        ("nordsee-steuerberatung.example", "nordsee-steuer-husum.example", "telefon"),
-        ("hansen-steuerberatung.example", "hansen-petersen-kiel.example", "plz+name"),
+    assert {(z["Behalten"], z["Dublette"], z["Kriterium"], z["Art"]) for z in zeilen} == {
+        ("nordsee-steuerberatung.example", "nordsee-steuer-husum.example", "telefon", "zusammengeführt"),
+        ("hansen-steuerberatung.example", "hansen-petersen-kiel.example", "plz+name", "unsicher"),
     }
 
 
 def test_lauf_protokoll_blatt(wb):
     ws = wb[BLATT_PROTOKOLL]
-    for spalte in ("Suchbegriff", "Trefferzahl", "Laufzeit (s)"):
+    for spalte in ("Suchbegriff", "Trefferzahl", "Laufzeit (s)", "Anfragen", "Kosten", "Neue Kandidaten"):
         assert spalte in _kopf(ws)
     zeilen = _zeilen(ws)
     assert len(zeilen) == 4
     assert zeilen[0]["Suchbegriff"] == "Steuerberater Kiel"
     assert zeilen[0]["Trefferzahl"] == 20
     assert zeilen[0]["Laufzeit (s)"] == pytest.approx(2.84)
-    assert zeilen[2]["Fehler"].startswith("ddgs:")
+    assert zeilen[2]["Fehler"].startswith("brave:")
+    assert zeilen[0]["Anfragen"] == 2
+    assert zeilen[0]["Kosten"] == pytest.approx(0.01)
 
 
 def test_alle_blaetter_mit_filter_und_fixierung(wb):

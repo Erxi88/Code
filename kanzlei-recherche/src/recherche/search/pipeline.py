@@ -1,7 +1,8 @@
-"""Gemeinsame Such-Pipeline für alle Adapter.
+"""Gemeinsame Discovery-Pipeline für alle Adapter.
 
-Query-Vorlagen füllen, Treffer-URLs auf Domains normalisieren, Blocklist anwenden,
-Dubletten entfernen (jede Domain genau einmal) und Kandidaten speichern.
+Query-Vorlagen füllen, Website-Domains normalisieren, Blocklist anwenden, Treffer über
+die Dubletten-Logik (dedupe.py) bestehenden Kandidaten zuordnen oder neu anlegen, jeden
+Fund mit Quelle speichern, Lauf-Protokoll mit Kostenlog schreiben.
 """
 
 from __future__ import annotations
@@ -12,14 +13,23 @@ import re
 import time
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from urllib.parse import urlsplit
 
 import yaml
 
-from ..models import Kandidat, LaufEintrag
+from ..models import Dublette, DublettenArt, Fund, Kandidat, LaufEintrag
 from ..storage import Storage
-from .base import SearchAdapter, SearchError, SearchHit
+from .base import (
+    LimitErreicht,
+    OrtsAdapter,
+    QueryAdapter,
+    SearchAdapter,
+    SearchError,
+    SearchHit,
+)
+from .dedupe import Index, Schluessel, zusammenfuehren
 
 log = logging.getLogger(__name__)
 
@@ -31,6 +41,7 @@ class Ort:
     name: str
     plz: str
     kreis: str | None = None
+    einwohner: int | None = None
 
 
 # ---------------------------------------------------------------------- Konfiguration
@@ -39,7 +50,12 @@ class Ort:
 def load_orte(pfad: str | Path) -> list[Ort]:
     with open(pfad, encoding="utf-8", newline="") as f:
         return [
-            Ort(name=r["ort"].strip(), plz=r["plz"].strip(), kreis=(r.get("kreis") or "").strip() or None)
+            Ort(
+                name=r["ort"].strip(),
+                plz=(r.get("plz") or "").strip(),
+                kreis=(r.get("kreis") or "").strip() or None,
+                einwohner=int(r["einwohner"]) if (r.get("einwohner") or "").strip() else None,
+            )
             for r in csv.DictReader(f, delimiter=";")
             if r.get("ort")
         ]
@@ -112,23 +128,108 @@ def ist_blockiert(domain: str, blocklist: set[str]) -> bool:
     return any(".".join(teile[i:]) in blocklist for i in range(len(teile) - 1))
 
 
-def filter_hits(
-    hits: Iterable[SearchHit], blocklist: set[str], bekannt: set[str] | None = None
-) -> list[tuple[str, SearchHit]]:
-    """Gibt (Domain, erster Treffer) je neuer, nicht blockierter Domain zurück.
+def website_domain(hit: SearchHit, blocklist: set[str]) -> tuple[str | None, bool]:
+    """(Domain der Website, blockiert?) – Domain ist None ohne Website oder wenn blockiert."""
+    if not hit.website:
+        return None, False
+    domain = normalize_domain(hit.website)
+    if domain is None:
+        return None, False
+    if ist_blockiert(domain, blocklist):
+        return None, True
+    return domain, False
 
-    `bekannt` wird fortgeschrieben, damit über mehrere Queries hinweg jede Domain
-    nur einmal auftaucht.
-    """
-    bekannt = bekannt if bekannt is not None else set()
-    ergebnis: list[tuple[str, SearchHit]] = []
-    for hit in hits:
-        domain = normalize_domain(hit.url)
-        if domain is None or domain in bekannt or ist_blockiert(domain, blocklist):
-            continue
-        bekannt.add(domain)
-        ergebnis.append((domain, hit))
-    return ergebnis
+
+def vorbereiten(
+    hit: SearchHit, adapter: SearchAdapter, blocklist: set[str]
+) -> tuple[SearchHit, str | None] | None:
+    """Blocklist für alle Adapter gleich: Websuche-Treffer auf Portalen werden verworfen,
+    bei Verzeichnis-/Places-Treffern wird nur die (Portal-)Website entfernt."""
+    domain, blockiert = website_domain(hit, blocklist)
+    if not blockiert:
+        return hit, domain
+    if isinstance(adapter, QueryAdapter):
+        return None
+    return hit.model_copy(update={"website": None}), None
+
+
+def schluessel(hit: SearchHit, domain: str | None) -> Schluessel:
+    return Schluessel.aus_feldern(domain, hit.telefon, hit.strasse, hit.plz, hit.name, hit.ort)
+
+
+def kandidat_schluessel(k: Kandidat) -> Schluessel:
+    return Schluessel.aus_feldern(k.domain, k.telefon, k.strasse, k.plz, k.name, k.ort)
+
+
+def bezeichnung(k: Kandidat | SearchHit, domain: str | None = None) -> str:
+    """Lesbare Kennung für das Dubletten-Blatt: Domain, sonst Name und Adresse."""
+    domain = domain or getattr(k, "domain", None)
+    if domain:
+        return domain
+    teile = [k.name, k.strasse, " ".join(x for x in (k.plz, k.ort) if x)]
+    return ", ".join(x for x in teile if x) or "(ohne Angaben)"
+
+
+class Zuordnung:
+    """Ordnet Treffer Kandidaten zu (Dubletten-Logik) und speichert Kandidaten und Funde."""
+
+    def __init__(self, storage: Storage, bundesland: str, blocklist: set[str], lauf_id: str):
+        self.storage = storage
+        self.bundesland = bundesland
+        self.blocklist = blocklist
+        self.lauf_id = lauf_id
+        self.index = Index()
+        for k in storage.kandidaten(bundesland):
+            self.index.setze(k.id, kandidat_schluessel(k))
+
+    def verarbeite(
+        self, hit: SearchHit, adapter: SearchAdapter, suchbegriff: str | None, suchort: str | None
+    ) -> bool | None:
+        """True: neuer Kandidat, False: bestehendem zugeordnet, None: verworfen/schon bekannt."""
+        vorbereitet = vorbereiten(hit, adapter, self.blocklist)
+        if vorbereitet is None:
+            return None
+        hit, domain = vorbereitet
+        if self.storage.hat_fund(self.bundesland, hit.quelle, hit.quell_id):
+            return None
+        s = schluessel(hit, domain)
+        abgleich = self.index.finde(s)
+        felder = dict(
+            domain=domain, website=hit.website, name=hit.name, strasse=hit.strasse,
+            plz=hit.plz, ort=hit.ort, telefon=hit.telefon,
+        )  # fmt: skip
+        if abgleich.id is not None:
+            kid, neu = abgleich.id, False
+            vorher = self.storage.get_kandidat(kid)
+            k = self.storage.ergaenze_kandidat(kid, **felder)
+            self.index.setze(kid, zusammenfuehren(self.index.eintraege[kid], kandidat_schluessel(k)))
+            if abgleich.art == DublettenArt.UNSICHER:
+                self._dublette(vorher, hit, domain, abgleich.kriterium, DublettenArt.UNSICHER)
+        else:
+            k = Kandidat(bundesland=self.bundesland, suchort=suchort, quelle=hit.quelle, **felder)
+            kid, neu = self.storage.add_kandidat(k), True
+            self.index.setze(kid, s)
+        for vid in abgleich.verdacht:
+            if vid != kid:
+                self._dublette(self.storage.get_kandidat(vid), hit, domain, "adresse", DublettenArt.VERDACHT)
+        self.storage.add_fund(
+            Fund(
+                kandidat_id=kid, bundesland=self.bundesland, quelle=hit.quelle, quell_id=hit.quell_id,
+                lauf_id=self.lauf_id, suchbegriff=suchbegriff, suchort=suchort, name=hit.name,
+                strasse=hit.strasse, plz=hit.plz, ort=hit.ort, telefon=hit.telefon,
+                website=hit.website, snippet=hit.snippet, roh_url=hit.roh_url,
+            )
+        )  # fmt: skip
+        return neu
+
+    def _dublette(self, k: Kandidat, hit: SearchHit, domain: str | None, kriterium: str, art: DublettenArt) -> None:
+        self.storage.add_dublette(
+            Dublette(
+                behalten=bezeichnung(k), dublette=bezeichnung(hit, domain), bundesland=self.bundesland,
+                kriterium=kriterium, art=art, kanzleiname=hit.name or k.name,
+                details=f"Quelle {hit.quelle}: {hit.quell_id}",
+            )
+        )  # fmt: skip
 
 
 # ---------------------------------------------------------------------- Lauf
@@ -140,7 +241,20 @@ class SuchStatistik:
     uebersprungen: int = 0
     fehler: int = 0
     treffer: int = 0
-    neue_domains: int = 0
+    neue_kandidaten: int = 0
+    anfragen: int = 0
+    kosten: float = 0.0
+    abbruch: str | None = None  # gesetzt, wenn der Lauf wegen LimitErreicht endete
+
+
+def _auftraege(adapter: SearchAdapter, orte: list[Ort], vorlagen: list[str], max_results: int):
+    """(Ort, Suchbegriff, Aufruf) je Arbeitseinheit des Adapters."""
+    for ort in orte:
+        if isinstance(adapter, OrtsAdapter):
+            yield ort, f"ort:{ort.name}", partial(adapter.search_ort, ort)
+        elif isinstance(adapter, QueryAdapter):
+            for query in queries_fuer_ort(vorlagen, ort):
+                yield ort, query, partial(adapter.search, query, max_results)
 
 
 def run_search(
@@ -154,46 +268,54 @@ def run_search(
     max_results: int,
     fortschritt: Callable[[str], None] | None = None,
 ) -> SuchStatistik:
-    """Sucht alle Queries aller Orte und speichert neue Domains als Kandidaten.
+    """Führt einen Adapter für alle Orte aus und speichert Kandidaten und Funde.
 
-    Wiederaufnehmbar: Queries, die mit diesem Adapter schon erfolgreich liefen,
-    werden übersprungen; fehlgeschlagene werden beim nächsten Aufruf erneut versucht.
+    QueryAdapter (Stufe A): je Ort alle Query-Vorlagen. OrtsAdapter (Stufe B): je Ort ein
+    Aufruf von search_ort. Wiederaufnehmbar: Erfolgreich erledigte Einheiten werden
+    übersprungen, fehlgeschlagene beim nächsten Aufruf wiederholt. Bei LimitErreicht
+    (Kontingent, Budget, Zugang) endet der Lauf sauber.
     """
+    schritt = "fill" if isinstance(adapter, OrtsAdapter) else "search"
+    zuordnung = Zuordnung(storage, bundesland, blocklist, lauf_id)
     stat = SuchStatistik()
-    for ort in orte:
-        for query in queries_fuer_ort(vorlagen, ort):
-            if storage.query_erledigt(bundesland, adapter.name, query):
-                stat.uebersprungen += 1
-                continue
-            start = time.monotonic()
-            eintrag = LaufEintrag(
-                lauf_id=lauf_id, schritt="search", bundesland=bundesland,
-                suchbegriff=query, adapter=adapter.name, ort=ort.name,
-            )  # fmt: skip
-            try:
-                hits = adapter.search(query, max_results)
-            except SearchError as e:
-                stat.fehler += 1
-                eintrag.fehler = str(e)
-                eintrag.laufzeit_s = round(time.monotonic() - start, 2)
-                storage.log_lauf(eintrag)
-                log.warning("Suche fehlgeschlagen: %s", e)
-                continue
-            neu = 0
-            for domain, hit in filter_hits(hits, blocklist):
-                kandidat = Kandidat(
-                    domain=domain, bundesland=bundesland, url=hit.url, ort=ort.name,
-                    suchbegriff=query, quelle=hit.quelle, titel=hit.titel, snippet=hit.snippet,
-                )  # fmt: skip
-                if storage.add_kandidat(kandidat):
-                    neu += 1
-            eintrag.trefferzahl = len(hits)
-            eintrag.neue_domains = neu
+    start_anfragen = adapter.anfragen
+    for ort, suchbegriff, aufruf in _auftraege(adapter, orte, vorlagen, max_results):
+        if storage.query_erledigt(bundesland, adapter.name, suchbegriff, schritt):
+            stat.uebersprungen += 1
+            continue
+        start, anfragen_vorher = time.monotonic(), adapter.anfragen
+        eintrag = LaufEintrag(
+            lauf_id=lauf_id, schritt=schritt, bundesland=bundesland,
+            suchbegriff=suchbegriff, adapter=adapter.name, ort=ort.name,
+        )  # fmt: skip
+        fehler: SearchError | None = None
+        try:
+            hits = aufruf()
+        except SearchError as e:
+            fehler, hits = e, []
+        eintrag.anfragen = adapter.anfragen - anfragen_vorher
+        eintrag.kosten = adapter.kosten(eintrag.anfragen)
+        if fehler is not None:
+            eintrag.fehler = str(fehler)
             eintrag.laufzeit_s = round(time.monotonic() - start, 2)
             storage.log_lauf(eintrag)
-            stat.queries += 1
-            stat.treffer += len(hits)
-            stat.neue_domains += neu
-            if fortschritt:
-                fortschritt(f"{query}: {len(hits)} Treffer, {neu} neue Domains")
+            if isinstance(fehler, LimitErreicht):
+                stat.abbruch = str(fehler)
+                log.warning("Lauf beendet: %s", fehler)
+                break
+            stat.fehler += 1
+            log.warning("Suche fehlgeschlagen: %s", fehler)
+            continue
+        neu = sum(1 for h in hits if zuordnung.verarbeite(h, adapter, suchbegriff, ort.name))
+        eintrag.trefferzahl = len(hits)
+        eintrag.neue_kandidaten = neu
+        eintrag.laufzeit_s = round(time.monotonic() - start, 2)
+        storage.log_lauf(eintrag)
+        stat.queries += 1
+        stat.treffer += len(hits)
+        stat.neue_kandidaten += neu
+        if fortschritt:
+            fortschritt(f"{suchbegriff}: {len(hits)} Treffer, {neu} neu, {eintrag.anfragen} Anfragen")
+    stat.anfragen = adapter.anfragen - start_anfragen
+    stat.kosten = adapter.kosten(stat.anfragen)
     return stat

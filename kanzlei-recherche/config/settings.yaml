@@ -14,28 +14,73 @@ pfade:
   ausgabe: data/export/kanzleien_{bundesland}_{datum}.xlsx
   queries: config/queries.yaml
   blocklist: config/domain_blocklist.txt
+  referenz: config/referenz_kammern.yaml
 
-search:
-  adapter: ddgs                      # ddgs | google | brave
-  compare_adapters: [ddgs, google, brave]
-  max_results_per_query: 20
-  ddgs:
-    region: de-de
-    backend: duckduckgo              # nur DuckDuckGo, nicht ddgs-"auto"
-    safesearch: moderate
-    timeout_s: 15
-    pause_s: 3.0                     # Mindestpause zwischen zwei Anfragen
-    pause_jitter_s: 2.0              # zusätzliche Zufallspause 0..jitter
-    retries: 3                       # Wiederholungen nach Rate-Limit/Timeout
-    backoff_s: 20.0                  # Wartezeit vor Retry n: backoff_s * 2**(n-1)
-  google:                            # Platzhalter bis zur Suche-Sitzung
-    per_page: 10
-    max_per_query: 30
-    pause_s: 1.0
-  brave:                             # Platzhalter bis zur Suche-Sitzung
-    per_page: 20
-    max_per_query: 20
-    pause_s: 1.1
+discovery:
+  # Prinzip: zuerst die günstigste Quelle vollständig ausschöpfen (Stufe A),
+  # dann nur die Lücken mit der nächsten Quelle füllen (Stufe B, `recherche fill`).
+  stufe_a:
+    adapter: brave                   # brave | google_cse | serpapi | ddgs
+    max_results_per_query: 60
+  max_anfragen_je_lauf: 1000         # Budget je Lauf und Adapter (bezahlte Anfragen, ohne Cache-Treffer)
+  coverage:
+    quote_ziel: 0.9                  # Lücke, wenn gefunden < erwartet * quote_ziel
+    top_orte: 15
+
+  quellen:
+    # ---- Stufe A: Websuche je Ort mit den Query-Vorlagen aus queries.yaml
+    brave:                           # Standard. Key: BRAVE_API_KEY in .env
+      aktiv: true
+      per_page: 20                   # count, max. 20
+      max_per_query: 60              # Paging über offset (Seitenindex 0..9)
+      country: DE
+      search_lang: de
+      pause_s: 1.1                   # Brave: Ratenlimit je Sekunde laut Tarif
+      retries: 3
+      backoff_s: 5.0
+      kosten_je_1000: 5.0
+    google_cse:                      # nur mit Alt-Key (API für Neukunden gesperrt, Ende 01.01.2027)
+      aktiv: false                   # Keys: GOOGLE_CSE_API_KEY, GOOGLE_CSE_ID
+      per_page: 10
+      max_per_query: 30
+      kosten_je_1000: 5.0
+      freikontingent_tag: 100
+    serpapi:                         # Platzhalter: Google-Trefferseite über SerpAPI (Pilot-Vergleich)
+      aktiv: false                   # Key: SERPAPI_KEY
+      kosten_je_1000: 15.0
+    ddgs:                            # nur lokale Entwicklung, ohne Key
+      aktiv: true
+      region: de-de
+      backend: duckduckgo
+      pause_s: 3.0
+      pause_jitter_s: 2.0
+      retries: 3
+      backoff_s: 20.0
+
+    # ---- Stufe B: Lückenfüller, nur für übergebene Orte (oder --luecken / --alle)
+    places:                          # Platzhalter: Google Places Text Search (New) + PLZ-Raster
+      aktiv: false                   # Key: GOOGLE_PLACES_API_KEY
+      text_query: Steuerberater
+      included_type: accounting
+      zelle_km: 5.0
+      min_zelle_km: 0.5
+      kosten_je_1000: 32.0           # Schätzwert, vor Einsatz mit der Google-Preisliste abgleichen
+    gelbeseiten:                     # Platzhalter
+      aktiv: false
+      pause_s: 10.0
+      pause_jitter_s: 5.0
+    dasoertliche:                    # Platzhalter
+      aktiv: false
+      pause_s: 10.0
+      pause_jitter_s: 5.0
+    elf880:                          # Platzhalter (11880)
+      aktiv: false
+      pause_s: 10.0
+      pause_jitter_s: 5.0
+    stb_verzeichnis:                 # Platzhalter: amtliches Steuerberaterverzeichnis, PLZ für PLZ
+      aktiv: false                   # standardmäßig AUS
+      pause_s: 30.0
+      pause_jitter_s: 15.0
 
 crawl:
   parallel_domains: 10

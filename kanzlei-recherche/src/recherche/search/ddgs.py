@@ -14,7 +14,8 @@ from collections.abc import Callable
 from typing import Any, Protocol
 
 from ..config import DdgsConfig
-from .base import SearchAdapter, SearchError, SearchHit
+from .base import Cache, QueryAdapter, SearchError, SearchHit
+from .http_base import url_id
 
 log = logging.getLogger(__name__)
 
@@ -41,18 +42,20 @@ def _ddgs_fehlerklassen() -> tuple[type[BaseException], ...]:
         return ()
 
 
-class DdgsAdapter(SearchAdapter):
+class DdgsAdapter(QueryAdapter):
     name = "ddgs"
+    cfg: DdgsConfig
 
     def __init__(
         self,
         cfg: DdgsConfig | None = None,
+        cache: Cache | None = None,
         client: TextClient | None = None,
         sleep: Callable[[float], None] = time.sleep,
         clock: Callable[[], float] = time.monotonic,
         rng: random.Random | None = None,
     ):
-        self.cfg = cfg or DdgsConfig()
+        super().__init__(cfg or DdgsConfig(), cache)
         self._client = client
         self._sleep = sleep
         self._clock = clock
@@ -80,6 +83,7 @@ class DdgsAdapter(SearchAdapter):
         versuche = self.cfg.retries + 1
         for versuch in range(1, versuche + 1):
             self._drosseln()
+            self._anfrage_zaehlen()
             try:
                 roh = self.client.text(
                     query,
@@ -107,8 +111,10 @@ class DdgsAdapter(SearchAdapter):
         if not url:
             return None
         return SearchHit(
-            url=url,
-            titel=(roh.get("title") or "").strip() or None,
-            snippet=(roh.get("body") or "").strip() or None,
             quelle=self.name,
+            quell_id=url_id(url),
+            name=(roh.get("title") or "").strip() or None,
+            website=url,
+            snippet=(roh.get("body") or "").strip() or None,
+            roh_url=url,
         )

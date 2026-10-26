@@ -1,8 +1,11 @@
 import sqlite3
 
 import pytest
+from conftest import FIXTURES
 
 from recherche.models import (
+    DublettenArt,
+    Fund,
     Kandidat,
     Kanzlei,
     LaufEintrag,
@@ -72,24 +75,114 @@ def test_daten_ueberleben_neues_oeffnen(db_pfad, kanzleien):
         assert len(st.kanzleien("SH")) == 20
 
 
-def test_kandidat_jede_domain_einmal(storage):
-    k = Kandidat(domain="a.example", bundesland="SH", url="https://a.example/")
-    assert storage.add_kandidat(k) is True
-    assert storage.add_kandidat(k.model_copy(update={"url": "https://a.example/x"})) is False
-    assert storage.get_kandidat("a.example").url == "https://a.example/"
+def test_kandidat_anlegen_und_laden(storage):
+    kid = storage.add_kandidat(Kandidat(bundesland="SH", domain="a.example", website="https://a.example/"))
+    k = storage.get_kandidat(kid)
+    assert (k.id, k.domain, k.crawl_status) == (kid, "a.example", SchrittStatus.OFFEN)
+    assert storage.kandidat_nach_domain("a.example").id == kid
+
+
+def test_kandidaten_ohne_website_erlaubt(storage):
+    a = storage.add_kandidat(Kandidat(bundesland="SH", name="Steuerbüro Schütt", plz="24534"))
+    b = storage.add_kandidat(Kandidat(bundesland="SH", name="Kanzlei Voß", plz="24306"))
+    assert a != b
+    assert len(storage.kandidaten("SH")) == 2
+    assert storage.kandidaten("SH", nur_mit_website=True) == []
+
+
+def test_domain_bleibt_eindeutig(storage):
+    storage.add_kandidat(Kandidat(bundesland="SH", domain="a.example"))
+    with pytest.raises(sqlite3.IntegrityError):
+        storage.add_kandidat(Kandidat(bundesland="SH", domain="a.example"))
+
+
+def test_ergaenzen_fuellt_nur_leere_felder(storage):
+    kid = storage.add_kandidat(Kandidat(bundesland="SH", name="Hansen", telefon="+49 431 1"))
+    k = storage.ergaenze_kandidat(kid, name="Anderer Name", telefon="+49 431 2", plz="24103",
+                                  domain="hansen.example", suchort="egal")
+    assert (k.name, k.telefon, k.plz, k.domain) == ("Hansen", "+49 431 1", "24103", "hansen.example")
+    assert k.suchort is None  # nicht ergänzbar
+
+
+def test_ergaenzen_ueberspringt_vergebene_domain(storage):
+    storage.add_kandidat(Kandidat(bundesland="SH", domain="a.example"))
+    kid = storage.add_kandidat(Kandidat(bundesland="SH", name="B"))
+    assert storage.ergaenze_kandidat(kid, domain="a.example").domain is None
 
 
 def test_kandidat_status_fuer_wiederaufnahme(storage):
-    for d in ("a.example", "b.example", "c.example"):
-        storage.add_kandidat(Kandidat(domain=d, bundesland="SH", url=f"https://{d}/"))
-    storage.set_crawl_status("a.example", SchrittStatus.FERTIG)
-    storage.set_crawl_status("b.example", SchrittStatus.FEHLER, "Timeout")
+    ids = [storage.add_kandidat(Kandidat(bundesland="SH", domain=d)) for d in ("a.example", "b.example", "c.example")]
+    storage.set_crawl_status(ids[0], SchrittStatus.FERTIG)
+    storage.set_crawl_status(ids[1], SchrittStatus.FEHLER, "Timeout")
     offen = storage.kandidaten("SH", crawl_status=SchrittStatus.OFFEN)
     assert [k.domain for k in offen] == ["c.example"]
-    assert storage.get_kandidat("b.example").fehler == "Timeout"
-    storage.set_extract_status("a.example", SchrittStatus.FERTIG)
+    assert storage.get_kandidat(ids[1]).fehler == "Timeout"
+    storage.set_extract_status(ids[0], SchrittStatus.FERTIG)
     rest = storage.kandidaten("SH", crawl_status=SchrittStatus.FERTIG, extract_status=SchrittStatus.OFFEN)
     assert rest == []
+
+
+def test_funde_je_quelle_einmal(storage):
+    kid = storage.add_kandidat(Kandidat(bundesland="SH", domain="a.example"))
+    f = Fund(kandidat_id=kid, bundesland="SH", quelle="brave", quell_id="https://a.example")
+    assert storage.add_fund(f) is True
+    assert storage.add_fund(f) is False
+    assert storage.add_fund(f.model_copy(update={"quelle": "places"})) is True
+    assert storage.hat_fund("SH", "brave", "https://a.example")
+    assert not storage.hat_fund("HH", "brave", "https://a.example")
+    assert [x.quelle for x in storage.funde("SH")] == ["brave", "places"]
+    assert len(storage.funde("SH", quelle="places")) == 1
+
+
+def test_api_cache(storage):
+    assert storage.cache_get("brave", "k") is None
+    storage.cache_put("brave", "k", {"web": {"results": [1, 2]}})
+    assert storage.cache_get("brave", "k") == {"web": {"results": [1, 2]}}
+    assert storage.cache_get("google_cse", "k") is None
+
+
+def test_kostenlog_summe(storage):
+    for adapter, n in (("brave", 3), ("brave", 2), ("ddgs", 4)):
+        storage.log_lauf(LaufEintrag(lauf_id="l1", schritt="search", bundesland="SH", adapter=adapter,
+                                     anfragen=n, kosten=n * 0.005))
+    storage.log_lauf(LaufEintrag(lauf_id="l2", schritt="search", bundesland="SH", adapter="brave", anfragen=10))
+    assert storage.anfragen_summe("SH", "l1") == {"brave": (5, 0.025), "ddgs": (4, 0.02)}
+    assert storage.anfragen_summe("SH")["brave"][0] == 15
+
+
+def test_migration_v1_auf_v2(db_pfad):
+    con = sqlite3.connect(db_pfad)
+    con.executescript((FIXTURES / "migration" / "schema_v1.sql").read_text(encoding="utf-8"))
+    con.execute("PRAGMA user_version = 1")
+    con.execute(
+        "INSERT INTO kandidaten (domain, bundesland, url, ort, suchbegriff, quelle, titel, snippet, gefunden_am)"
+        " VALUES ('a.example', 'SH', 'https://a.example/', 'Kiel', 'Steuerberater Kiel', 'ddgs', 'A', 's',"
+        " '2026-10-20T09:00:00')"
+    )
+    con.execute(
+        "INSERT INTO dubletten VALUES ('b.example', 'a.example', 'SH', 'telefon', 'A', NULL, '2026-10-20T09:00:00')"
+    )
+    con.execute(
+        "INSERT INTO lauf_protokoll (lauf_id, schritt, bundesland, suchbegriff, adapter, trefferzahl, neue_domains,"
+        " laufzeit_s, zeitpunkt) VALUES ('l', 'search', 'SH', 'Steuerberater Kiel', 'ddgs', 5, 3, 1.0,"
+        " '2026-10-20T09:00:00')"
+    )
+    con.commit()
+    con.close()
+    with Storage(db_pfad) as st:
+        assert st.conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
+        k = st.kandidat_nach_domain("a.example")
+        assert (k.website, k.suchort, k.name, k.quelle) == ("https://a.example/", "Kiel", "A", "ddgs")
+        (f,) = st.funde("SH")
+        assert (f.kandidat_id, f.quelle, f.quell_id, f.suchbegriff) == (k.id, "ddgs", "https://a.example/", "Steuerberater Kiel")
+        (d,) = st.dubletten("SH")
+        assert (d.behalten, d.dublette, d.art) == ("a.example", "b.example", DublettenArt.ZUSAMMENGEFUEHRT)
+        (e,) = st.lauf_protokoll("SH")
+        assert (e.neue_kandidaten, e.anfragen) == (3, 0)
+        assert st.query_erledigt("SH", "ddgs", "Steuerberater Kiel")
+    # zweites Öffnen: keine erneute Migration
+    with Storage(db_pfad) as st:
+        assert len(st.kandidaten("SH")) == 1
 
 
 def test_seiten_cache_nie_zweimal(storage):
@@ -120,10 +213,11 @@ def test_fixture_import_komplett(befuellt):
 
 
 def test_query_erledigt_nur_ohne_fehler(befuellt):
-    assert befuellt.query_erledigt("SH", "ddgs", "Steuerberater Kiel")
-    assert not befuellt.query_erledigt("SH", "ddgs", "Steuerberatung 24103 Kiel")  # mit Fehler
-    assert not befuellt.query_erledigt("SH", "google", "Steuerberater Kiel")
-    assert not befuellt.query_erledigt("SH", "ddgs", "Steuerberater Flensburg")
+    assert befuellt.query_erledigt("SH", "brave", "Steuerberater Kiel")
+    assert not befuellt.query_erledigt("SH", "brave", "Steuerberatung 24103 Kiel")  # mit Fehler
+    assert not befuellt.query_erledigt("SH", "google_cse", "Steuerberater Kiel")
+    assert not befuellt.query_erledigt("SH", "brave", "Steuerberater Flensburg")
+    assert not befuellt.query_erledigt("SH", "brave", "Steuerberater Kiel", schritt="fill")
 
 
 def test_lauf_protokoll_reihenfolge(storage):

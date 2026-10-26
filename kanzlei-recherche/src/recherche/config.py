@@ -27,38 +27,124 @@ class PfadConfig(BaseModel):
     ausgabe: str = "data/export/kanzleien_{bundesland}_{datum}.xlsx"
     queries: str = "config/queries.yaml"
     blocklist: str = "config/domain_blocklist.txt"
+    referenz: str = "config/referenz_kammern.yaml"
 
 
-class DdgsConfig(BaseModel):
+# ---------------------------------------------------------------------- Quellen
+
+
+class QuelleConfig(BaseModel):
+    """Gemeinsame Einstellungen aller Discovery-Quellen."""
+
+    aktiv: bool = False
+    pause_s: float = 1.0  # Mindestabstand zwischen zwei Anfragen
+    pause_jitter_s: float = 0.0  # zusätzliche Zufallspause 0..jitter
+    retries: int = 3
+    backoff_s: float = 5.0  # Wartezeit vor Retry n: backoff_s * 2**(n-1)
+    timeout_s: float = 15.0
+    kosten_je_1000: float = 0.0  # für das Kostenlog
+    cache: bool = True  # API-Antworten in SQLite cachen (Wiederaufnahme ohne Doppelkosten)
+
+
+class DdgsConfig(QuelleConfig):
+    aktiv: bool = True
     region: str = "de-de"
     backend: str = "duckduckgo"
     safesearch: str = "moderate"
-    timeout_s: int = 15
     pause_s: float = 3.0
     pause_jitter_s: float = 2.0
-    retries: int = 3
     backoff_s: float = 20.0
+    cache: bool = False
 
 
-class GoogleConfig(BaseModel):
+class BraveConfig(QuelleConfig):
+    url: str = "https://api.search.brave.com/res/v1/web/search"
+    per_page: int = 20  # Brave: count max. 20
+    max_per_query: int = 60  # Paging über offset (Seitenindex 0..9)
+    country: str = "DE"
+    search_lang: str = "de"
+    safesearch: str = "moderate"
+    pause_s: float = 1.1
+    kosten_je_1000: float = 5.0
+
+
+class GoogleCseConfig(QuelleConfig):
+    url: str = "https://www.googleapis.com/customsearch/v1"
+    per_page: int = 10  # Google: num max. 10
+    max_per_query: int = 30
+    gl: str = "de"
+    cr: str = "countryDE"
+    hl: str = "de"
+    kosten_je_1000: float = 5.0
+    freikontingent_tag: int = 100
+
+
+class SerpApiConfig(QuelleConfig):
+    url: str = "https://serpapi.com/search.json"
     per_page: int = 10
     max_per_query: int = 30
-    pause_s: float = 1.0
+    gl: str = "de"
+    hl: str = "de"
+    kosten_je_1000: float = 15.0
 
 
-class BraveConfig(BaseModel):
-    per_page: int = 20
-    max_per_query: int = 20
-    pause_s: float = 1.1
+class PlacesConfig(QuelleConfig):
+    url: str = "https://places.googleapis.com/v1/places:searchText"
+    text_query: str = "Steuerberater"
+    included_type: str = "accounting"
+    max_treffer_je_zelle: int = 60  # Text Search (New): bis 3 Seiten à 20
+    zelle_km: float = 5.0  # Startgröße der Rasterzellen
+    min_zelle_km: float = 0.5  # nicht feiner teilen
+    kosten_je_1000: float = 32.0
 
 
-class SearchConfig(BaseModel):
-    adapter: str = "ddgs"
-    compare_adapters: list[str] = Field(default_factory=lambda: ["ddgs", "google", "brave"])
-    max_results_per_query: int = 20
+class VerzeichnisConfig(QuelleConfig):
+    rubrik: str = "Steuerberater"
+    pause_s: float = 10.0
+    pause_jitter_s: float = 5.0
+
+
+class QuellenConfig(BaseModel):
+    brave: BraveConfig = Field(default_factory=lambda: BraveConfig(aktiv=True))
+    google_cse: GoogleCseConfig = Field(default_factory=GoogleCseConfig)
+    serpapi: SerpApiConfig = Field(default_factory=SerpApiConfig)
     ddgs: DdgsConfig = Field(default_factory=DdgsConfig)
-    google: GoogleConfig = Field(default_factory=GoogleConfig)
-    brave: BraveConfig = Field(default_factory=BraveConfig)
+    places: PlacesConfig = Field(default_factory=PlacesConfig)
+    gelbeseiten: VerzeichnisConfig = Field(default_factory=VerzeichnisConfig)
+    dasoertliche: VerzeichnisConfig = Field(default_factory=VerzeichnisConfig)
+    elf880: VerzeichnisConfig = Field(default_factory=VerzeichnisConfig)
+    stb_verzeichnis: VerzeichnisConfig = Field(
+        default_factory=lambda: VerzeichnisConfig(pause_s=30.0, pause_jitter_s=15.0)
+    )
+
+    def get(self, name: str) -> QuelleConfig:
+        cfg = getattr(self, name, None)
+        if not isinstance(cfg, QuelleConfig):
+            raise KeyError(name)
+        return cfg
+
+    def namen(self) -> list[str]:
+        return list(type(self).model_fields)
+
+
+class StufeAConfig(BaseModel):
+    adapter: str = "brave"
+    max_results_per_query: int = 60
+
+
+class CoverageConfig(BaseModel):
+    quote_ziel: float = 0.9  # Ort/Kreis gilt als Lücke, wenn gefunden < erwartet * quote_ziel
+    top_orte: int = 15
+
+
+class DiscoveryConfig(BaseModel):
+    stufe_a: StufeAConfig = Field(default_factory=StufeAConfig)
+    max_anfragen_je_lauf: int | None = 1000
+    quellen: QuellenConfig = Field(default_factory=QuellenConfig)
+    coverage: CoverageConfig = Field(default_factory=CoverageConfig)
+
+
+# ---------------------------------------------------------------------- Rest
 
 
 class CrawlConfig(BaseModel):
@@ -89,7 +175,7 @@ class Settings(BaseModel):
     standard_bundesland: str = "SH"
     bundeslaender: dict[str, BundeslandConfig] = Field(default_factory=dict)
     pfade: PfadConfig = Field(default_factory=PfadConfig)
-    search: SearchConfig = Field(default_factory=SearchConfig)
+    discovery: DiscoveryConfig = Field(default_factory=DiscoveryConfig)
     crawl: CrawlConfig = Field(default_factory=CrawlConfig)
     llm: LlmConfig = Field(default_factory=LlmConfig)
     openplz: OpenPlzConfig = Field(default_factory=OpenPlzConfig)

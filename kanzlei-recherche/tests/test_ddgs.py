@@ -21,8 +21,8 @@ def test_antwort_wird_zu_searchhits(ddgs_antworten):
     adapter, client, _ = _adapter(ddgs_antworten)
     hits = adapter.search("Steuerberater Kiel", 20)
     assert len(hits) == 7  # Treffer ohne URL fällt weg
-    assert hits[0].url == "https://www.hansen-steuerberatung.example/"
-    assert hits[0].titel == "Hansen & Petersen Steuerberater – Kiel"
+    assert hits[0].website == "https://www.hansen-steuerberatung.example/"
+    assert hits[0].name == "Hansen & Petersen Steuerberater – Kiel"
     assert hits[0].snippet.startswith("Ihre Steuerberater in Kiel")
     assert {h.quelle for h in hits} == {"ddgs"}
 

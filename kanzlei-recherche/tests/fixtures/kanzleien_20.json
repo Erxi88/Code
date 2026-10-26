@@ -657,22 +657,24 @@
   ],
   "dubletten": [
     {
-      "behalten_domain": "nordsee-steuerberatung.example",
-      "dublette_domain": "nordsee-steuer-husum.example",
       "bundesland": "SH",
       "kriterium": "telefon",
       "kanzleiname": "Carstensen & Partner Steuerberater",
       "details": "+49 4841 669025",
-      "zeitpunkt": "2026-10-25T09:00:00"
+      "zeitpunkt": "2026-10-25T09:00:00",
+      "behalten": "nordsee-steuerberatung.example",
+      "dublette": "nordsee-steuer-husum.example",
+      "art": "zusammengeführt"
     },
     {
-      "behalten_domain": "hansen-steuerberatung.example",
-      "dublette_domain": "hansen-petersen-kiel.example",
       "bundesland": "SH",
       "kriterium": "plz+name",
       "kanzleiname": "Hansen & Petersen Steuerberater",
       "details": "PLZ 24103, Name-Token: hansen, petersen",
-      "zeitpunkt": "2026-10-25T09:00:01"
+      "zeitpunkt": "2026-10-25T09:00:01",
+      "behalten": "hansen-steuerberatung.example",
+      "dublette": "hansen-petersen-kiel.example",
+      "art": "unsicher"
     }
   ],
   "lauf_protokoll": [
@@ -681,49 +683,57 @@
       "schritt": "search",
       "bundesland": "SH",
       "suchbegriff": "Steuerberater Kiel",
-      "adapter": "ddgs",
+      "adapter": "brave",
       "ort": "Kiel",
       "trefferzahl": 20,
-      "neue_domains": 11,
       "laufzeit_s": 2.84,
-      "zeitpunkt": "2026-10-20T09:00:03"
+      "zeitpunkt": "2026-10-20T09:00:03",
+      "neue_kandidaten": 11,
+      "anfragen": 2,
+      "kosten": 0.01
     },
     {
       "lauf_id": "20261020-090000",
       "schritt": "search",
       "bundesland": "SH",
       "suchbegriff": "Steuerkanzlei Kiel",
-      "adapter": "ddgs",
+      "adapter": "brave",
       "ort": "Kiel",
       "trefferzahl": 18,
-      "neue_domains": 4,
       "laufzeit_s": 3.12,
-      "zeitpunkt": "2026-10-20T09:00:09"
+      "zeitpunkt": "2026-10-20T09:00:09",
+      "neue_kandidaten": 4,
+      "anfragen": 2,
+      "kosten": 0.01
     },
     {
       "lauf_id": "20261020-090000",
       "schritt": "search",
       "bundesland": "SH",
       "suchbegriff": "Steuerberatung 24103 Kiel",
-      "adapter": "ddgs",
+      "adapter": "brave",
       "ort": "Kiel",
       "trefferzahl": 0,
-      "neue_domains": 0,
       "laufzeit_s": 61.5,
-      "fehler": "ddgs: 'Steuerberatung 24103 Kiel' nach 4 Versuchen: Ratelimit",
-      "zeitpunkt": "2026-10-20T09:01:15"
+      "fehler": "brave: 429 Ratenlimit (Request rate limit exceeded for plan.) (nach 4 Versuchen)",
+      "zeitpunkt": "2026-10-20T09:01:15",
+      "neue_kandidaten": 0,
+      "anfragen": 4,
+      "kosten": 0.02
     },
     {
       "lauf_id": "20261020-090000",
       "schritt": "search",
       "bundesland": "SH",
       "suchbegriff": "Steuerberater Husum",
-      "adapter": "ddgs",
+      "adapter": "brave",
       "ort": "Husum",
       "trefferzahl": 14,
-      "neue_domains": 6,
       "laufzeit_s": 2.41,
-      "zeitpunkt": "2026-10-20T09:01:21"
+      "zeitpunkt": "2026-10-20T09:01:21",
+      "neue_kandidaten": 6,
+      "anfragen": 2,
+      "kosten": 0.01
     }
   ]
 }

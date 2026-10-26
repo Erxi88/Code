@@ -84,20 +84,49 @@ class Ansprechpartner(BaseModel):
 
 
 class Kandidat(BaseModel):
-    """Eine Domain aus der Suche – jede Domain gibt es genau einmal."""
+    """Eine (vermutete) Kanzlei aus der Discovery – aus allen Quellen zusammengeführt.
 
-    domain: str
+    Treffer aus Branchenverzeichnissen oder Places haben oft keine Website; deshalb ist
+    die Domain optional (aber eindeutig, wenn vorhanden).
+    """
+
+    id: int | None = None
     bundesland: str  # Kürzel des Recherche-Laufs, z. B. "SH"
-    url: str
+    domain: str | None = None
+    website: str | None = None
+    name: str | None = None
+    strasse: str | None = None
+    plz: str | None = None
     ort: str | None = None
-    suchbegriff: str | None = None
-    quelle: str | None = None  # Such-Adapter
-    titel: str | None = None
-    snippet: str | None = None
+    telefon: str | None = None
+    suchort: str | None = None  # Ort, für den gesucht wurde
+    quelle: str | None = None  # Quelle des ersten Fundes
     gefunden_am: datetime = Field(default_factory=datetime.now)
     crawl_status: SchrittStatus = SchrittStatus.OFFEN
     extract_status: SchrittStatus = SchrittStatus.OFFEN
     fehler: str | None = None
+
+
+class Fund(BaseModel):
+    """Ein einzelner Treffer einer Quelle, zugeordnet zu einem Kandidaten."""
+
+    id: int | None = None
+    kandidat_id: int | None = None
+    bundesland: str
+    quelle: str
+    quell_id: str
+    lauf_id: str | None = None
+    suchbegriff: str | None = None
+    suchort: str | None = None
+    name: str | None = None
+    strasse: str | None = None
+    plz: str | None = None
+    ort: str | None = None
+    telefon: str | None = None
+    website: str | None = None
+    snippet: str | None = None
+    roh_url: str | None = None
+    gefunden_am: datetime = Field(default_factory=datetime.now)
 
 
 class Seite(BaseModel):
@@ -159,11 +188,18 @@ class NichtGefunden(BaseModel):
     zeitpunkt: datetime = Field(default_factory=datetime.now)
 
 
+class DublettenArt(StrEnum):
+    ZUSAMMENGEFUEHRT = "zusammengeführt"  # sicher (Domain, Telefon, Adresse + Name)
+    UNSICHER = "unsicher"  # zusammengeführt über PLZ + Name – bitte prüfen
+    VERDACHT = "verdacht"  # gleiche Adresse, anderer Name – NICHT zusammengeführt
+
+
 class Dublette(BaseModel):
-    behalten_domain: str  # Datensatz, der in „Kanzleien" bleibt
-    dublette_domain: str  # zusammengeführter Datensatz
+    behalten: str  # Datensatz, der bleibt (Domain oder Name/Adresse)
+    dublette: str  # zusammengeführter bzw. verdächtiger Datensatz
     bundesland: str
-    kriterium: str  # domain | telefon | plz+name
+    kriterium: str  # domain | telefon | adresse | plz+name
+    art: DublettenArt = DublettenArt.ZUSAMMENGEFUEHRT
     kanzleiname: str | None = None
     details: str | None = None
     zeitpunkt: datetime = Field(default_factory=datetime.now)
@@ -171,13 +207,15 @@ class Dublette(BaseModel):
 
 class LaufEintrag(BaseModel):
     lauf_id: str
-    schritt: str  # search | crawl | extract | export
+    schritt: str  # search | fill | crawl | extract | export
     bundesland: str
     suchbegriff: str | None = None
     adapter: str | None = None
     ort: str | None = None
     trefferzahl: int = 0
-    neue_domains: int = 0
+    neue_kandidaten: int = 0
+    anfragen: int = 0  # tatsächlich gesendete (bezahlte) Anfragen, ohne Cache-Treffer
+    kosten: float = 0.0  # anfragen * kosten_je_1000 / 1000
     laufzeit_s: float = 0.0
     fehler: str | None = None
     zeitpunkt: datetime = Field(default_factory=datetime.now)

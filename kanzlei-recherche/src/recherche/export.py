@@ -63,9 +63,10 @@ NICHT_GEFUNDEN_SPALTEN: list[Spalte] = [
 ]
 
 DUBLETTEN_SPALTEN: list[Spalte] = [
-    ("Behalten (Domain)", 30, lambda d: d.behalten_domain),
-    ("Dublette (Domain)", 30, lambda d: d.dublette_domain),
+    ("Behalten", 34, lambda d: d.behalten),
+    ("Dublette", 34, lambda d: d.dublette),
     ("Kriterium", 12, lambda d: d.kriterium),
+    ("Art", 16, lambda d: d.art.value),
     ("Kanzleiname", 38, lambda d: d.kanzleiname),
     ("Details", 40, lambda d: d.details),
     ("Zeitpunkt", 19, lambda d: d.zeitpunkt.replace(microsecond=0)),
@@ -78,7 +79,9 @@ PROTOKOLL_SPALTEN: list[Spalte] = [
     ("Ort", 18, lambda e: e.ort),
     ("Suchbegriff", 38, lambda e: e.suchbegriff),
     ("Trefferzahl", 11, lambda e: e.trefferzahl),
-    ("Neue Domains", 12, lambda e: e.neue_domains),
+    ("Neue Kandidaten", 14, lambda e: e.neue_kandidaten),
+    ("Anfragen", 10, lambda e: e.anfragen),
+    ("Kosten", 9, lambda e: e.kosten),
     ("Laufzeit (s)", 11, lambda e: e.laufzeit_s),
     ("Fehler", 40, lambda e: e.fehler),
     ("Zeitpunkt", 19, lambda e: e.zeitpunkt.replace(microsecond=0)),

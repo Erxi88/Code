@@ -1,81 +1,81 @@
-ort;plz;kreis
-Kiel;24103;Kreisfreie Stadt Kiel
-Lübeck;23552;Kreisfreie Stadt Lübeck
-Flensburg;24937;Kreisfreie Stadt Flensburg
-Neumünster;24534;Kreisfreie Stadt Neumünster
-Norderstedt;22846;Kreis Segeberg
-Bad Segeberg;23795;Kreis Segeberg
-Kaltenkirchen;24568;Kreis Segeberg
-Henstedt-Ulzburg;24558;Kreis Segeberg
-Bad Bramstedt;24576;Kreis Segeberg
-Wahlstedt;23812;Kreis Segeberg
-Elmshorn;25335;Kreis Pinneberg
-Pinneberg;25421;Kreis Pinneberg
-Wedel;22880;Kreis Pinneberg
-Quickborn;25451;Kreis Pinneberg
-Uetersen;25436;Kreis Pinneberg
-Tornesch;25436;Kreis Pinneberg
-Barmstedt;25355;Kreis Pinneberg
-Halstenbek;25469;Kreis Pinneberg
-Rellingen;25462;Kreis Pinneberg
-Schenefeld;22869;Kreis Pinneberg
-Ahrensburg;22926;Kreis Stormarn
-Bad Oldesloe;23843;Kreis Stormarn
-Bargteheide;22941;Kreis Stormarn
-Reinbek;21465;Kreis Stormarn
-Glinde;21509;Kreis Stormarn
-Reinfeld (Holstein);23858;Kreis Stormarn
-Trittau;22946;Kreis Stormarn
-Itzehoe;25524;Kreis Steinburg
-Glückstadt;25348;Kreis Steinburg
-Kellinghusen;25548;Kreis Steinburg
-Wilster;25554;Kreis Steinburg
-Rendsburg;24768;Kreis Rendsburg-Eckernförde
-Eckernförde;24340;Kreis Rendsburg-Eckernförde
-Büdelsdorf;24782;Kreis Rendsburg-Eckernförde
-Kronshagen;24119;Kreis Rendsburg-Eckernförde
-Altenholz;24161;Kreis Rendsburg-Eckernförde
-Bordesholm;24582;Kreis Rendsburg-Eckernförde
-Nortorf;24589;Kreis Rendsburg-Eckernförde
-Hohenwestedt;24594;Kreis Rendsburg-Eckernförde
-Husum;25813;Kreis Nordfriesland
-Niebüll;25899;Kreis Nordfriesland
-Sylt;25980;Kreis Nordfriesland
-Wyk auf Föhr;25938;Kreis Nordfriesland
-Friedrichstadt;25840;Kreis Nordfriesland
-Tönning;25832;Kreis Nordfriesland
-Sankt Peter-Ording;25826;Kreis Nordfriesland
-Bredstedt;25821;Kreis Nordfriesland
-Leck;25917;Kreis Nordfriesland
-Heide;25746;Kreis Dithmarschen
-Brunsbüttel;25541;Kreis Dithmarschen
-Meldorf;25704;Kreis Dithmarschen
-Marne;25709;Kreis Dithmarschen
-Büsum;25761;Kreis Dithmarschen
-Schleswig;24837;Kreis Schleswig-Flensburg
-Kappeln;24376;Kreis Schleswig-Flensburg
-Harrislee;24955;Kreis Schleswig-Flensburg
-Glücksburg (Ostsee);24960;Kreis Schleswig-Flensburg
-Handewitt;24983;Kreis Schleswig-Flensburg
-Tarp;24963;Kreis Schleswig-Flensburg
-Süderbrarup;24392;Kreis Schleswig-Flensburg
-Eutin;23701;Kreis Ostholstein
-Bad Schwartau;23611;Kreis Ostholstein
-Neustadt in Holstein;23730;Kreis Ostholstein
-Oldenburg in Holstein;23758;Kreis Ostholstein
-Fehmarn;23769;Kreis Ostholstein
-Stockelsdorf;23617;Kreis Ostholstein
-Ratekau;23626;Kreis Ostholstein
-Timmendorfer Strand;23669;Kreis Ostholstein
-Scharbeutz;23683;Kreis Ostholstein
-Malente;23714;Kreis Ostholstein
-Plön;24306;Kreis Plön
-Preetz;24211;Kreis Plön
-Lütjenburg;24321;Kreis Plön
-Heikendorf;24226;Kreis Plön
-Ratzeburg;23909;Kreis Herzogtum Lauenburg
-Mölln;23879;Kreis Herzogtum Lauenburg
-Geesthacht;21502;Kreis Herzogtum Lauenburg
-Lauenburg/Elbe;21481;Kreis Herzogtum Lauenburg
-Schwarzenbek;21493;Kreis Herzogtum Lauenburg
-Wentorf bei Hamburg;21465;Kreis Herzogtum Lauenburg
+ort;plz;kreis;einwohner
+Kiel;24103;Kreisfreie Stadt Kiel;
+Lübeck;23552;Kreisfreie Stadt Lübeck;
+Flensburg;24937;Kreisfreie Stadt Flensburg;
+Neumünster;24534;Kreisfreie Stadt Neumünster;
+Norderstedt;22846;Kreis Segeberg;
+Bad Segeberg;23795;Kreis Segeberg;
+Kaltenkirchen;24568;Kreis Segeberg;
+Henstedt-Ulzburg;24558;Kreis Segeberg;
+Bad Bramstedt;24576;Kreis Segeberg;
+Wahlstedt;23812;Kreis Segeberg;
+Elmshorn;25335;Kreis Pinneberg;
+Pinneberg;25421;Kreis Pinneberg;
+Wedel;22880;Kreis Pinneberg;
+Quickborn;25451;Kreis Pinneberg;
+Uetersen;25436;Kreis Pinneberg;
+Tornesch;25436;Kreis Pinneberg;
+Barmstedt;25355;Kreis Pinneberg;
+Halstenbek;25469;Kreis Pinneberg;
+Rellingen;25462;Kreis Pinneberg;
+Schenefeld;22869;Kreis Pinneberg;
+Ahrensburg;22926;Kreis Stormarn;
+Bad Oldesloe;23843;Kreis Stormarn;
+Bargteheide;22941;Kreis Stormarn;
+Reinbek;21465;Kreis Stormarn;
+Glinde;21509;Kreis Stormarn;
+Reinfeld (Holstein);23858;Kreis Stormarn;
+Trittau;22946;Kreis Stormarn;
+Itzehoe;25524;Kreis Steinburg;
+Glückstadt;25348;Kreis Steinburg;
+Kellinghusen;25548;Kreis Steinburg;
+Wilster;25554;Kreis Steinburg;
+Rendsburg;24768;Kreis Rendsburg-Eckernförde;
+Eckernförde;24340;Kreis Rendsburg-Eckernförde;
+Büdelsdorf;24782;Kreis Rendsburg-Eckernförde;
+Kronshagen;24119;Kreis Rendsburg-Eckernförde;
+Altenholz;24161;Kreis Rendsburg-Eckernförde;
+Bordesholm;24582;Kreis Rendsburg-Eckernförde;
+Nortorf;24589;Kreis Rendsburg-Eckernförde;
+Hohenwestedt;24594;Kreis Rendsburg-Eckernförde;
+Husum;25813;Kreis Nordfriesland;
+Niebüll;25899;Kreis Nordfriesland;
+Sylt;25980;Kreis Nordfriesland;
+Wyk auf Föhr;25938;Kreis Nordfriesland;
+Friedrichstadt;25840;Kreis Nordfriesland;
+Tönning;25832;Kreis Nordfriesland;
+Sankt Peter-Ording;25826;Kreis Nordfriesland;
+Bredstedt;25821;Kreis Nordfriesland;
+Leck;25917;Kreis Nordfriesland;
+Heide;25746;Kreis Dithmarschen;
+Brunsbüttel;25541;Kreis Dithmarschen;
+Meldorf;25704;Kreis Dithmarschen;
+Marne;25709;Kreis Dithmarschen;
+Büsum;25761;Kreis Dithmarschen;
+Schleswig;24837;Kreis Schleswig-Flensburg;
+Kappeln;24376;Kreis Schleswig-Flensburg;
+Harrislee;24955;Kreis Schleswig-Flensburg;
+Glücksburg (Ostsee);24960;Kreis Schleswig-Flensburg;
+Handewitt;24983;Kreis Schleswig-Flensburg;
+Tarp;24963;Kreis Schleswig-Flensburg;
+Süderbrarup;24392;Kreis Schleswig-Flensburg;
+Eutin;23701;Kreis Ostholstein;
+Bad Schwartau;23611;Kreis Ostholstein;
+Neustadt in Holstein;23730;Kreis Ostholstein;
+Oldenburg in Holstein;23758;Kreis Ostholstein;
+Fehmarn;23769;Kreis Ostholstein;
+Stockelsdorf;23617;Kreis Ostholstein;
+Ratekau;23626;Kreis Ostholstein;
+Timmendorfer Strand;23669;Kreis Ostholstein;
+Scharbeutz;23683;Kreis Ostholstein;
+Malente;23714;Kreis Ostholstein;
+Plön;24306;Kreis Plön;
+Preetz;24211;Kreis Plön;
+Lütjenburg;24321;Kreis Plön;
+Heikendorf;24226;Kreis Plön;
+Ratzeburg;23909;Kreis Herzogtum Lauenburg;
+Mölln;23879;Kreis Herzogtum Lauenburg;
+Geesthacht;21502;Kreis Herzogtum Lauenburg;
+Lauenburg/Elbe;21481;Kreis Herzogtum Lauenburg;
+Schwarzenbek;21493;Kreis Herzogtum Lauenburg;
+Wentorf bei Hamburg;21465;Kreis Herzogtum Lauenburg;

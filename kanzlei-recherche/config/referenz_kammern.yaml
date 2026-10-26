@@ -1,0 +1,33 @@
+# Referenzzahlen für `recherche coverage`. Werte werden von Hand nachgetragen.
+#
+# einheit:  kanzleien  → Wert ist direkt die erwartete Zahl an Kanzleien
+#           mitglieder → Wert ist eine Mitgliederzahl (Personen + Gesellschaften);
+#                        erwartete Kanzleien = Wert * faktor
+# gesamt:   Zahl für das ganze Bundesland
+# kreise:   optional je Kreis (Namen wie in der Spalte kreis der Ortsliste).
+#           Kreise ohne eigenen Wert erhalten den Rest von `gesamt`, verteilt nach
+#           Einwohnern (Spalte einwohner der Ortsliste), sofern vorhanden.
+# null = nicht hinterlegt.
+
+SH:
+  quelle: null                 # z. B. "Steuerberaterkammer Schleswig-Holstein, Mitgliederstatistik"
+  stand: null                  # z. B. 2026-01-01
+  einheit: mitglieder
+  faktor: null                 # Kanzleien je Mitglied, nur bei einheit: mitglieder
+  gesamt: null
+  kreise:
+    Kreisfreie Stadt Kiel: null
+    Kreisfreie Stadt Lübeck: null
+    Kreisfreie Stadt Flensburg: null
+    Kreisfreie Stadt Neumünster: null
+    Kreis Dithmarschen: null
+    Kreis Herzogtum Lauenburg: null
+    Kreis Nordfriesland: null
+    Kreis Ostholstein: null
+    Kreis Pinneberg: null
+    Kreis Plön: null
+    Kreis Rendsburg-Eckernförde: null
+    Kreis Schleswig-Flensburg: null
+    Kreis Segeberg: null
+    Kreis Steinburg: null
+    Kreis Stormarn: null
