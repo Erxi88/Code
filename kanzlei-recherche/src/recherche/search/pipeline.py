@@ -12,13 +12,14 @@ import logging
 import re
 import time
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import partial
 from pathlib import Path
 from urllib.parse import urlsplit
 
 import yaml
 
+from ..config import EinwohnerStufe, WeiterWennVollConfig
 from ..models import Dublette, DublettenArt, Fund, Kandidat, LaufEintrag
 from ..storage import Storage
 from .base import (
@@ -42,41 +43,95 @@ class Ort:
     plz: str
     kreis: str | None = None
     einwohner: int | None = None
+    ags: str | None = None  # amtlicher Gemeindeschlüssel
+    plz_weitere: tuple[str, ...] = ()
+    gemeinde: str | None = None  # gesetzt bei Zusatz-Suchorten (PLZ-Bezirk/Stadtteil großer Städte)
+    stadtteil: str | None = None  # eigener Ortsname laut OpenPLZ, falls vorhanden
+
+    @property
+    def ist_zusatz(self) -> bool:
+        return self.gemeinde is not None
+
+    @property
+    def alle_plz(self) -> tuple[str, ...]:
+        return tuple(p for p in (self.plz, *self.plz_weitere) if p)
+
+
+ORTE_SPALTEN = ["ort", "plz", "kreis", "einwohner", "ags", "plz_weitere", "gemeinde", "stadtteil"]
 
 
 # ---------------------------------------------------------------------- Konfiguration
 
 
-def load_orte(pfad: str | Path) -> list[Ort]:
+def _zelle(r: dict, k: str) -> str:
+    return (r.get(k) or "").strip()
+
+
+def load_orte(pfad: str | Path, mit_zusatz: bool = True) -> list[Ort]:
+    """Ortsliste (Startliste oder von `recherche orte` erzeugt); Zusatz-Suchorte optional."""
     with open(pfad, encoding="utf-8", newline="") as f:
-        return [
+        orte = [
             Ort(
-                name=r["ort"].strip(),
-                plz=(r.get("plz") or "").strip(),
-                kreis=(r.get("kreis") or "").strip() or None,
-                einwohner=int(r["einwohner"]) if (r.get("einwohner") or "").strip() else None,
+                name=_zelle(r, "ort"),
+                plz=_zelle(r, "plz"),
+                kreis=_zelle(r, "kreis") or None,
+                einwohner=int(_zelle(r, "einwohner")) if _zelle(r, "einwohner") else None,
+                ags=_zelle(r, "ags") or None,
+                plz_weitere=tuple(_zelle(r, "plz_weitere").split()),
+                gemeinde=_zelle(r, "gemeinde") or None,
+                stadtteil=_zelle(r, "stadtteil") or None,
             )
             for r in csv.DictReader(f, delimiter=";")
-            if r.get("ort")
+            if _zelle(r, "ort")
         ]
+    return orte if mit_zusatz else [o for o in orte if not o.ist_zusatz]
+
+
+def schreibe_orte(orte: list[Ort], pfad: str | Path) -> Path:
+    pfad = Path(pfad)
+    pfad.parent.mkdir(parents=True, exist_ok=True)
+    with pfad.open("w", encoding="utf-8", newline="") as f:
+        w = csv.writer(f, delimiter=";", lineterminator="\n")
+        w.writerow(ORTE_SPALTEN)
+        for o in orte:
+            w.writerow([o.name, o.plz, o.kreis or "", o.einwohner if o.einwohner is not None else "", o.ags or "",
+                        " ".join(o.plz_weitere), o.gemeinde or "", o.stadtteil or ""])  # fmt: skip
+    return pfad
 
 
 def orte_filtern(orte: list[Ort], namen: Iterable[str] | None) -> list[Ort]:
-    """Beschränkt auf die genannten Orte; unbekannte Namen werden als Ort ohne PLZ ergänzt."""
+    """Beschränkt auf die genannten Orte (samt ihren Zusatz-Suchorten); unbekannte Namen
+    werden als Ort ohne PLZ ergänzt."""
     if not namen:
         return orte
     nach_name = {o.name.casefold(): o for o in orte}
-    return [nach_name.get(n.strip().casefold(), Ort(name=n.strip(), plz="")) for n in namen if n.strip()]
+    ergebnis: list[Ort] = []
+    for n in (n.strip() for n in namen):
+        if not n:
+            continue
+        ort = nach_name.get(n.casefold(), Ort(name=n, plz=""))
+        ergebnis.append(ort)
+        ergebnis += [o for o in orte if o.gemeinde and o.gemeinde.casefold() == n.casefold()]
+    return ergebnis
+
+
+def _vorlagen_yaml(pfad: str | Path) -> dict:
+    return yaml.safe_load(Path(pfad).read_text(encoding="utf-8")) or {}
 
 
 def load_vorlagen(pfad: str | Path) -> list[str]:
-    daten = yaml.safe_load(Path(pfad).read_text(encoding="utf-8")) or {}
-    return [v for v in daten.get("vorlagen", []) if v]
+    return [v for v in _vorlagen_yaml(pfad).get("vorlagen", []) if v]
 
 
-def queries_fuer_ort(vorlagen: list[str], ort: Ort) -> list[str]:
-    """Füllt die Vorlagen; Vorlagen mit fehlenden Werten (z. B. {plz}) entfallen."""
-    werte = {"ort": ort.name, "plz": ort.plz, "kreis": ort.kreis or ""}
+def load_stadtteil_vorlagen(pfad: str | Path) -> list[str]:
+    return [v for v in _vorlagen_yaml(pfad).get("stadtteil_vorlagen", []) if v]
+
+
+def queries_fuer_ort(vorlagen: list[str], ort: Ort, n: int | None = None) -> list[str]:
+    """Füllt die Vorlagen; Vorlagen mit fehlenden Werten (z. B. {plz}) entfallen.
+    n begrenzt auf die ersten n verwendbaren Vorlagen (Einwohnerregel)."""
+    werte = {"ort": ort.name, "plz": ort.plz, "kreis": ort.kreis or "", "gemeinde": ort.gemeinde or "",
+             "stadtteil": ort.stadtteil or ""}  # fmt: skip
     queries: list[str] = []
     for v in vorlagen:
         if any(f"{{{k}}}" in v and not w for k, w in werte.items()):
@@ -84,7 +139,44 @@ def queries_fuer_ort(vorlagen: list[str], ort: Ort) -> list[str]:
         q = " ".join(v.format(**werte).split())
         if q not in queries:
             queries.append(q)
-    return queries
+    return queries if n is None else queries[:n]
+
+
+@dataclass
+class Suchplan:
+    """Welche Queries mit wie vielen Ergebnisseiten je Ort gesucht werden (Einwohnerregel)."""
+
+    vorlagen: list[str]
+    stadtteil_vorlagen: list[str] = field(default_factory=list)
+    regel: list[EinwohnerStufe] = field(default_factory=list)
+    ohne_einwohner: EinwohnerStufe = field(default_factory=EinwohnerStufe)
+    stadtteil: EinwohnerStufe = field(default_factory=EinwohnerStufe)
+    weiter: WeiterWennVollConfig = field(default_factory=lambda: WeiterWennVollConfig(aktiv=False))
+
+    @classmethod
+    def aus_settings(cls, settings) -> Suchplan:
+        a = settings.discovery.stufe_a
+        pfad = settings.pfad(settings.pfade.queries)
+        return cls(load_vorlagen(pfad), load_stadtteil_vorlagen(pfad), a.einwohner_regel, a.ohne_einwohner,
+                   a.stadtteil, a.weiter_wenn_voll)  # fmt: skip
+
+    def stufe(self, ort: Ort) -> EinwohnerStufe:
+        if ort.ist_zusatz:
+            return self.stadtteil
+        if ort.einwohner is None:
+            return self.ohne_einwohner if self.regel else EinwohnerStufe()
+        for s in self.regel:
+            if s.unter is None or ort.einwohner < s.unter:
+                return s
+        return EinwohnerStufe()
+
+    def queries(self, ort: Ort) -> list[str]:
+        vorlagen = self.stadtteil_vorlagen if ort.ist_zusatz else self.vorlagen
+        return queries_fuer_ort(vorlagen, ort, self.stufe(ort).varianten)
+
+
+def als_suchplan(vorlagen: list[str] | Suchplan) -> Suchplan:
+    return vorlagen if isinstance(vorlagen, Suchplan) else Suchplan(list(vorlagen))
 
 
 def load_blocklist(pfad: str | Path) -> set[str]:
@@ -151,6 +243,44 @@ def vorbereiten(
     if isinstance(adapter, QueryAdapter):
         return None
     return hit.model_copy(update={"website": None}), None
+
+
+def anteil_kanzlei_domains(hits: list[SearchHit], blocklist: set[str]) -> float:
+    """Anteil der Treffer mit eigener (nicht blockierter) Website – grobes Maß für „echte Kanzleien"."""
+    if not hits:
+        return 0.0
+    gut = sum(1 for h in hits if (d := website_domain(h, blocklist))[0] is not None and not d[1])
+    return gut / len(hits)
+
+
+def suche_query(
+    adapter: QueryAdapter,
+    query: str,
+    stufe: EinwohnerStufe,
+    max_results: int,
+    blocklist: set[str],
+    weiter: WeiterWennVollConfig,
+) -> tuple[list[SearchHit], int]:
+    """Query mit Seitenbegrenzung der Einwohnerstufe.
+
+    Nach der letzten erlaubten Seite wird trotzdem weitergeblättert, solange die Seite voll war
+    und überwiegend Kanzlei-Domains enthielt. Gibt (Treffer, zusätzlich geholte Seiten) zurück.
+    """
+    if stufe.seiten is None:
+        return adapter.search(query, max_results), 0
+    if not adapter.blaettert:
+        return adapter.search(query, min(max_results, stufe.seiten * adapter.seitengroesse)), 0
+    hits: list[SearchHit] = []
+    extra = 0
+    for nr, seite in enumerate(adapter.seiten(query, max_results), start=1):
+        hits.extend(seite)
+        if nr > stufe.seiten:
+            extra += 1
+        if nr >= stufe.seiten:
+            voll = len(seite) >= adapter.seitengroesse
+            if not (weiter.aktiv and voll and anteil_kanzlei_domains(seite, blocklist) >= weiter.anteil_kanzlei_domains):
+                break
+    return hits, extra
 
 
 def schluessel(hit: SearchHit, domain: str | None) -> Schluessel:
@@ -244,24 +374,27 @@ class SuchStatistik:
     neue_kandidaten: int = 0
     anfragen: int = 0
     kosten: float = 0.0
+    zusatzseiten: int = 0  # über die Seitenregel hinaus geholt (volle Seite mit vielen Kanzleien)
     abbruch: str | None = None  # gesetzt, wenn der Lauf wegen LimitErreicht endete
 
 
-def _auftraege(adapter: SearchAdapter, orte: list[Ort], vorlagen: list[str], max_results: int):
-    """(Ort, Suchbegriff, Aufruf) je Arbeitseinheit des Adapters."""
+def _auftraege(adapter: SearchAdapter, orte: list[Ort], plan: Suchplan, max_results: int, blocklist: set[str]):
+    """(Ort, Suchbegriff, Aufruf) je Arbeitseinheit des Adapters; Aufruf → (Treffer, Zusatzseiten)."""
     for ort in orte:
         if isinstance(adapter, OrtsAdapter):
-            yield ort, f"ort:{ort.name}", partial(adapter.search_ort, ort)
+            if not ort.ist_zusatz:  # Lückenfüller arbeiten je Gemeinde
+                yield ort, f"ort:{ort.name}", lambda o=ort: (adapter.search_ort(o), 0)
         elif isinstance(adapter, QueryAdapter):
-            for query in queries_fuer_ort(vorlagen, ort):
-                yield ort, query, partial(adapter.search, query, max_results)
+            stufe = plan.stufe(ort)
+            for query in plan.queries(ort):
+                yield ort, query, partial(suche_query, adapter, query, stufe, max_results, blocklist, plan.weiter)
 
 
 def run_search(
     storage: Storage,
     adapter: SearchAdapter,
     orte: list[Ort],
-    vorlagen: list[str],
+    vorlagen: list[str] | Suchplan,
     blocklist: set[str],
     bundesland: str,
     lauf_id: str,
@@ -270,7 +403,8 @@ def run_search(
 ) -> SuchStatistik:
     """Führt einen Adapter für alle Orte aus und speichert Kandidaten und Funde.
 
-    QueryAdapter (Stufe A): je Ort alle Query-Vorlagen. OrtsAdapter (Stufe B): je Ort ein
+    QueryAdapter (Stufe A): je Ort die Query-Vorlagen und Seiten laut Suchplan (Einwohnerregel).
+    OrtsAdapter (Stufe B): je Ort ein
     Aufruf von search_ort. Wiederaufnehmbar: Erfolgreich erledigte Einheiten werden
     übersprungen, fehlgeschlagene beim nächsten Aufruf wiederholt. Bei LimitErreicht
     (Kontingent, Budget, Zugang) endet der Lauf sauber.
@@ -279,7 +413,8 @@ def run_search(
     zuordnung = Zuordnung(storage, bundesland, blocklist, lauf_id)
     stat = SuchStatistik()
     start_anfragen = adapter.anfragen
-    for ort, suchbegriff, aufruf in _auftraege(adapter, orte, vorlagen, max_results):
+    plan = als_suchplan(vorlagen)
+    for ort, suchbegriff, aufruf in _auftraege(adapter, orte, plan, max_results, blocklist):
         if storage.query_erledigt(bundesland, adapter.name, suchbegriff, schritt):
             stat.uebersprungen += 1
             continue
@@ -290,9 +425,10 @@ def run_search(
         )  # fmt: skip
         fehler: SearchError | None = None
         try:
-            hits = aufruf()
+            hits, extra = aufruf()
         except SearchError as e:
-            fehler, hits = e, []
+            fehler, hits, extra = e, [], 0
+        stat.zusatzseiten += extra
         eintrag.anfragen = adapter.anfragen - anfragen_vorher
         eintrag.kosten = adapter.kosten(eintrag.anfragen)
         if fehler is not None:
@@ -315,7 +451,8 @@ def run_search(
         stat.treffer += len(hits)
         stat.neue_kandidaten += neu
         if fortschritt:
-            fortschritt(f"{suchbegriff}: {len(hits)} Treffer, {neu} neu, {eintrag.anfragen} Anfragen")
+            zusatz = f", +{extra} Seite(n) wegen voller Kanzlei-Seite" if extra else ""
+            fortschritt(f"{suchbegriff}: {len(hits)} Treffer, {neu} neu, {eintrag.anfragen} Anfragen{zusatz}")
     stat.anfragen = adapter.anfragen - start_anfragen
     stat.kosten = adapter.kosten(stat.anfragen)
     return stat

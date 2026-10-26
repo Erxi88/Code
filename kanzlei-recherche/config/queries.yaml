@@ -1,6 +1,15 @@
 # Query-Vorlagen je Ort. Platzhalter: {ort}, {plz}, {kreis}
+# REIHENFOLGE ZÄHLT: Die Einwohnerregel (settings.yaml, discovery.stufe_a.einwohner_regel)
+# nimmt bei kleinen Orten nur die ersten N Vorlagen – die stärkste gehört nach oben.
 vorlagen:
   - "Steuerberater {ort}"
   - "Steuerkanzlei {ort}"
   - "Steuerberatung {plz} {ort}"
   - "Steuerberater {ort} Impressum"
+
+# Zusatz-Suchorte großer Städte (je PLZ-Bezirk, siehe orte.stadtteile in settings.yaml).
+# Platzhalter: {gemeinde}, {plz}, {stadtteil} (nur wenn OpenPLZ einen eigenen Ortsnamen führt).
+stadtteil_vorlagen:
+  - "Steuerberater {plz} {gemeinde}"
+  - "Steuerberater {stadtteil}"
+  - "Steuerkanzlei {plz} {gemeinde}"

@@ -11,7 +11,7 @@ from pathlib import Path
 
 import yaml
 from dotenv import load_dotenv
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 PROJEKT_DIR = Path(__file__).resolve().parents[2]
 STANDARD_CONFIG = PROJEKT_DIR / "config" / "settings.yaml"
@@ -130,9 +130,40 @@ class QuellenConfig(BaseModel):
         return list(type(self).model_fields)
 
 
+class EinwohnerStufe(BaseModel):
+    """Wie gründlich ein Ort gesucht wird. varianten/seiten None = alle bzw. bis max_results_per_query."""
+
+    unter: int | None = None  # gilt für Orte mit weniger Einwohnern (None = alle übrigen)
+    varianten: int | None = None  # erste N Vorlagen aus queries.yaml
+    seiten: int | None = None  # Ergebnisseiten je Query
+
+    @field_validator("varianten", "seiten", mode="before")
+    @classmethod
+    def _alle(cls, v):
+        return None if v in ("alle", "all") else v
+
+
+class WeiterWennVollConfig(BaseModel):
+    """Seitenbegrenzung aussetzen, wenn die letzte erlaubte Seite voll war und überwiegend
+    Kanzlei-Domains enthielt (keine Portale/Verzeichnisse laut Blocklist)."""
+
+    aktiv: bool = True
+    anteil_kanzlei_domains: float = 0.5
+
+
 class StufeAConfig(BaseModel):
     adapter: str = "brave"
-    max_results_per_query: int = 60
+    max_results_per_query: int = 60  # harte Obergrenze je Query
+    einwohner_regel: list[EinwohnerStufe] = Field(
+        default_factory=lambda: [
+            EinwohnerStufe(unter=2000, varianten=1, seiten=1),
+            EinwohnerStufe(unter=20000, varianten=2, seiten=2),
+            EinwohnerStufe(varianten=None, seiten=3),
+        ]
+    )
+    ohne_einwohner: EinwohnerStufe = Field(default_factory=lambda: EinwohnerStufe(seiten=3))
+    stadtteil: EinwohnerStufe = Field(default_factory=lambda: EinwohnerStufe(seiten=2))
+    weiter_wenn_voll: WeiterWennVollConfig = Field(default_factory=WeiterWennVollConfig)
 
 
 class CoverageConfig(BaseModel):
@@ -180,6 +211,43 @@ class LlmConfig(BaseModel):
 
 class OpenPlzConfig(BaseModel):
     url: str = "https://openplzapi.org"
+    page_size: int = 50
+    pause_s: float = 0.5
+
+
+class GvSpalten(BaseModel):
+    """Spaltennamen im GV-ISys-Auszug (Vergleich ohne Groß/Klein, Leerzeichen, Bindestriche;
+    Teilübereinstimmung genügt). Entweder `ags` oder land/rb/kreis/gem."""
+
+    satzart: str | None = "satzart"
+    textkennzeichen: str | None = "textkennzeichen"
+    ags: str | None = "amtlicher gemeindeschlüssel"
+    land: str | None = "land"
+    rb: str | None = "rb"
+    kreis: str | None = "kreis"
+    gem: str | None = "gem"
+    name: str = "gemeindename"
+    einwohner: str = "insgesamt"
+    kreisname: str | None = None  # nur bei CSV ohne Kreis-Zeilen (Satzart 40)
+
+
+class GvIsysConfig(BaseModel):
+    quelle: str | None = None  # Pfad oder URL (XLSX oder CSV)
+    blatt: str | None = None  # XLSX-Blatt; Standard: erstes Blatt mit Spalte „Satzart"
+    spalten: GvSpalten = Field(default_factory=GvSpalten)
+
+
+class StadtteilConfig(BaseModel):
+    """Zusatz-Suchorte je PLZ-Bezirk für große Städte („Steuerberater Kiel" bricht nach drei Seiten ab)."""
+
+    aktiv: bool = True
+    ab_einwohner: int = 100_000
+    nur_kreisfrei: bool = True
+
+
+class OrteConfig(BaseModel):
+    gv_isys: GvIsysConfig = Field(default_factory=GvIsysConfig)
+    stadtteile: StadtteilConfig = Field(default_factory=StadtteilConfig)
 
 
 class Settings(BaseModel):
@@ -190,6 +258,7 @@ class Settings(BaseModel):
     crawl: CrawlConfig = Field(default_factory=CrawlConfig)
     llm: LlmConfig = Field(default_factory=LlmConfig)
     openplz: OpenPlzConfig = Field(default_factory=OpenPlzConfig)
+    orte: OrteConfig = Field(default_factory=OrteConfig)
 
     # nicht aus YAML, sondern beim Laden gesetzt
     basis_dir: Path = PROJEKT_DIR

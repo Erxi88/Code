@@ -14,6 +14,7 @@ gelten für alle Adapter gleich.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Iterator
 from typing import TYPE_CHECKING, ClassVar, Protocol
 
 from pydantic import BaseModel
@@ -116,10 +117,22 @@ class SearchAdapter(ABC):
 
 class QueryAdapter(SearchAdapter):
     stufe = "A"
+    # True: liefert Ergebnisse seitenweise (bezahlte Anfragen je Seite) – die Pipeline kann
+    # dann nach jeder Seite entscheiden, ob sich die nächste lohnt (Seitenregel je Einwohnerklasse)
+    blaettert: ClassVar[bool] = False
+
+    @property
+    def seitengroesse(self) -> int:
+        """Treffer je Seite; ohne echtes Paging die übliche Größe einer Ergebnisseite."""
+        return 20
 
     @abstractmethod
     def search(self, query: str, max_results: int) -> list[SearchHit]:
         """Führt eine Query aus. SearchError: Query gescheitert; LimitErreicht: Lauf beenden."""
+
+    def seiten(self, query: str, max_results: int) -> Iterator[list[SearchHit]]:
+        """Ergebnisseiten einzeln; ohne Paging eine einzige Seite."""
+        yield self.search(query, max_results)
 
 
 class OrtsAdapter(SearchAdapter):

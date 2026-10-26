@@ -75,3 +75,18 @@ def test_csv(tmp_path):
     assert ["Kiel", "a.example", "a.example", "x", "", "x"] in zeilen
     assert ["Kiel", "Kanzlei Ohneweb, Wall 5, 24103", "", "", "", "x"] in zeilen
     assert ["Husum", "h2.example", "h2.example", "", "x", ""] in zeilen
+
+
+def test_vergleich_mit_suchplan_und_zusatzorten():
+    from recherche.config import EinwohnerStufe
+    from recherche.search.pipeline import Suchplan
+
+    plan = Suchplan(VORLAGEN, ["Steuerberater {plz} {gemeinde}"], [EinwohnerStufe(unter=2000, varianten=1, seiten=1)])
+    orte = [Ort("Dorf", "24000", einwohner=500), Ort("Kiel (24105)", "24105", gemeinde="Kiel")]
+    brave = FakeQueryAdapter("brave", {"Steuerberater Dorf": ["https://d.example/"],
+                                       "Steuerberater 24105 Kiel": ["https://k.example/"]})
+    places = FakeOrtsAdapter("places", {})
+    erg = compare_adapters([brave, places], orte, plan, set(), 20)
+    assert brave.aufrufe == ["Steuerberater Dorf", "Steuerberater 24105 Kiel"]
+    assert places.aufrufe == ["Dorf"]  # Lückenfüller nur je Gemeinde
+    assert set(erg.namen(erg.alle())) == {"d.example", "k.example"}

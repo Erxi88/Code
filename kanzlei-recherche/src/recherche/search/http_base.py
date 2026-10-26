@@ -91,15 +91,25 @@ class HttpQueryAdapter(QueryAdapter):
 
     # -------------------------------------------------------------- Ablauf
 
-    def search(self, query: str, max_results: int) -> list[SearchHit]:
-        hits: list[SearchHit] = []
+    blaettert = True
+
+    @property
+    def seitengroesse(self) -> int:
+        return int(getattr(self.cfg, "per_page", 0) or 0)
+
+    def seiten(self, query: str, max_results: int) -> Iterator[list[SearchHit]]:
+        """Ergebnisseiten einzeln und erst bei Bedarf (jede Seite ist eine bezahlte Anfrage)."""
+        anzahl = 0
         for params, headers in self._seiten(query, max_results):
             antwort = self._hole(params, headers)
-            neue = self._treffer(antwort)
-            hits.extend(neue)
-            if len(hits) >= max_results or not self._hat_mehr(antwort, neue, self._seitengroesse(params)):
-                break
-        return hits[:max_results]
+            neue = self._treffer(antwort)[: max_results - anzahl]
+            anzahl += len(neue)
+            yield neue
+            if anzahl >= max_results or not self._hat_mehr(antwort, neue, self._seitengroesse(params)):
+                return
+
+    def search(self, query: str, max_results: int) -> list[SearchHit]:
+        return [h for seite in self.seiten(query, max_results) for h in seite]
 
     def _seitengroesse(self, params: dict) -> int:
         return int(params.get("count") or params.get("num") or 0)

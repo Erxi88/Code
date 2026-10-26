@@ -16,7 +16,15 @@ from pathlib import Path
 
 from .base import LimitErreicht, OrtsAdapter, SearchAdapter, SearchError, SearchHit
 from .dedupe import Index, zusammenfuehren
-from .pipeline import Ort, bezeichnung, queries_fuer_ort, schluessel, vorbereiten
+from .pipeline import (
+    Ort,
+    Suchplan,
+    als_suchplan,
+    bezeichnung,
+    schluessel,
+    suche_query,
+    vorbereiten,
+)
 
 
 @dataclass
@@ -121,13 +129,19 @@ class _Gruppierung:
         return kid
 
 
+def _nur_treffer(*args) -> list[SearchHit]:
+    return suche_query(*args)[0]
+
+
 def compare_adapters(
     adapters: list[SearchAdapter],
     orte: list[Ort],
-    vorlagen: list[str],
+    vorlagen: list[str] | Suchplan,
     blocklist: set[str],
     max_results: int,
 ) -> VergleichsErgebnis:
+    """Alle Adapter mit demselben Suchplan (Varianten und Seiten je Einwohnerklasse)."""
+    plan = als_suchplan(vorlagen)
     gruppen = _Gruppierung()
     ergebnisse: dict[str, AdapterErgebnis] = {}
     uebersprungen: dict[str, str] = {}
@@ -141,9 +155,13 @@ def compare_adapters(
         for ort in orte:
             gefunden = erg.kanzleien_je_ort.setdefault(ort.name, set())
             if isinstance(adapter, OrtsAdapter):
-                aufrufe = [partial(adapter.search_ort, ort)]
+                aufrufe = [] if ort.ist_zusatz else [partial(adapter.search_ort, ort)]
             else:
-                aufrufe = [partial(adapter.search, q, max_results) for q in queries_fuer_ort(vorlagen, ort)]
+                stufe = plan.stufe(ort)
+                aufrufe = [
+                    partial(_nur_treffer, adapter, q, stufe, max_results, blocklist, plan.weiter)
+                    for q in plan.queries(ort)
+                ]
             for aufruf in aufrufe:
                 erg.queries += 1
                 try:

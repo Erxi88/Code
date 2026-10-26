@@ -24,7 +24,20 @@ discovery:
   # dann nur die Lücken mit der nächsten Quelle füllen (Stufe B, `recherche fill`).
   stufe_a:
     adapter: brave                   # brave | google_cse | serpapi | ddgs
-    max_results_per_query: 60
+    max_results_per_query: 60        # harte Obergrenze je Query
+    # Gründlichkeit je Einwohnerklasse: varianten = erste N Vorlagen aus queries.yaml,
+    # seiten = Ergebnisseiten je Query (Brave: 20 Treffer je Seite). "alle" = ohne Begrenzung.
+    einwohner_regel:
+      - {unter: 2000, varianten: 1, seiten: 1}
+      - {unter: 20000, varianten: 2, seiten: 2}
+      - {varianten: alle, seiten: 3}
+    ohne_einwohner: {varianten: alle, seiten: 3}   # Einwohnerzahl unbekannt: lieber gründlich
+    stadtteil: {varianten: alle, seiten: 2}        # Zusatz-Suchorte großer Städte (stadtteil_vorlagen)
+    # Seitenbegrenzung aussetzen, wenn die letzte erlaubte Seite voll war und überwiegend
+    # Kanzlei-Domains enthielt (Kleinstadt mit vielen Kanzleien) – dann nächste Seite holen
+    weiter_wenn_voll:
+      aktiv: true
+      anteil_kanzlei_domains: 0.5
   max_anfragen_je_lauf: 1000         # Budget je Lauf und Adapter (bezahlte Anfragen, ohne Cache-Treffer)
   coverage:
     quote_ziel: 0.9                  # Lücke, wenn gefunden < erwartet * quote_ziel
@@ -117,3 +130,27 @@ llm:
 
 openplz:
   url: https://openplzapi.org
+  page_size: 50
+  pause_s: 0.5
+
+orte:                                # recherche orte --bundesland SH
+  gv_isys:
+    # Gemeindeverzeichnis (Destatis GV-ISys, „Alle politisch selbständigen Gemeinden"),
+    # XLSX oder CSV, Pfad oder URL. Zuordnung über den amtlichen Gemeindeschlüssel (AGS).
+    quelle: data/gv_isys/gemeindeverzeichnis.xlsx
+    blatt: null                      # Standard: erstes Blatt mit Spalte „Satzart"
+    spalten:                         # Teilübereinstimmung, ohne Groß/Klein und Bindestriche
+      satzart: satzart
+      textkennzeichen: textkennzeichen
+      ags: amtlicher gemeindeschlüssel   # falls vorhanden, sonst aus land/rb/kreis/gem
+      land: land
+      rb: rb
+      kreis: kreis
+      gem: gem
+      name: gemeindename
+      einwohner: insgesamt           # „Bevölkerung insgesamt"
+      kreisname: null                # nur CSV ohne Kreis-Zeilen
+  stadtteile:                        # Zusatz-Suchorte je PLZ-Bezirk (Kiel, Lübeck)
+    aktiv: true
+    ab_einwohner: 100000
+    nur_kreisfrei: true

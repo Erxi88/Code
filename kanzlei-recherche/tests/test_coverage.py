@@ -118,3 +118,17 @@ def test_excel(daten, orte, referenz, tmp_path):
     assert wb["Kreise"]["A1"].value == "Kreis"
     assert wb["Orte"].max_row == 8
     assert wb["Quellen"].max_row == 4
+
+
+def test_neben_plz_und_zusatz_suchorte_zaehlen_zur_gemeinde(storage):
+    from recherche.search.pipeline import Ort
+
+    orte = [Ort("Kiel", "24103", "Kreisfreie Stadt Kiel", 247717, plz_weitere=("24105", "24159")),
+            Ort("Kiel (24159)", "24159", "Kreisfreie Stadt Kiel", gemeinde="Kiel"),
+            Ort("Heide", "25746", "Kreis Dithmarschen", 21540)]
+    storage.add_kandidat(Kandidat(bundesland="SH", name="A", plz="24105"))  # Neben-PLZ
+    storage.add_kandidat(Kandidat(bundesland="SH", name="B", suchort="Kiel (24159)"))  # Zusatz-Suchort
+    storage.add_kandidat(Kandidat(bundesland="SH", name="C", ort="Heide", plz="25746"))
+    erg = berechne(storage, "SH", orte, None)
+    assert {o.ort: o.gefunden for o in erg.orte} == {"Kiel": 2, "Heide": 1}  # Zusatzort keine eigene Zeile
+    assert erg.kreis(KIEL).gefunden == 2 and UNBEKANNT not in {k.kreis for k in erg.kreise}

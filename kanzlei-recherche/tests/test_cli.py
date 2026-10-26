@@ -10,6 +10,7 @@ from typer.testing import CliRunner
 from recherche import cli
 from recherche.config import load_settings
 from recherche.models import Fund, Kandidat
+from recherche.search.pipeline import load_orte
 from recherche.storage import Storage
 
 runner = CliRunner()
@@ -62,9 +63,68 @@ def test_unbekanntes_bundesland(db_pfad):
     assert "nicht in settings.yaml" in r.output
 
 
-def test_orte_platzhalter():
-    r = runner.invoke(cli.app, ["orte", "-b", "SH"])
-    assert r.exit_code == 0 and "80 Orten (0 mit Einwohnerzahl)" in r.output
+@pytest.fixture
+def fake_openplz(monkeypatch):
+    from test_orte import openplz
+
+    original = cli.OpenPlzOrte
+    client, anfragen = openplz()
+    monkeypatch.setattr(cli, "OpenPlzOrte", lambda url, **kw: original(url, **{**kw, "page_size": 5, "pause_s": 0},
+                                                                         client=client))
+    return anfragen
+
+
+def _orte_args(db_pfad, tmp_path, *rest):
+    gv = str(FIXTURES / "gv_isys" / "ausschnitt_sh.csv")
+    return ["orte", "-b", "SH", "--db", str(db_pfad), "--gv", gv, *rest]
+
+
+def test_orte_schreibt_neue_liste(fake_openplz, db_pfad, tmp_path):
+    out = tmp_path / "orte_SH.csv"
+    r = runner.invoke(cli.app, _orte_args(db_pfad, tmp_path, "--out", str(out)))
+    assert r.exit_code == 0, r.output
+    assert "8 Gemeinden (8 mit Einwohnerzahl), 5 Zusatz-Suchorte" in r.output
+    assert "Neuenkirchen" in r.output  # Warnung: nur im GV-ISys
+    assert "Suchumfang je Einwohnerstufe" in r.output and "Geschätzt" in r.output
+    orte = load_orte(out)
+    assert {o.name for o in orte if not o.ist_zusatz} >= {"Kiel", "Lübeck", "Heide", "Wesselburenerkoog"}
+    # zweiter Lauf ohne --force bricht ab und lässt die Datei unverändert
+    inhalt = out.read_text()
+    out.write_text(inhalt + "# handbearbeitet\n")
+    r = runner.invoke(cli.app, _orte_args(db_pfad, tmp_path, "--out", str(out)))
+    assert r.exit_code == 2 and "existiert bereits" in r.output and "--force" in r.output
+    assert out.read_text().endswith("# handbearbeitet\n")
+    assert "Vergleich mit orte_SH.csv: bisher 9, neu 8 Gemeinden; 0 hinzu, 1 entfallen" in r.output  # Markierungszeile zählt mit
+    r = runner.invoke(cli.app, _orte_args(db_pfad, tmp_path, "--out", str(out), "--force"))
+    assert r.exit_code == 0 and out.read_text() == inhalt
+    assert len(fake_openplz) == 3  # OpenPLZ-Seiten nur beim ersten Lauf geladen, danach aus dem Cache
+
+
+def test_orte_bestehende_startliste_wird_nicht_ueberschrieben(fake_openplz, db_pfad, tmp_path, settings):
+    startliste = settings.pfad(settings.bundesland("SH").orte_datei)
+    vorher = startliste.read_bytes()
+    r = runner.invoke(cli.app, _orte_args(db_pfad, tmp_path))
+    assert r.exit_code == 2 and "existiert bereits" in r.output
+    assert "bisher 80, neu 8 Gemeinden" in r.output and "entfallen (Namen prüfen)" in r.output
+    assert startliste.read_bytes() == vorher
+
+
+def test_orte_dry_run_und_ohne_gv(fake_openplz, db_pfad, tmp_path):
+    out = tmp_path / "x.csv"
+    r = runner.invoke(cli.app, ["orte", "-b", "SH", "--db", str(db_pfad), "--ohne-gv", "--dry-run", "--out", str(out)])
+    assert r.exit_code == 0, r.output
+    assert "8 Gemeinden (0 mit Einwohnerzahl), 0 Zusatz-Suchorte" in r.output and "nichts geschrieben" in r.output
+    assert not out.exists()
+
+
+def test_orte_gv_datei_fehlt(fake_openplz, db_pfad, tmp_path):
+    r = runner.invoke(cli.app, ["orte", "-b", "SH", "--db", str(db_pfad), "--gv", str(tmp_path / "fehlt.xlsx")])
+    assert r.exit_code == 2 and "GV-ISys-Datei" in r.output and "Destatis" in r.output
+
+
+def test_orte_warnt_bei_kreisen_ohne_referenz(fake_openplz, db_pfad, tmp_path):
+    r = runner.invoke(cli.app, _orte_args(db_pfad, tmp_path, "--dry-run"))
+    assert "Kreise nicht in referenz_kammern.yaml" not in r.output  # alle Kreise der Testdaten sind dort
 
 
 @pytest.fixture

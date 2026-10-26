@@ -154,8 +154,17 @@ class CoverageErgebnis:
 
 
 def _zuordnen(storage: Storage, bundesland: str, orte: list[Ort]) -> dict[int, Ort | None]:
-    nach_name = {o.name.casefold(): o for o in orte}
-    nach_plz = {o.plz: o for o in orte if o.plz}
+    """Kandidat → Gemeinde. Zusatz-Suchorte (PLZ-Bezirke großer Städte) und Neben-PLZ
+    werden ihrer Gemeinde zugeordnet."""
+    gemeinden = [o for o in orte if not o.ist_zusatz]
+    nach_name = {o.name.casefold(): o for o in gemeinden}
+    for z in orte:
+        if z.ist_zusatz and z.gemeinde and z.gemeinde.casefold() in nach_name:
+            nach_name.setdefault(z.name.casefold(), nach_name[z.gemeinde.casefold()])
+    nach_plz: dict[str, Ort] = {}
+    for o in gemeinden:
+        for plz in o.alle_plz:
+            nach_plz.setdefault(plz, o)
     zuordnung: dict[int, Ort | None] = {}
     for k in storage.kandidaten(bundesland):
         ort = None
@@ -173,6 +182,7 @@ def berechne(
     storage: Storage, bundesland: str, orte: list[Ort], referenz: Referenz | None = None
 ) -> CoverageErgebnis:
     zuordnung = _zuordnen(storage, bundesland, orte)
+    orte = [o for o in orte if not o.ist_zusatz]  # Erwartung und Lücken nur je Gemeinde
 
     # ---- gefunden je Kreis und Ort
     je_kreis: dict[str, int] = defaultdict(int)

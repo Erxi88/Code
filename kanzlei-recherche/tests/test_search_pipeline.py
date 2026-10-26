@@ -184,3 +184,10 @@ def test_bekannter_fund_wird_nicht_doppelt_verarbeitet(storage):
     stat = run_search(storage, adapter, [Ort("Husum", "25813")], ["Steuerberater {ort}"], set(), "SH", "lauf2", 20)
     assert stat.neue_kandidaten == 0
     assert len(storage.funde("SH")) == n
+
+
+def test_lueckenfueller_ueberspringen_zusatz_suchorte(storage):
+    zusatz = Ort("Kiel (24105)", "24105", gemeinde="Kiel")
+    places = FakeOrtsAdapter("places", {})
+    run_search(storage, places, [KIEL, zusatz], VORLAGEN, set(), "SH", "l1", 20)
+    assert places.aufrufe == ["Kiel"]

@@ -30,18 +30,29 @@ from .fixtures import (
     fixture_holen_sync,
     fixtures_finden,
 )
-from .models import LaufEintrag, SchrittStatus
+from .models import LAND_SCHLUESSEL, LaufEintrag, SchrittStatus
 from .normalize import PlzPruefer
+from .orte import (
+    OpenPlzOrte,
+    OrteFehler,
+    gemeinden_aus_localities,
+    gv_quelle_laden,
+    lade_gv,
+    orte_erzeugen,
+    stufen_verteilung,
+    vergleichen,
+)
 from .search.base import OrtsAdapter, QueryAdapter, SearchAdapter
 from .search.compare import VergleichsErgebnis, compare_adapters
 from .search.pipeline import (
     Ort,
+    Suchplan,
     SuchStatistik,
     load_blocklist,
     load_orte,
-    load_vorlagen,
     orte_filtern,
     run_search,
+    schreibe_orte,
 )
 from .search.registry import aktive_adapter, build_adapter
 from .storage import Storage
@@ -74,12 +85,13 @@ class Kontext:
     def storage(self) -> Storage:
         return Storage(self.db)
 
-    def orte(self, auswahl: str | None) -> list[Ort]:
-        orte = load_orte(self.settings.pfad(self.bl_cfg.orte_datei))
+    def orte(self, auswahl: str | None, mit_zusatz: bool = True) -> list[Ort]:
+        orte = load_orte(self.settings.pfad(self.bl_cfg.orte_datei), mit_zusatz=mit_zusatz)
         return orte_filtern(orte, auswahl.split(",") if auswahl else None)
 
-    def vorlagen(self) -> list[str]:
-        return load_vorlagen(self.settings.pfad(self.settings.pfade.queries))
+    def vorlagen(self) -> Suchplan:
+        """Suchplan: Query-Vorlagen und Seiten je Einwohnerklasse (discovery.stufe_a)."""
+        return Suchplan.aus_settings(self.settings)
 
     def blocklist(self) -> set[str]:
         return load_blocklist(self.settings.pfad(self.settings.pfade.blocklist))
@@ -130,7 +142,8 @@ def _lauf(ctx: Kontext, st: Storage, adapter: SearchAdapter, orte: list[Ort], la
     )  # fmt: skip
     console.print(
         f"Fertig: {stat.queries} Abfragen, {stat.uebersprungen} schon erledigt, {stat.fehler} Fehler, "
-        f"{stat.treffer} Treffer, {stat.neue_kandidaten} neue Kandidaten."
+        f"{stat.treffer} Treffer, {stat.neue_kandidaten} neue Kandidaten"
+        + (f", {stat.zusatzseiten} Zusatzseiten wegen voller Kanzlei-Seiten." if stat.zusatzseiten else ".")
     )
     console.print(
         f"Kostenlog {adapter.name}: {stat.anfragen} Anfragen ≈ {stat.kosten:.2f} "
@@ -266,9 +279,9 @@ def fill(
             namen = erg.luecken_orte(ctx.settings.discovery.coverage.quote_ziel)
             if not namen:
                 _fehler("Keine Orte unter der Referenz – Referenzzahlen in referenz_kammern.yaml hinterlegt?")
-            auswahl = orte_filtern(ctx.orte(None), namen)
+            auswahl = orte_filtern(ctx.orte(None, mit_zusatz=False), namen)
         else:
-            auswahl = ctx.orte(orte if orte else None)
+            auswahl = ctx.orte(orte if orte else None, mit_zusatz=False)
         _lauf(ctx, st, adapter, auswahl, _lauf_id())
 
 
@@ -563,15 +576,78 @@ def zeige_vergleich(erg: VergleichsErgebnis, max_namen: int = 30) -> None:
 
 
 @app.command()
-def orte(bundesland: BundeslandOpt = None, config: ConfigOpt = None) -> None:
-    """Vollständige Ortsliste (OpenPLZ) mit Einwohnern (GV-ISys) erzeugen – Platzhalter."""
-    ctx = _kontext(config, bundesland, None)
-    liste = ctx.orte(None)
-    mit_ew = sum(1 for o in liste if o.einwohner)
+def orte(
+    bundesland: BundeslandOpt = None,
+    db: DbOpt = None,
+    config: ConfigOpt = None,
+    out: Annotated[Path | None, typer.Option("--out", "-o", help="Ziel-CSV statt der Ortsliste aus settings.yaml")] = None,
+    force: Annotated[bool, typer.Option("--force", help="bestehende Ortsliste überschreiben")] = False,
+    dry_run: Annotated[bool, typer.Option("--dry-run", help="nur Zusammenfassung, nichts schreiben")] = False,
+    gv: Annotated[str | None, typer.Option("--gv", help="GV-ISys-Datei oder URL statt orte.gv_isys.quelle")] = None,
+    ohne_gv: Annotated[bool, typer.Option("--ohne-gv", help="ohne GV-ISys (keine Einwohner, Kreis aus OpenPLZ)")] = False,
+) -> None:
+    """Vollständige Gemeindeliste aus OpenPLZ, Kreis und Einwohner aus dem GV-ISys (Destatis)."""
+    ctx = _kontext(config, bundesland, db)
+    s = ctx.settings
+    land = LAND_SCHLUESSEL[ctx.bundesland]
+    ziel = out or s.pfad(ctx.bl_cfg.orte_datei)
+    with ctx.storage() as st:
+        quelle = OpenPlzOrte(s.openplz.url, cache=st, page_size=s.openplz.page_size, pause_s=s.openplz.pause_s)
+        try:
+            gemeinden = gemeinden_aus_localities(quelle.localities(land))
+            gvdaten = None
+            if not ohne_gv:
+                gv_quelle = gv or s.orte.gv_isys.quelle
+                if not gv_quelle:
+                    _fehler("Keine GV-ISys-Quelle: orte.gv_isys.quelle in settings.yaml setzen, --gv angeben oder --ohne-gv")
+                if not gv and not gv_quelle.startswith(("http://", "https://")):
+                    gv_quelle = str(s.pfad(gv_quelle))
+                pfad = gv_quelle_laden(gv_quelle, s.pfad("data/gv_isys"))
+                gvdaten = lade_gv(pfad, s.orte.gv_isys.spalten, land, s.orte.gv_isys.blatt)
+        except OrteFehler as e:
+            _fehler(str(e))
+    erg = orte_erzeugen(gemeinden, gvdaten, s.orte.stadtteile)
+    gem = erg.gemeinden
+    mit_ew = sum(1 for o in gem if o.einwohner is not None)
     console.print(
-        f"[yellow]orte: noch nicht implementiert[/yellow] – derzeit Startliste "
-        f"{ctx.bl_cfg.orte_datei} mit {len(liste)} Orten ({mit_ew} mit Einwohnerzahl)."
+        f"[bold]{ctx.bl_cfg.name}[/bold]: {len(gem)} Gemeinden ({mit_ew} mit Einwohnerzahl), "
+        f"{len(erg.zusatz)} Zusatz-Suchorte (PLZ-Bezirke großer Städte), {quelle.anfragen} OpenPLZ-Anfragen."
     )
+    for w in erg.warnungen[:20]:
+        console.print(f"  [yellow]Warnung:[/yellow] {w}")
+    if len(erg.warnungen) > 20:
+        console.print(f"  … und {len(erg.warnungen) - 20} weitere Warnungen")
+    referenz = load_referenz(s.pfad(s.pfade.referenz), ctx.bundesland)
+    kreise = sorted({o.kreis for o in gem if o.kreis})
+    if referenz and (fehlend := [k for k in kreise if k not in referenz.kreise]):
+        console.print(f"  [yellow]Kreise nicht in referenz_kammern.yaml:[/yellow] {', '.join(fehlend)}")
+
+    plan = ctx.vorlagen()
+    t = Table(title="Suchumfang je Einwohnerstufe (Stufe A)")
+    for col in ("Stufe", "Orte", "Queries", "Seiten je Query"):
+        t.add_column(col, justify="left" if col == "Stufe" else "right")
+    gesamt_min = gesamt_max = 0
+    max_seiten = max(1, ctx.settings.discovery.stufe_a.max_results_per_query // 20)
+    for stufe, (n_orte, n_queries, seiten) in stufen_verteilung(erg.orte, plan).items():
+        t.add_row(stufe, str(n_orte), str(n_queries), str(seiten or max_seiten))
+        gesamt_min += n_queries
+        gesamt_max += n_queries * (seiten or max_seiten)
+    console.print(t)
+    console.print(f"Geschätzt {gesamt_min}–{gesamt_max} Such-Anfragen für den Gesamtlauf "
+                  f"(weniger, wenn Seiten nicht voll sind; mehr nur bei vollen Kanzlei-Seiten).")
+
+    if ziel.exists():
+        v = vergleichen(load_orte(ziel), erg.orte)
+        console.print(f"Vergleich mit {ziel.name}: bisher {v.alt}, neu {v.neu} Gemeinden; "
+                      f"{len(v.hinzu)} hinzu, {len(v.entfallen)} entfallen.")
+        if v.entfallen:
+            console.print(f"  entfallen (Namen prüfen): {', '.join(v.entfallen[:20])}{' …' if len(v.entfallen) > 20 else ''}")
+    if dry_run:
+        console.print("[yellow]--dry-run: nichts geschrieben.[/yellow]")
+        return
+    if ziel.exists() and not force:
+        _fehler(f"{ziel} existiert bereits – mit --force überschreiben oder mit --out in eine andere Datei schreiben.")
+    console.print(f"Ortsliste geschrieben: [bold]{schreibe_orte(erg.orte, ziel)}[/bold]")
 
 
 if __name__ == "__main__":  # pragma: no cover

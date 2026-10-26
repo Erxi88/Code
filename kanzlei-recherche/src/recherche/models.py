@@ -27,6 +27,13 @@ BUNDESLAENDER: dict[str, str] = {
 }
 
 
+# Länderschlüssel (erste zwei Stellen des AGS) je Kürzel
+LAND_SCHLUESSEL: dict[str, str] = {
+    "SH": "01", "HH": "02", "NI": "03", "HB": "04", "NW": "05", "HE": "06", "RP": "07", "BW": "08",
+    "BY": "09", "SL": "10", "BE": "11", "BB": "12", "MV": "13", "SN": "14", "ST": "15", "TH": "16",
+}  # fmt: skip
+
+
 class Status(StrEnum):
     NEU = "neu"
     GEPRUEFT = "geprüft"
