@@ -117,7 +117,7 @@ def test_fehlendes_aus_weiteren_seiten(ausschluss):
 
 def test_nichts_gefunden_bleibt_null(ausschluss):
     r = extract_impressum("Impressum\nHier entsteht eine neue Website.", ausschluss)
-    assert r.model_dump() == {"strasse": None, "plz": None, "ort": None, "telefon": None, "email": None}
+    assert all(v is None for v in r.model_dump().values())
 
 
 @pytest.mark.parametrize(("name", "form"), [
@@ -130,3 +130,18 @@ def test_nichts_gefunden_bleibt_null(ausschluss):
 ])  # fmt: skip
 def test_rechtsform_aus_name(name, form):
     assert rechtsform_aus_name(name) == form
+
+
+@pytest.mark.parametrize(("text", "erwartet"), [
+    ("Luruper Chaussee 125 / Haus 8 Süd\n22761 Hamburg", ("Luruper Chaussee 125", "Haus 8 Süd")),
+    ("Luruper Chaussee 125\nHaus 8 Süd\n22761 Hamburg", ("Luruper Chaussee 125", "Haus 8 Süd")),
+    ("Holstenstraße 42, 2. OG, 24103 Kiel", ("Holstenstraße 42", "2. OG")),
+    ("Holstenstraße 42 - Hinterhaus\n24103 Kiel", ("Holstenstraße 42", "Hinterhaus")),
+    ("c/o Bürogemeinschaft Nord\nWall 5\n24103 Kiel", ("Wall 5", "c/o Bürogemeinschaft Nord")),
+    ("Wall 5\nGebäude B\nEingang Süd\n24103 Kiel", ("Wall 5", "Gebäude B, Eingang Süd")),
+    ("Holstenstraße 42\n24103 Kiel", ("Holstenstraße 42", None)),
+    ("Lange Str. 26-28, 24306 Plön", ("Lange Str. 26-28", None)),
+])  # fmt: skip
+def test_adresszusatz(text, erwartet):
+    r = extract_impressum("Kanzlei\n" + text, Ausschluss())
+    assert (r.strasse, r.adresszusatz) == erwartet

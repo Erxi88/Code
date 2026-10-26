@@ -14,7 +14,7 @@ from pathlib import Path
 
 import yaml
 
-from ..normalize import normalize_telefon
+from ..normalize import normalize_telefon, rechtsform_aus_text
 from ..search.dedupe import adresse_key
 from .base import RegelErgebnis
 
@@ -48,7 +48,7 @@ class Ausschluss:
     def laden(cls, pfad: str | Path | None) -> Ausschluss:
         if pfad is None or not Path(pfad).exists():
             return cls()
-        d = yaml.safe_load(Path(pfad).read_text(encoding="utf-8")) or {}
+        d = yaml.safe_load(Path(pfad).read_text(encoding="utf-8-sig")) or {}
         return cls(
             abschnitt_zeilen=int(d.get("abschnitt_zeilen", 6)),
             abschnitt_muster=[re.compile(m, re.I) for m in d.get("abschnitt_woerter", [])],
@@ -71,6 +71,7 @@ class Adresse:
     plz: str
     ort: str
     zeile: int
+    zusatz: str | None = None
 
 
 def _ort_bereinigen(ort: str) -> str:
@@ -78,8 +79,53 @@ def _ort_bereinigen(ort: str) -> str:
     return ort.strip(" .,-")
 
 
+_ZUSATZ_WORT = (
+    r"(?:Haus|Gebäude|Geb\.|Eingang|Aufgang|Etage|Stockwerk|Stock|\d+\.\s*(?:OG|Etage|Stock|Obergeschoss)|"
+    r"OG|EG|DG|UG|Obergeschoss|Erdgeschoss|Dachgeschoss|Hinterhof|Hinterhaus|Seitenflügel|Zimmer|Raum|Büro|c/o)"
+)
+_ZUSATZ_ZEILE = re.compile(rf"^{_ZUSATZ_WORT}(?=\b|\s|$)", re.I)
+_STRASSE_MIT_ZUSATZ = re.compile(
+    rf"^(?P<strasse>.+?\d{{1,4}}\s*[a-zA-Z]?(?:\s*-\s*\d{{1,4}}\s*[a-zA-Z]?)?)\s*(?:/|,|\s-\s|–|\s)\s*"
+    rf"(?P<zusatz>{_ZUSATZ_WORT}(?=\b|\s|$).*)$",
+    re.I,
+)
+_SEGMENTE = re.compile(r"\s*[,;|·•–]\s*")
+
+
+def ist_zusatz(text: str) -> bool:
+    return bool(_ZUSATZ_ZEILE.match(text.strip())) and len(text.strip()) <= 60
+
+
+def strasse_zerlegen(text: str) -> tuple[str, str | None] | None:
+    """'Luruper Chaussee 125 / Haus 8 Süd' → ('Luruper Chaussee 125', 'Haus 8 Süd'); keine Straße → None."""
+    text = text.strip()
+    if _ist_strasse(text):
+        return text, None
+    if (m := _STRASSE_MIT_ZUSATZ.match(text)) and _ist_strasse(m.group("strasse").strip()):
+        return m.group("strasse").strip(), m.group("zusatz").strip(" ,/")
+    return None
+
+
+def _strasse_aus_segmenten(segmente: list[str]) -> tuple[str, str | None] | None:
+    """Letzte Straße in einer Segmentliste; nachfolgende Zusätze („Haus 8") werden mitgenommen."""
+    zusaetze: list[str] = []
+    for seg in reversed([s for s in segmente if s]):
+        if ist_zusatz(seg):
+            zusaetze.insert(0, seg)
+            continue
+        if zerlegt := strasse_zerlegen(seg):
+            strasse, zusatz = zerlegt
+            return strasse, ", ".join(x for x in [zusatz, *zusaetze] if x) or None
+        return None
+    return None
+
+
 def adressen(zeilen: list[str]) -> list[Adresse]:
-    """Alle Adressen (PLZ + Ort, mit Straße aus derselben oder der Zeile darüber)."""
+    """Alle Adressen (PLZ + Ort) mit Straße aus derselben Zeile oder bis zu drei Zeilen darüber.
+
+    Zusätze wie „Haus 8 Süd", „2. OG" oder „c/o …" – hinter der Hausnummer, in einer eigenen Zeile
+    oder vor der Straße – werden toleriert und als Adresszusatz zurückgegeben.
+    """
     gefunden = []
     for i, z in enumerate(zeilen):
         for m in _PLZ_ORT.finditer(z):
@@ -88,21 +134,26 @@ def adressen(zeilen: list[str]) -> list[Adresse]:
                 continue
             if len(ort) < 3 or (ort.isupper() and len(ort) <= 4):  # „KI" aus „HRB 12345 KI"
                 continue
-            strasse = None
-            davor = re.split(r"\s*[,;|·•–]\s*", z[: m.start()].strip(" ,;|·•–"))
-            if davor and davor[-1] and _ist_strasse(davor[-1]):
-                strasse = davor[-1]
-            else:
-                for j in (i - 1, i - 2):
-                    if j >= 0 and _ist_strasse(zeilen[j]):
-                        strasse = zeilen[j].strip()
-                        break
-                    if j >= 0 and zeilen[j].strip():
-                        teile = re.split(r"\s*[,;|·•–]\s*", zeilen[j].strip())
-                        if _ist_strasse(teile[-1]):
-                            strasse = teile[-1]
-                            break
-            gefunden.append(Adresse(strasse, plz, ort, i))
+            strasse = zusatz = None
+            if davor := _SEGMENTE.split(z[: m.start()].strip(" ,;|·•–")):
+                if treffer := _strasse_aus_segmenten(davor):
+                    strasse, zusatz = treffer
+            if strasse is None:
+                zusaetze: list[str] = []
+                for j in (i - 1, i - 2, i - 3):
+                    if j < 0 or not zeilen[j].strip():
+                        continue
+                    zeile = zeilen[j].strip()
+                    if ist_zusatz(zeile):
+                        zusaetze.insert(0, zeile)
+                        continue
+                    if treffer := _strasse_aus_segmenten(_SEGMENTE.split(zeile)):
+                        strasse, zusatz = treffer
+                        zusatz = ", ".join(x for x in [zusatz, *zusaetze] if x) or None
+                        if j > 0 and ist_zusatz(zeilen[j - 1]) and zeilen[j - 1].lower().startswith("c/o"):
+                            zusatz = ", ".join(x for x in [zeilen[j - 1].strip(), zusatz] if x)
+                    break
+            gefunden.append(Adresse(strasse, plz, ort, i, zusatz))
     return gefunden
 
 
@@ -173,7 +224,7 @@ def extract_impressum(
             for a in adressen(zeilen):
                 if a.zeile in fremd or adresse_key(a.strasse, a.plz) in ausschluss.adressen:
                     continue
-                erg.strasse, erg.plz, erg.ort = a.strasse, a.plz, a.ort
+                erg.strasse, erg.plz, erg.ort, erg.adresszusatz = a.strasse, a.plz, a.ort, a.zusatz
                 break
         if erg.telefon is None:
             erg.telefon = next((nr for nr, i in telefone(zeilen) if i not in fremd), None)
@@ -188,23 +239,7 @@ def extract_impressum(
     return erg
 
 
-_RECHTSFORMEN = [
-    (r"\bPartG\s*mbB\b|Partnerschaftsgesellschaft\s+mbB", "PartG mbB"),
-    (r"\bPartG\b|Partnerschaftsgesellschaft\b|\bPartnerschaft\b", "PartG"),
-    (r"\bGmbH\s*&\s*Co\.?\s*KG\b", "GmbH & Co. KG"),
-    (r"\bmbH\b|\bGmbH\b|Gesellschaft mit beschränkter Haftung", "GmbH"),
-    (r"\bAG\b|Aktiengesellschaft", "AG"),
-    (r"\bGbR\b|Gesellschaft bürgerlichen Rechts", "GbR"),
-    (r"\bUG\b", "UG (haftungsbeschränkt)"),
-    (r"\bKG\b", "KG"),
-]
-
-
 def rechtsform_aus_name(name: str | None) -> str | None:
-    """Rechtsform, wenn sie im Kanzleinamen steht (Rückfall, wenn das LLM keine liefert)."""
-    if not name:
-        return None
-    for muster, form in _RECHTSFORMEN:
-        if re.search(muster, name):
-            return form
-    return None
+    """Rechtsform, wenn sie im Kanzleinamen steht (Rückfall, wenn das LLM keine liefert).
+    Tabelle der Varianten: config/rechtsformen.yaml."""
+    return rechtsform_aus_text(name)

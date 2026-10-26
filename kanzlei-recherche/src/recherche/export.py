@@ -35,6 +35,7 @@ KANZLEI_SPALTEN: list[Spalte] = [
     ("Kanzleiname", 38, lambda k: k.kanzleiname),
     ("Rechtsform", 16, lambda k: k.rechtsform),
     ("Straße", 28, lambda k: k.strasse),
+    ("Adresszusatz", 16, lambda k: k.adresszusatz),
     ("PLZ", 8, lambda k: k.plz),
     ("Ort", 20, lambda k: k.ort),
     ("Bundesland", 18, lambda k: k.bundesland),

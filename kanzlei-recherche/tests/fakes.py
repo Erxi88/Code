@@ -14,7 +14,7 @@ FIXTURES = Path(__file__).parent / "fixtures"
 
 
 def fixture_json(*teile: str) -> dict:
-    return json.loads(FIXTURES.joinpath(*teile).read_text(encoding="utf-8"))
+    return json.loads(FIXTURES.joinpath(*teile).read_text(encoding="utf-8-sig"))
 
 
 class FakeClock:
@@ -181,9 +181,27 @@ class FakeWeb:
 def beispiel_seiten(domain: str) -> dict[str, tuple]:
     """Die fiktiven Kanzleiseiten-Fixtures als Fake-Website (URLs aus meta.json)."""
     pfad = FIXTURES / "kanzleiseiten" / "beispiele" / domain
-    meta = json.loads((pfad / "meta.json").read_text(encoding="utf-8"))
+    meta = json.loads((pfad / "meta.json").read_text(encoding="utf-8-sig"))
     seiten = {}
     for typ, url in meta["urls"].items():
         datei = {"start": "start.html", "impressum": "impressum.html", "kontakt": "kontakt.html", "team": "team.html"}[typ]
-        seiten[url] = (200, (pfad / datei).read_text(encoding="utf-8"))
+        seiten[url] = (200, (pfad / datei).read_text(encoding="utf-8-sig"))
     return seiten
+
+
+# OpenPLZ-Ortsnamen der fiktiven Kanzleiseiten-Beispiele (für Ort-Vereinheitlichung ohne Netz)
+BEISPIEL_ORTE = {"24103": "Kiel", "24159": "Kiel", "24937": "Flensburg", "24534": "Neumünster", "22761": "Hamburg"}
+
+
+def fake_pruefer(orte: dict[str, str] | None = None):
+    """PlzPruefer gegen eine Fake-OpenPLZ (PLZ → Ortsname, Bundesland Schleswig-Holstein)."""
+    from recherche.normalize import PlzPruefer
+
+    orte = orte or BEISPIEL_ORTE
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        plz = req.url.params["postalCode"]
+        daten = [{"postalCode": plz, "name": orte[plz], "federalState": {"name": "Schleswig-Holstein"}}] if plz in orte else []
+        return httpx.Response(200, json=daten)
+
+    return PlzPruefer(client=httpx.Client(transport=httpx.MockTransport(handler)))

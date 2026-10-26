@@ -27,7 +27,7 @@ from .models import (
     Status,
 )
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 # Schema v2 eingefroren – Grundlage der Migration v1 → v2
 _SCHEMA_V2 = """
@@ -229,7 +229,12 @@ _KANDIDAT_SEITEN = """CREATE TABLE IF NOT EXISTS kandidat_seiten (
 
 """
 
-SCHEMA = _schema_v3()
+# Schema v4: Adresszusatz („Haus 8 Süd", „2. OG") bei den Kanzleien
+SCHEMA = _schema_v3().replace(
+    "    strasse             TEXT,\n    plz                 TEXT,",
+    "    strasse             TEXT,\n    adresszusatz        TEXT,\n    plz                 TEXT,",
+)
+assert "adresszusatz" in SCHEMA
 
 # Schema v1 → v2: Kandidaten mit eigener ID (Domain optional), Tabelle funde,
 # api_cache, Dubletten mit Art, Kostenlog im Lauf-Protokoll.
@@ -290,7 +295,9 @@ DROP TABLE kanzleien_v2;
 )
 
 # Version → Migrationsskript auf Version + 1
-MIGRATIONEN = {1: MIGRATION_V1_V2, 2: MIGRATION_V2_V3}
+MIGRATION_V3_V4 = "ALTER TABLE kanzleien ADD COLUMN adresszusatz TEXT;"
+
+MIGRATIONEN = {1: MIGRATION_V1_V2, 2: MIGRATION_V2_V3, 3: MIGRATION_V3_V4}
 
 _KANDIDAT_FELDER = [
     "bundesland", "domain", "website", "name", "strasse", "plz", "ort", "telefon",
@@ -305,7 +312,7 @@ _FUND_FELDER = [
 ]  # fmt: skip
 
 _KANZLEI_FELDER = [
-    "kandidat_id", "domain", "lauf_bundesland", "kanzleiname", "rechtsform", "strasse", "plz",
+    "kandidat_id", "domain", "lauf_bundesland", "kanzleiname", "rechtsform", "strasse", "adresszusatz", "plz",
     "ort", "bundesland", "plz_verifiziert", "telefon", "email", "website", "website_vorhanden",
     "ansprechpartner", "berufstraeger_anzahl", "teamgroesse", "teamgroesse_klasse",
     "teamgroesse_basis", "konfidenz", "abweichung", "quell_urls", "abrufdatum", "status",

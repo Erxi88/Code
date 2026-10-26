@@ -1,0 +1,49 @@
+# Kanonische Rechtsform → Varianten (reguläre Ausdrücke, ohne Groß/Klein).
+# Reihenfolge zählt: spezifischere Formen zuerst (PartG mbB vor PartG, GmbH & Co. KG vor GmbH/KG).
+# Die Extraktion gibt immer die kanonische Form aus; fixture-eval vergleicht kanonisch.
+- form: PartG mbB
+  varianten:
+    - 'partg\s*m\.?\s*b\.?\s*b\.?'
+    - 'partgmbb'
+    - 'partnerschaftsgesellschaft\s+m\.?\s*b\.?\s*b\.?'
+    - 'partnerschaftsgesellschaft\s+mit\s+beschränkter\s+berufshaftung'
+    - 'partnerschaft\s+mit\s+beschränkter\s+berufshaftung'
+- form: GmbH & Co. KG
+  varianten:
+    - 'gmbh\s*(&|und)\s*co\.?\s*kg'
+- form: PartG
+  varianten:
+    - '\bpartg\b'
+    - 'partnerschaftsgesellschaft'
+    - '\bpartnerschaft\b'
+- form: UG (haftungsbeschränkt)
+  varianten:
+    - '\bug\b'
+    - 'unternehmergesellschaft'
+- form: GmbH
+  varianten:
+    - '\bgmbh\b'
+    - '\bmbh\b'
+    - 'gesellschaft\s+mit\s+beschränkter\s+haftung'
+- form: AG
+  varianten:
+    - '\bag\b'
+    - 'aktiengesellschaft'
+- form: GbR
+  varianten:
+    - '\bgbr\b'
+    - 'gesellschaft\s+bürgerlichen\s+rechts'
+    - 'bürogemeinschaft'
+- form: OHG
+  varianten:
+    - '\bohg\b'
+    - 'offene\s+handelsgesellschaft'
+- form: KG
+  varianten:
+    - '\bkg\b'
+    - 'kommanditgesellschaft'
+- form: Einzelkanzlei
+  varianten:
+    - 'einzelkanzlei'
+    - 'einzelunternehm'
+    - 'einzelpraxis'

@@ -16,6 +16,7 @@ class RegelErgebnis(BaseModel):
     """Stufe 1: regelbasiert aus dem Impressum (Vorrang vor dem LLM für Adresse und Telefon)."""
 
     strasse: str | None = None
+    adresszusatz: str | None = None  # „Haus 8 Süd", „2. OG", „c/o …"
     plz: str | None = None
     ort: str | None = None
     telefon: str | None = None
@@ -69,6 +70,23 @@ class ExtraktionsAntwort(BaseModel):
     laufzeit_s: float = 0.0
     prompt_tokens: int | None = None
     antwort_tokens: int | None = None
+    # Prompt-Protokoll (für Kürzungshinweise und die Kalibrierung Zeichen je Token)
+    prompt_zeichen: int | None = None  # Systemprompt + Seitentext
+    kuerzung: str | None = None  # z. B. "team 9000/14000" – None, wenn nichts gekürzt wurde
+    num_ctx: int | None = None
+
+    @property
+    def kontext_voll(self) -> bool:
+        """Prompt + Antwort ≥ 95 % des Kontextfensters: Ollama hat vermutlich selbst abgeschnitten."""
+        if not self.num_ctx or self.prompt_tokens is None:
+            return False
+        return self.prompt_tokens + (self.antwort_tokens or 0) >= 0.95 * self.num_ctx
+
+    @property
+    def zeichen_je_token(self) -> float | None:
+        if not self.prompt_zeichen or not self.prompt_tokens:
+            return None
+        return self.prompt_zeichen / self.prompt_tokens
 
     @property
     def tokens(self) -> int | None:

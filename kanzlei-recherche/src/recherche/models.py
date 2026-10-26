@@ -76,6 +76,7 @@ class Seitentyp(StrEnum):
     IMPRESSUM = "impressum"
     KONTAKT = "kontakt"
     TEAM = "team"
+    TEAM2 = "team2"  # zweite Team-Kandidatin, z. B. /berufstraeger neben /ueber-uns
     SONSTIGE = "sonstige"
 
 
@@ -157,6 +158,7 @@ class Kanzlei(BaseModel):
     kanzleiname: str | None = None
     rechtsform: str | None = None
     strasse: str | None = None
+    adresszusatz: str | None = None  # „Haus 8 Süd", „2. OG", „c/o …"
     plz: str | None = None
     ort: str | None = None
     bundesland: str | None = None  # tatsächliches Bundesland laut PLZ

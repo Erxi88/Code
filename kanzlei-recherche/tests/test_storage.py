@@ -226,7 +226,7 @@ def test_lauf_protokoll_reihenfolge(storage):
     assert [e.suchbegriff for e in storage.lauf_protokoll("SH")] == ["q0", "q1", "q2"]
 
 
-def test_migration_v2_auf_v3(db_pfad):
+def test_migration_v2_bis_aktuell(db_pfad):
     from recherche.storage import _SCHEMA_V2
 
     con = sqlite3.connect(db_pfad)
@@ -241,9 +241,12 @@ def test_migration_v2_auf_v3(db_pfad):
     con.commit()
     con.close()
     with Storage(db_pfad) as st:
-        assert st.conn.execute("PRAGMA user_version").fetchone()[0] == 3
+        assert st.conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION == 4
         k = st.get_kanzlei("a.example")
         assert (k.kanzleiname, k.status, k.website_vorhanden, k.kandidat_id) == ("Kanzlei A", Status.KONTAKTIERT, True, None)
+        assert k.adresszusatz is None
+        st.upsert_kanzlei(k.model_copy(update={"adresszusatz": "Haus 8 Süd"}))
+        assert st.get_kanzlei("a.example").adresszusatz == "Haus 8 Süd"
         s = st.get_seite("https://a.example/")
         assert (s.text, s.html, s.final_url) == ("Text", None, None)
         (ng,) = st.nicht_gefunden("SH")

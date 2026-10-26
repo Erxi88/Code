@@ -8,8 +8,11 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from functools import lru_cache
+from pathlib import Path
 
 import httpx
+import yaml
 
 _TRENNER = re.compile(r"[\s/\-–.()]+")
 
@@ -73,6 +76,11 @@ class PlzPruefung:
     bundesland: str | None = None
     orte: list[str] = field(default_factory=list)  # laut OpenPLZ zur PLZ gehörende Orte
     hinweis: str | None = None
+    ort_kanonisch: str | None = None  # „Hamburg" statt „Hamburg-Rissen", wenn OpenPLZ nur „Hamburg" führt
+
+
+# Stadtteilzusatz: „Hamburg-Rissen", „Kiel - Holtenau", „Kiel OT Holtenau", „Norderstedt/Garstedt"
+_STADTTEIL_ZUSATZ = re.compile(r"\s*(?:\s-\s|–|—|-|/|\bOT\b|\bOrtsteil\b)\s*")
 
 
 class PlzPruefer:
@@ -130,6 +138,48 @@ class PlzPruefer:
         if not ort:
             return PlzPruefung(None, bundesland, namen, "Ort fehlt")
         soll = _ortsname(ort)
-        passt = any(_ortsname(n) == soll or _ortsname(n).startswith(soll + " ") or soll.startswith(_ortsname(n) + " ")
-                    for n in namen)
-        return PlzPruefung(passt, bundesland, namen, None if passt else f"Ort {ort!r} passt nicht zu PLZ {plz}")
+        if any(_ortsname(n) == soll or _ortsname(n).startswith(soll + " ") for n in namen):
+            return PlzPruefung(True, bundesland, namen)
+        # „Kiel-Holtenau"/„Hamburg Rissen" bei OpenPLZ-Ort „Kiel"/„Hamburg": verifiziert, kanonisch ausgeben
+        for o in orte:
+            if o.get("name") and soll.startswith(_ortsname(o["name"]) + " "):
+                return PlzPruefung(True, bundesland, namen, ort_kanonisch=o["name"])
+        # „X-Y" → „X", wenn OpenPLZ zur PLZ den Ort „X" führt (aber nicht „X-Y" – sonst passte es schon)
+        teile = _STADTTEIL_ZUSATZ.split(ort.strip(), maxsplit=1)
+        if len(teile) == 2 and teile[0]:
+            kern = _ortsname(teile[0])
+            for o in orte:
+                if o.get("name") and _ortsname(o["name"]) == kern:
+                    return PlzPruefung(True, bundesland, namen, ort_kanonisch=o["name"])
+        return PlzPruefung(False, bundesland, namen, f"Ort {ort!r} passt nicht zu PLZ {plz}")
+
+
+# ---------------------------------------------------------------------- Rechtsform
+
+_RECHTSFORMEN_DATEI = Path(__file__).resolve().parents[2] / "config" / "rechtsformen.yaml"
+
+
+@lru_cache(maxsize=4)
+def _rechtsformen(pfad: str = str(_RECHTSFORMEN_DATEI)) -> tuple[tuple[str, tuple[re.Pattern, ...]], ...]:
+    eintraege = yaml.safe_load(Path(pfad).read_text(encoding="utf-8-sig")) or []
+    return tuple((e["form"], tuple(re.compile(v, re.I) for v in e.get("varianten", []))) for e in eintraege)
+
+
+def normalize_rechtsform(text: str | None) -> str | None:
+    """Kanonische Rechtsform („Partnerschaftsgesellschaft mbB" → „PartG mbB"); unbekannte Angaben bleiben."""
+    if not text or not text.strip():
+        return None
+    for form, muster in _rechtsformen():
+        if any(m.search(text) for m in muster):
+            return form
+    return text.strip()
+
+
+def rechtsform_aus_text(text: str | None) -> str | None:
+    """Wie normalize_rechtsform, aber None, wenn keine bekannte Rechtsform vorkommt (z. B. im Kanzleinamen)."""
+    if not text:
+        return None
+    for form, muster in _rechtsformen():
+        if any(m.search(text) for m in muster):
+            return form
+    return None
