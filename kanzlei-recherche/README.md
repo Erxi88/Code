@@ -19,7 +19,9 @@ Projektregeln und Arbeitsweise: siehe [CLAUDE.md](CLAUDE.md).
 | Stufe A: SerpAPI | Platzhalter |
 | Stufe B: Places (Raster fertig), Gelbe Seiten, Das Örtliche, 11880, amtl. Verzeichnis | Platzhalter |
 | `coverage`, `fill`, `search-compare` (alle aktiven Adapter) | fertig |
-| Crawling, Extraktion (Regeln + Ollama), Normalisierung | Platzhalter |
+| Crawling (robots.txt, Drosselung je Domain, Cache, Playwright-Rückfall) | fertig |
+| Extraktion: Regeln + Ollama, Zusammenführung mit Abweichung, OpenPLZ, Konfidenz | fertig |
+| `fixture-add`, `fixture-eval` (Trefferquote, Laufzeit, Token je Modell) | fertig; 3 fiktive Beispiele, echte Fixtures lokal |
 | `orte` (Ortsliste aus OpenPLZ, Einwohner aus GV-ISys) | Platzhalter; Startliste mit 80 Orten |
 
 ## Installation
@@ -30,6 +32,7 @@ Ubuntu (lokal oder Mietserver):
 ./setup.sh                      # Python 3.12, .venv, Ollama, Modell aus settings.yaml
 ./setup.sh --modell qwen3.6:27b # anderes Modell laden (GPU-Server)
 ./setup.sh --ohne-ollama        # nur Python
+./setup.sh --mit-playwright     # zusätzlich Chromium für JavaScript-Seiten
 source .venv/bin/activate
 ```
 
@@ -49,12 +52,30 @@ recherche fill -b SH --quelle places (--luecken | --orte Kiel,Husum | --alle)
 # Quellen vergleichen (alle aktiven Adapter oder Auswahl)
 recherche search-compare --orte Kiel,Flensburg,Lübeck,Neumünster,Husum [--adapter brave,ddgs] [--out vergleich.csv]
 
-recherche crawl   -b SH                     # Websites laden (Platzhalter)
-recherche extract -b SH                     # Daten extrahieren (Platzhalter)
+# Stufe 2 – Websites lesen und Daten extrahieren
+recherche crawl   -b SH [--limit 20] [--wiederholen]
+recherche extract -b SH [--ohne-llm] [--modell qwen3.6:27b] [--limit 20] [--wiederholen]
 recherche export  -b SH [--out liste.xlsx]  # Excel schreiben
 recherche run     -b SH [--orte …] [--adapter ddgs]  # Stufe A + crawl + extract + export
 recherche orte    -b SH                     # Ortsliste (Platzhalter)
+
+# Extraktion an echten Kanzleiseiten messen (Fixtures nur lokal, siehe unten)
+recherche fixture-add  --domain kanzlei-beispiel.de
+recherche fixture-eval [--live] [--modell gemma4:26b] [--nur beispiele|echt]
 ```
+
+**Extraktion:** `crawl` liest für jeden Kandidaten mit Website Start-, Impressum-, Kontakt-
+und Teamseite (1 Anfrage/s je Domain, robots.txt, Cache). `extract` zieht Adresse, Telefon
+und E-Mail per Regeln aus dem Impressum und Name, Rechtsform, Personen und Teamgröße per
+Ollama, prüft PLZ/Ort gegen OpenPLZ und führt alles mit den Discovery-Daten zusammen –
+ohne diese zu überschreiben (Unterschiede stehen in „Abweichung"). Ist Ollama nicht
+erreichbar, endet der Lauf sauber; `--ohne-llm` extrahiert nur per Regeln.
+
+**Fixtures:** `fixture-add` legt die Seiten einer Domain unter
+`tests/fixtures/kanzleiseiten/echt/<domain>/` ab (nicht im Git) und erzeugt eine
+`erwartet.json`-Vorlage zum Ausfüllen. `fixture-eval --live` fragt Ollama und zeichnet die
+Antworten je Modell auf; ohne `--live` wird mit den Aufzeichnungen gerechnet. Ausgabe:
+Trefferquote je Feld, mittlere Laufzeit und Token je Kanzlei, Modellvergleich.
 
 **Wiederaufnahme:** Jeder Schritt speichert seinen Fortschritt in SQLite, jede API-Antwort
 wird gecacht. Nach einem Abbruch (auch Tages-/Monatslimit oder Budget) denselben Befehl
@@ -98,8 +119,11 @@ JSON-Schema über den Ollama-Parameter `format` erzwungen.
 
 Excel mit vier Blättern:
 - **Kanzleien**: Autofilter, fixierte Kopfzeile, Status-Dropdown
-  (`neu / geprüft / kontaktiert / kein Interesse / ungültig`)
-- **Nicht gefunden**: Domain und Grund
+  (`neu / geprüft / kontaktiert / kein Interesse / ungültig`); u. a. „Website vorhanden",
+  „Berufsträger (Anzahl)", „Abweichung" (Discovery vs. Website). Auch Kanzleien ohne
+  Website (aus Stufe B) stehen hier.
+- **Nicht gefunden**: Domain und Grund plus Discovery-Daten (Name, Adresse, Telefon) zum
+  Nachpflegen von Hand
 - **Dubletten**: welcher Datensatz behalten wurde, welcher zusammengeführt oder nur
   verdächtig ist, Kriterium und Art (`zusammengeführt` / `unsicher` / `verdacht`)
 - **Lauf-Protokoll**: Suchbegriff, Trefferzahl, neue Kandidaten, Anfragen, Kosten, Laufzeit, Fehler

@@ -94,44 +94,88 @@ der nächsten Quelle füllen.**
 
 ### Crawling (`crawl.py`)
 
-- Startseite laden, Links sammeln, Impressum-/Kontakt-/Team-Seite über Linktext und
-  Pfad erkennen (`/impressum`, `/kontakt`, `/team`, `/ueber-uns`, `/kanzlei`,
-  „Unser Team", „Mitarbeiter").
-- Max. 1 Request/Sekunde je Domain, viele Domains parallel, Timeout 15 s,
-  2 Retries, robots.txt beachten.
-- Alle Rohseiten als Text in SQLite cachen – eine URL wird nie zweimal geladen.
+- Für jeden Kandidaten **mit Website**: Start bei `https://<domain>/` (Rückfall `http://`,
+  dann Treffer-URL), Links sammeln, Impressum-/Kontakt-/Team-Seite über Pfad und Linktext
+  erkennen (`/impressum`, `/kontakt`, `/team`, `/ueber-uns`, `/kanzlei`, `/wir`,
+  „Unser Team", „Mitarbeiter", „Ansprechpartner"; Abzüge für Datenschutz, Karriere,
+  Jobs). Ohne Impressum-Link wird `/impressum` geraten (Soft-404 wird erkannt).
+- Max. 1 Request/Sekunde je Domain – **auch Weiterleitungen und robots.txt** (Weiter-
+  leitungen werden selbst verfolgt) –, viele Domains parallel (`crawl.parallel_domains`),
+  Timeout 15 s, 2 Retries mit Backoff, User-Agent aus `settings.yaml`.
+- robots.txt nach RFC 9309: 4xx → alles erlaubt, 5xx/nicht erreichbar → alles verboten.
+- Jede URL wird **einmal** geladen und als **HTML (gzip) + bereinigter Text** in SQLite
+  gecacht (auch 404). Der Text entsteht aus dem ganzen `<body>` mit Zeilenumbrüchen –
+  **Navigation und Fußzeile bleiben**, weil dort oft Adresse und Telefon stehen.
+  trafilatura liefert nur den Haupttext der Teamseite für den LLM-Prompt.
+- Playwright nur als Rückfall für fast leere Seiten (< `crawl.min_text_zeichen`) und nur
+  mit `crawl.playwright: true` (`setup.sh --mit-playwright`).
+- Fehler (nicht erreichbar, HTTP-Fehler, robots.txt, kein Impressum, JavaScript-Seite,
+  Weiterleitung auf Portal) → Blatt „Nicht gefunden" **mit den Discovery-Daten** (Name,
+  Adresse, Telefon), damit von Hand nachgepflegt werden kann.
 
 ### Extraktion (`extract/`)
 
 - Austauschbar über ein Interface (`extract/base.py`), damit später weitere Anbieter
   ergänzt werden können.
-- Stufe 1 regelbasiert (`rules.py`): PLZ, Ort, Straße, Telefon, E-Mail aus dem
-  Impressum (Regex).
-- Stufe 2 LLM über Ollama (`ollama.py`, lokal `http://localhost:11434`): Name,
-  Rechtsform, Ansprechpartner, Teamgröße.
+- Stufe 1 regelbasiert (`rules.py`): Straße, PLZ, Ort, Telefon (über
+  `normalize_telefon`), E-Mail aus dem Impressum (Rückfall Kontakt-, Startseite).
+  Adressen/Telefone in Fremd-Abschnitten (Kammer, Aufsicht, Versicherung, Hoster,
+  Webdesign) werden ignoriert: `config/impressum_ausschluss.yaml`.
+- Stufe 2 LLM über Ollama (`ollama.py`, URL und Modell aus `settings.yaml`) auf allen
+  Seiten: Name, Rechtsform, Personen (Name, Titel, Funktion), genannte
+  Mitarbeiterzahl/Größenklasse; Adresse/Telefon/E-Mail nur als Rückfall.
   - JSON-Schema **immer** über den Ollama-Parameter `format` erzwingen.
   - Thinking-Modus **immer** abschalten (`"think": false`), bei allen Modellen.
-  - Modellname aus `settings.yaml`. Lokal: aktuelles Qwen-3-Modell der 8B-Klasse,
-    Fallback `llama3.1:8b`. GPU-Server: Qwen 3.6 27B (dicht), Alternative
-    Gemma 4 26B-A4B. Umschalten nach dem Fixture-Vergleich.
-- Fehlende Felder bleiben `null` – **nie raten**.
+  - `num_ctx` immer setzen (Ollama-Standard schneidet längere Seiten ab).
+  - Modelle: lokal `qwen3.5:9b`, Fallback `llama3.1:8b`; GPU-Server `qwen3.6:27b`,
+    Alternative `gemma4:26b`. Umschalten nach dem Fixture-Vergleich (`fixture-eval`).
+- Fehlende Felder bleiben `null` – **nie raten**. Konfidenz berechnet der Code, nicht das LLM.
+- Zusammenführung (`merge.py`):
+  - Adresse (als Einheit) und Telefon: Discovery (Stufe B) > Regeln > LLM.
+  - Name: Discovery (Stufe B) > LLM; **Websuche-Titel gelten nicht als Discovery-Name**.
+  - Discovery-Daten werden nie überschrieben; Unterschiede (normalisiert verglichen)
+    stehen in der Spalte „Abweichung". Kandidatenfelder werden nur ergänzt, wenn leer.
+  - Ansprechpartner = nur **Berufsträger und Leitung** (Verantwortliche/r laut Impressum
+    zuerst); „Berufsträger (Anzahl)" zählt StB/WP/RA/vBP darunter.
+  - Teamgröße: genannte Zahl > **alle** Personen der Teamseite (≥ 2; Untergrenze, eine
+    größere Klasse aus dem Text geht vor) > Klasse aus dem Text.
+- Kandidaten **ohne Website** kommen mit ihren Discovery-Daten ins Blatt „Kanzleien"
+  („Website vorhanden" = nein).
+
+### Fixtures für die Extraktion (`fixtures.py`)
+
+- `tests/fixtures/kanzleiseiten/<beispiele|echt>/<domain>/`: `start/impressum/kontakt/
+  team.html`, `meta.json`, `erwartet.json` (von Hand, `_status: fertig`),
+  `llm/<modell>.json` (Aufzeichnungen).
+- **Echte Kanzleiseiten nur lokal** unter `echt/` (`.gitignore`); committet werden nur
+  die fiktiven Beispiele. Tests überspringen fehlende echte Fixtures.
+- `recherche fixture-add --domain X` holt die Seiten (robots.txt, Drosselung) und legt
+  die Vorlage an. `recherche fixture-eval [--live] [--modell M]` misst die Trefferquote
+  je Feld, mittlere Laufzeit und Token je Kanzlei; `--live` fragt Ollama und zeichnet
+  auf. Name und Ansprechpartner werden offline nur über Aufzeichnungen bewertet.
+- Ziel: 13 von 15 echten Fixtures korrekt für Name, Adresse, Telefon und ersten
+  Ansprechpartner.
 
 ### Nachverarbeitung (`normalize.py`)
 
-- Telefon ins `+49`-Format, PLZ/Ort-Check gegen OpenPLZ-API (kostenlos),
-  Bundesland aus PLZ.
-- Dubletten über Domain, Telefon und PLZ+Name-Token zusammenführen.
+- Telefon ins `+49`-Format, PLZ/Ort-Check gegen OpenPLZ-API (kostenlos, eine Anfrage
+  je PLZ, gecacht), Bundesland aus PLZ. OpenPLZ nicht erreichbar → „nicht verifiziert".
+- Dubletten über Domain, Telefon, Adresse und PLZ+Name-Token (`search/dedupe.py`).
 
 ### Excel (`export.py`)
 
-- Blatt „Kanzleien": Autofilter, feste Kopfzeile, Dropdown für Status.
-- Blatt „Nicht gefunden": Domains ohne lesbares Impressum oder mit Fehler, mit Grund.
+- Blatt „Kanzleien": Autofilter, feste Kopfzeile, Dropdown für Status; Spalten u. a.
+  „Website vorhanden", „Berufsträger (Anzahl)", „Abweichung". Eine erneute Extraktion
+  setzt einen gepflegten Status nicht zurück.
+- Blatt „Nicht gefunden": Domains ohne lesbares Impressum oder mit Fehler, mit Grund und
+  Discovery-Daten.
 - Blatt „Dubletten".
 - Blatt „Lauf-Protokoll": Suchbegriff, Trefferzahl, neue Kandidaten, Anfragen, Kosten, Laufzeit.
 
 ### CLI (`cli.py`)
 
-`recherche search | fill | coverage | crawl | extract | export | run | search-compare | orte`,
+`recherche search | fill | coverage | crawl | extract | export | run | search-compare | orte |
+fixture-add | fixture-eval`,
 jeweils mit `--bundesland` und `--db`. **Jeder Schritt muss nach Abbruch
 wiederaufnehmbar sein**: Fortschritt steht in SQLite (Status je Domain und
 Schritt, erledigte Queries im Lauf-Protokoll); ein erneuter Aufruf macht nur das,
@@ -140,9 +184,11 @@ was noch offen ist.
 ### Speicher (`storage.py`)
 
 SQLite-Tabellen: `kandidaten` (eigene ID, Domain optional), `funde` (jeder Treffer je
-Quelle), `api_cache`, `seiten` (Rohseiten-Cache), `kanzleien`, `nicht_gefunden`,
-`dubletten`, `lauf_protokoll` (inkl. Anfragen und Kosten). Schemaversion über
-`PRAGMA user_version` (aktuell 2); ältere Datenbanken werden beim Öffnen migriert.
+Quelle), `api_cache` (auch robots.txt und OpenPLZ), `seiten` (HTML gzip + Text),
+`kandidat_seiten` (Seitentyp → URL je Kandidat), `kanzleien` (je Kandidat),
+`nicht_gefunden`, `dubletten`, `lauf_protokoll` (inkl. Anfragen und Kosten).
+Schemaversion über `PRAGMA user_version` (aktuell 3); ältere Datenbanken werden beim
+Öffnen schrittweise migriert (jeder Schritt in einer Transaktion).
 
 ## Arbeitsweise
 
@@ -162,8 +208,11 @@ Quelle), `api_cache`, `seiten` (Rohseiten-Cache), `kanzleien`, `nicht_gefunden`,
 ## Stand
 
 - Stufe 1 (Gerüst): Modelle, SQLite-Speicher, Excel-Export, CLI.
-- Discovery-Sitzung: Ergebnisformat und Dubletten-Logik über Adresse/Telefon, Schema v2,
-  Brave- und Google-CSE-Adapter fertig, `coverage`, `fill`, `search-compare` für alle
-  aktiven Adapter. Platzhalter: `serpapi`, `places` (Raster fertig), `gelbeseiten`,
-  `dasoertliche`, `elf880`, `stb_verzeichnis`.
-- Noch Platzhalter: `crawl`, `extract`, `orte` (OpenPLZ + Einwohner aus GV-ISys).
+- Discovery-Sitzung: Ergebnisformat und Dubletten-Logik über Adresse/Telefon, Brave- und
+  Google-CSE-Adapter, `coverage`, `fill`, `search-compare` für alle aktiven Adapter.
+  Platzhalter: `serpapi`, `places` (Raster fertig), `gelbeseiten`, `dasoertliche`,
+  `elf880`, `stb_verzeichnis`.
+- Stufe 2 (Lesen und Extrahieren): `crawl`, `extract` (Regeln + Ollama), Zusammenführung
+  mit Abweichung und Konfidenz, OpenPLZ-Prüfung, Schema v3, `fixture-add`,
+  `fixture-eval` mit 3 fiktiven Beispielen. Die 15 echten Fixtures folgen (lokal).
+- Noch Platzhalter: `orte` (OpenPLZ + Einwohner aus GV-ISys).

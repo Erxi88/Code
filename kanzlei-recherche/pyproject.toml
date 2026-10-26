@@ -22,6 +22,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
+# Rückfall für JavaScript-Seiten (crawl.playwright: true); Browser: playwright install chromium
+playwright = ["playwright>=1.40"]
 
 [project.scripts]
 recherche = "recherche.cli:app"

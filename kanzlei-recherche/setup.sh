@@ -4,16 +4,19 @@
 #   ./setup.sh                 # alles, Modell aus config/settings.yaml (llm.modell)
 #   ./setup.sh --modell qwen3.6:27b
 #   ./setup.sh --ohne-ollama   # nur Python-Teil (z. B. wenn Ollama auf einem anderen Server läuft)
+#   ./setup.sh --mit-playwright  # zusätzlich Chromium für JavaScript-Seiten (crawl.playwright: true)
 set -euo pipefail
 
 cd "$(dirname "$0")"
 MODELL=""
 MIT_OLLAMA=1
+MIT_PLAYWRIGHT=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --modell) MODELL="$2"; shift 2 ;;
     --ohne-ollama) MIT_OLLAMA=0; shift ;;
-    -h|--help) sed -n '2,7p' "$0"; exit 0 ;;
+    --mit-playwright) MIT_PLAYWRIGHT=1; shift ;;
+    -h|--help) sed -n '2,8p' "$0"; exit 0 ;;
     *) echo "Unbekannte Option: $1" >&2; exit 1 ;;
   esac
 done
@@ -37,6 +40,13 @@ python3.12 -m venv .venv
 .venv/bin/pip install -e ".[dev]"
 mkdir -p data
 [[ -f .env ]] || cp .env.example .env
+
+if [[ $MIT_PLAYWRIGHT -eq 1 ]]; then
+  echo "==> Playwright + Chromium (Rückfall für JavaScript-Seiten)"
+  .venv/bin/pip install -e ".[playwright]"
+  .venv/bin/playwright install --with-deps chromium
+  echo "    In config/settings.yaml crawl.playwright: true setzen, um den Rückfall zu nutzen."
+fi
 
 if [[ $MIT_OLLAMA -eq 1 ]]; then
   echo "==> Ollama"
@@ -71,5 +81,6 @@ cat <<TXT
 
 Fertig. Aktivieren mit:  source .venv/bin/activate
 Pilot:                   recherche run --bundesland SH --orte Kiel,Husum
+Extraktion messen:       recherche fixture-eval   (echte Seiten: recherche fixture-add --domain …)
 Suchvergleich:           recherche search-compare --orte Kiel,Flensburg,Lübeck,Neumünster,Husum
 TXT
