@@ -194,6 +194,9 @@ class CrawlConfig(BaseModel):
     min_text_zeichen: int = 300  # darunter gilt eine Seite als „ohne Text" (JavaScript)
     playwright: bool = False  # Rückfall für JavaScript-Seiten, nur wenn aktiviert
     playwright_timeout_s: float = 20.0
+    # Teamseite trotz großem HTML fast ohne Text → mit Playwright nachladen (nur mit playwright: true)
+    playwright_team_min_html: int = 20_000
+    playwright_team_min_anteil: float = 0.02
     max_bytes: int = 3_000_000
 
 

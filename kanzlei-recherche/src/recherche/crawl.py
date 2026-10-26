@@ -426,7 +426,9 @@ class Crawler:
         if not await self.erlaubt(url):
             return Abruf(url, fehler="robots.txt verbietet den Zugriff")
         abruf = await self._mit_retries(url, domain)
-        if abruf.ok and self.cfg.playwright and len(abruf.text or "") < self.cfg.min_text_zeichen:
+        if abruf.ok and self.cfg.playwright and (
+            len(abruf.text or "") < self.cfg.min_text_zeichen or self._team_ohne_text(abruf, typ)
+        ):
             abruf = await self._rendern(abruf)
         if abruf.ok or (abruf.status is not None and abruf.status < 500 and abruf.status != 429):
             # endgültige Antworten cachen (auch 404); Netzfehler, 429 und 5xx sind vorübergehend
@@ -483,6 +485,12 @@ class Crawler:
         html = resp.text[: self.cfg.max_bytes]
         return Abruf(url, resp.status_code, html, html_zu_text(html), final)
 
+    def _team_ohne_text(self, abruf: Abruf, typ: Seitentyp) -> bool:
+        """Teamseite mit großem HTML, aber kaum Text (Namen per JavaScript nachgeladen)."""
+        html = len(abruf.html or "")
+        return (typ in (Seitentyp.TEAM, Seitentyp.TEAM2) and html >= self.cfg.playwright_team_min_html
+                and len(abruf.text or "") < self.cfg.playwright_team_min_anteil * html)  # fmt: skip
+
     async def _rendern(self, abruf: Abruf) -> Abruf:
         renderer = self._renderer or (
             lambda u: playwright_render(u, self.cfg.playwright_timeout_s, self.cfg.user_agent)
@@ -492,8 +500,8 @@ class Crawler:
         except Exception as e:  # Playwright nicht installiert, Timeout …
             log.warning("Playwright-Rückfall für %s fehlgeschlagen: %s", abruf.url, e)
             return abruf
-        if html:
-            abruf.html, abruf.text = html, html_zu_text(html)
+        if html and len(text := html_zu_text(html)) > len(abruf.text or ""):
+            abruf.html, abruf.text = html, text
         return abruf
 
     # -------------------------------------------------------------- Kandidat

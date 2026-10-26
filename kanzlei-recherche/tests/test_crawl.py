@@ -282,6 +282,24 @@ def test_javascript_seite_mit_playwright_rueckfall(storage):
     assert "Förde" in storage.kandidat_seiten(ids[0])[Seitentyp.START].text
 
 
+def test_teamseite_mit_wenig_text_wird_gerendert(storage):
+    """97 KB HTML, aber kaum Text (Namen per JavaScript): Teamseite mit Playwright nachladen."""
+    team = "https://www.hansen-steuerberatung.example/team/"
+    original = _alle_beispiele()
+    js_team = ("<html><body><h1>Unser Team</h1><p>Lernen Sie uns kennen.</p><div id='team'></div>"
+               "<script>var daten = '" + "x" * 60_000 + "';</script></body></html>")
+    aufrufe = []
+
+    async def renderer(url):
+        aufrufe.append(url)
+        return original[team][1]
+
+    web, clock, ids = _setup(storage, {**original, team: (200, js_team)}, ("hansen-steuerberatung.example", {}))
+    _crawl(storage, web, clock, cfg=CFG.model_copy(update={"playwright": True}), renderer=renderer)
+    assert "Ole Brandt" in storage.kandidat_seiten(ids[0])[Seitentyp.TEAM].text
+    assert aufrufe == [team]  # Start, Impressum, Kontakt haben genug Text
+
+
 def test_kein_html(storage):
     seiten = {"https://a.example/": (200, "%PDF-1.4", {"content-type": "application/pdf"})}
     web, clock, _ = _setup(storage, seiten, ("a.example", {}))
