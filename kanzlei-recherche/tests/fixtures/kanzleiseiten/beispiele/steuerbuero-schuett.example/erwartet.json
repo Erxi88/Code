@@ -1,0 +1,14 @@
+{
+ "_status": "fertig",
+ "kanzleiname": "Steuerbüro Thomas Schütt",
+ "rechtsform": null,
+ "strasse": "Großflecken 3",
+ "plz": "24534",
+ "ort": "Neumünster",
+ "telefon": "+49 4321 559012",
+ "email": "kanzlei@steuerbuero-schuett.example",
+ "erster_ansprechpartner": "Thomas Schütt",
+ "berufstraeger_anzahl": 1,
+ "teamgroesse": null,
+ "teamgroesse_klasse": "1-5"
+}

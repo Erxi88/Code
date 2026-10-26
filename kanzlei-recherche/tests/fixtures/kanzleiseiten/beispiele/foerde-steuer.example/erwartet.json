@@ -1,0 +1,14 @@
+{
+ "_status": "fertig",
+ "kanzleiname": "Förde Steuerberatungsgesellschaft mbH",
+ "rechtsform": "GmbH",
+ "strasse": "Große Straße 15",
+ "plz": "24937",
+ "ort": "Flensburg",
+ "telefon": "+49 461 4400871",
+ "email": "info@foerde-steuer.example",
+ "erster_ansprechpartner": "Henrik Lorenzen",
+ "berufstraeger_anzahl": 2,
+ "teamgroesse": null,
+ "teamgroesse_klasse": "16-50"
+}

@@ -31,3 +31,7 @@ htmlcov/
 .idea/
 .vscode/
 .DS_Store
+
+# Echte Kanzleiseiten (personenbezogene Daten) nur lokal
+tests/fixtures/kanzleiseiten/echt/*
+!tests/fixtures/kanzleiseiten/echt/.gitkeep

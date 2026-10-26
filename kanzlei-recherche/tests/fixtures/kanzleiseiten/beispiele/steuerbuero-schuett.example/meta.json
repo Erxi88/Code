@@ -1,0 +1,9 @@
+{
+ "domain": "steuerbuero-schuett.example",
+ "urls": {
+  "start": "https://www.steuerbuero-schuett.example/index.php",
+  "impressum": "https://www.steuerbuero-schuett.example/impressum-kontakt.php"
+ },
+ "abgerufen_am": "2026-10-26T10:00:00",
+ "_hinweis": "Fiktive Kanzlei (Testdaten); Orte und PLZ sind echt."
+}

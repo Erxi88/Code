@@ -1,0 +1,27 @@
+{
+ "_hinweis": "Handgeschriebene Beispielantwort für Tests – keine echte Modellausgabe.",
+ "ergebnis": {
+  "kanzleiname": "Steuerbüro Thomas Schütt",
+  "rechtsform": "Einzelkanzlei",
+  "strasse": "Großflecken 3",
+  "plz": "24534",
+  "ort": "Neumünster",
+  "telefon": "04321 / 55 90 12",
+  "email": "kanzlei@steuerbuero-schuett.example",
+  "verantwortliche_person": "Thomas Schütt",
+  "personen": [
+   {
+    "name": "Thomas Schütt",
+    "titel": null,
+    "funktion": "Steuerberater"
+   }
+  ],
+  "mitarbeiterzahl": null,
+  "mitarbeiterzahl_beleg": null,
+  "teamgroesse_klasse": "1-5"
+ },
+ "modell": "qwen3.6:27b",
+ "laufzeit_s": 6.1,
+ "prompt_tokens": 1105,
+ "antwort_tokens": 205
+}

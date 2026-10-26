@@ -1,0 +1,11 @@
+{
+ "domain": "hansen-steuerberatung.example",
+ "urls": {
+  "start": "https://www.hansen-steuerberatung.example/",
+  "impressum": "https://www.hansen-steuerberatung.example/impressum/",
+  "kontakt": "https://www.hansen-steuerberatung.example/kontakt/",
+  "team": "https://www.hansen-steuerberatung.example/team/"
+ },
+ "abgerufen_am": "2026-10-26T10:00:00",
+ "_hinweis": "Fiktive Kanzlei (Testdaten); Orte und PLZ sind echt."
+}

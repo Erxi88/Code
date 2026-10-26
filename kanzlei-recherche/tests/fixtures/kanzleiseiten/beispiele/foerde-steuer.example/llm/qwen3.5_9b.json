@@ -1,0 +1,32 @@
+{
+ "_hinweis": "Handgeschriebene Beispielantwort für Tests – keine echte Modellausgabe.",
+ "ergebnis": {
+  "kanzleiname": "Förde Steuerberatungsgesellschaft mbH",
+  "rechtsform": "GmbH",
+  "strasse": "Große Straße 15",
+  "plz": "24937",
+  "ort": "Flensburg",
+  "telefon": "+49 461 4400871",
+  "email": "info@foerde-steuer.example",
+  "verantwortliche_person": "Henrik Lorenzen",
+  "personen": [
+   {
+    "name": "Henrik Lorenzen",
+    "titel": "Dr.",
+    "funktion": "Geschäftsführer, Steuerberater"
+   },
+   {
+    "name": "Silke Asmussen",
+    "titel": "Dipl.-Bw. (FH)",
+    "funktion": "Steuerberaterin"
+   }
+  ],
+  "mitarbeiterzahl": null,
+  "mitarbeiterzahl_beleg": null,
+  "teamgroesse_klasse": "16-50"
+ },
+ "modell": "qwen3.5:9b",
+ "laufzeit_s": 36.9,
+ "prompt_tokens": 2210,
+ "antwort_tokens": 318
+}

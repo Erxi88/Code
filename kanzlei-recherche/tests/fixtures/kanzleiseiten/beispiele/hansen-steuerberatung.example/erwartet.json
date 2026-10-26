@@ -1,0 +1,14 @@
+{
+ "_status": "fertig",
+ "kanzleiname": "Hansen & Petersen Steuerberater PartG mbB",
+ "rechtsform": "PartG mbB",
+ "strasse": "Holstenstraße 42",
+ "plz": "24103",
+ "ort": "Kiel",
+ "telefon": "+49 431 9987610",
+ "email": "info@hansen-steuerberatung.example",
+ "erster_ansprechpartner": "Jens Hansen",
+ "berufstraeger_anzahl": 3,
+ "teamgroesse": 6,
+ "teamgroesse_klasse": null
+}

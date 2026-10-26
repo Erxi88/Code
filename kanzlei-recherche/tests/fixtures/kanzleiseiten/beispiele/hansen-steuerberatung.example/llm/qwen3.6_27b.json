@@ -1,0 +1,52 @@
+{
+ "_hinweis": "Handgeschriebene Beispielantwort für Tests – keine echte Modellausgabe.",
+ "ergebnis": {
+  "kanzleiname": "Hansen & Petersen Steuerberater PartG mbB",
+  "rechtsform": "PartG mbB",
+  "strasse": "Holstenstraße 42",
+  "plz": "24103",
+  "ort": "Kiel",
+  "telefon": "0431 / 99 87 610",
+  "email": "info@hansen-steuerberatung.example",
+  "verantwortliche_person": "Jens Hansen",
+  "personen": [
+   {
+    "name": "Jens Hansen",
+    "titel": "Dipl.-Kfm.",
+    "funktion": "Steuerberater, Partner"
+   },
+   {
+    "name": "Maren Petersen",
+    "titel": null,
+    "funktion": "Steuerberaterin, Partnerin"
+   },
+   {
+    "name": "Ole Brandt",
+    "titel": "M.Sc.",
+    "funktion": "Steuerberater"
+   },
+   {
+    "name": "Sabine Krause",
+    "titel": null,
+    "funktion": "Steuerfachangestellte"
+   },
+   {
+    "name": "Lena Voss",
+    "titel": null,
+    "funktion": "Bilanzbuchhalterin"
+   },
+   {
+    "name": "Tim Jensen",
+    "titel": null,
+    "funktion": "Auszubildender zum Steuerfachangestellten"
+   }
+  ],
+  "mitarbeiterzahl": null,
+  "mitarbeiterzahl_beleg": null,
+  "teamgroesse_klasse": null
+ },
+ "modell": "qwen3.6:27b",
+ "laufzeit_s": 12.8,
+ "prompt_tokens": 3184,
+ "antwort_tokens": 395
+}
