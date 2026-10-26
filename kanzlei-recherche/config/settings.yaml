@@ -1,0 +1,64 @@
+# Zentrale Konfiguration. Relative Pfade gelten ab dem Projektordner kanzlei-recherche/.
+# Derselbe Code läuft lokal und auf dem Mietserver – nur diese Datei (und .env) anpassen.
+
+standard_bundesland: SH
+
+bundeslaender:
+  SH:
+    name: Schleswig-Holstein
+    orte_datei: config/orte_SH.csv
+
+pfade:
+  db: data/recherche.sqlite
+  # {bundesland} und {datum} werden ersetzt
+  ausgabe: data/export/kanzleien_{bundesland}_{datum}.xlsx
+  queries: config/queries.yaml
+  blocklist: config/domain_blocklist.txt
+
+search:
+  adapter: ddgs                      # ddgs | google | brave
+  compare_adapters: [ddgs, google, brave]
+  max_results_per_query: 20
+  ddgs:
+    region: de-de
+    backend: duckduckgo              # nur DuckDuckGo, nicht ddgs-"auto"
+    safesearch: moderate
+    timeout_s: 15
+    pause_s: 3.0                     # Mindestpause zwischen zwei Anfragen
+    pause_jitter_s: 2.0              # zusätzliche Zufallspause 0..jitter
+    retries: 3                       # Wiederholungen nach Rate-Limit/Timeout
+    backoff_s: 20.0                  # Wartezeit vor Retry n: backoff_s * 2**(n-1)
+  google:                            # Platzhalter bis zur Suche-Sitzung
+    per_page: 10
+    max_per_query: 30
+    pause_s: 1.0
+  brave:                             # Platzhalter bis zur Suche-Sitzung
+    per_page: 20
+    max_per_query: 20
+    pause_s: 1.1
+
+crawl:
+  parallel_domains: 10
+  requests_per_second_per_domain: 1.0
+  timeout_s: 15
+  retries: 2
+  respect_robots: true
+  user_agent: "kanzlei-recherche/0.1 (Recherche-Tool; Kontakt siehe README)"
+
+llm:
+  provider: ollama
+  url: http://localhost:11434
+  # Lokal (Standard): neuestes Qwen-3-Modell der 8B-Klasse in der Ollama-Bibliothek.
+  #   Qwen 3.5 gibt es dort als 9B (kein 8B mehr); Vorgänger: qwen3:8b
+  modell: qwen3.5:9b
+  fallback_modell: llama3.1:8b
+  # GPU-Server – nach dem Fixture-Vergleich hier umschalten:
+  #   modell: qwen3.6:27b        # Standard Server: Qwen 3.6 27B, dicht
+  #   modell: gemma4:26b         # Alternative: Gemma 4 26B-A4B (MoE)
+  think: false                       # Thinking-Modus immer aus
+  temperature: 0.0
+  timeout_s: 120
+  max_text_chars: 12000              # Seitentext wird vor dem LLM-Aufruf gekürzt
+
+openplz:
+  url: https://openplzapi.org

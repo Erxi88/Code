@@ -1,0 +1,86 @@
+# Domains, die nie Kanzlei-Kandidaten sind (Portale, Verzeichnisse, Social Media).
+# Eine Domain je Zeile; Subdomains werden mitgefiltert. Kommentare mit #.
+
+# Verzeichnisse / Branchenbücher
+gelbeseiten.de
+dasoertliche.de
+dastelefonbuch.de
+11880.com
+goyellow.de
+meinestadt.de
+cylex.de
+cylex-branchenbuch.de
+branchenbuch.de
+golocal.de
+yelp.de
+yelp.com
+werkenntdenbesten.de
+kennstdueinen.de
+wlw.de
+northdata.de
+firmenwissen.de
+unternehmensregister.de
+handelsregister.de
+infobel.com
+hotfrog.de
+auskunft.de
+stadtbranchenbuch.com
+branchen-info.net
+marktplatz-mittelstand.de
+provenexpert.com
+trustpilot.com
+
+# Steuerberater-Portale und Kammern
+steuerberater.de
+steuerberaterverzeichnis.de
+steuerberater-suchservice.de
+dstv.de
+bstbk.de
+stbk-sh.de
+stbk-hamburg.de
+datev.de
+smartsteuer.de
+steuertipps.de
+anwalt.de
+jameda.de
+trusted.de
+check24.de
+lohnsteuerhilfe.net
+vlh.de
+
+# Jobportale
+stepstone.de
+indeed.com
+indeed.de
+monster.de
+xing.com
+kununu.com
+jobware.de
+arbeitsagentur.de
+stellenanzeigen.de
+glassdoor.de
+
+# Social Media / Plattformen
+facebook.com
+instagram.com
+linkedin.com
+twitter.com
+x.com
+youtube.com
+tiktok.com
+pinterest.com
+wikipedia.org
+google.com
+google.de
+maps.google.com
+apple.com
+bing.com
+duckduckgo.com
+openstreetmap.org
+
+# Presse
+shz.de
+kn-online.de
+ln-online.de
+abendblatt.de
+ndr.de

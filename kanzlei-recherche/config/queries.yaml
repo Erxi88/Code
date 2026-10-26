@@ -1,0 +1,6 @@
+# Query-Vorlagen je Ort. Platzhalter: {ort}, {plz}, {kreis}
+vorlagen:
+  - "Steuerberater {ort}"
+  - "Steuerkanzlei {ort}"
+  - "Steuerberatung {plz} {ort}"
+  - "Steuerberater {ort} Impressum"
