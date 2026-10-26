@@ -326,3 +326,26 @@ def test_run_crawl_limit(storage):
     stat = run_crawl(storage, cfg, "SH", set(), limit=1, client=web.client())
     assert stat.fertig == 1
     assert len(storage.kandidaten("SH", crawl_status=SchrittStatus.OFFEN)) == 1
+
+
+@pytest.mark.parametrize("playwright,renderer,erwartet", [
+    (False, None, "nötig, aber crawl.playwright ist aus"),
+    (True, "fehler", "fehlgeschlagen (RuntimeError: Chromium fehlt)"),
+    (True, "leer", "gerendert, aber nicht mehr Text"),
+])  # fmt: skip
+def test_playwright_ergebnis_wird_gemeldet(storage, playwright, renderer, erwartet):
+    import asyncio
+
+    async def rendern(url):
+        if renderer == "fehler":
+            raise RuntimeError("Chromium fehlt")
+        return JS_SEITE
+
+    web, clock, _ = _setup(storage, {"https://js.example/": (200, JS_SEITE)}, ("js.example", {}))
+
+    async def lauf():
+        c = Crawler(CFG.model_copy(update={"playwright": playwright}), storage, set(), client=web.client(),
+                    renderer=rendern, clock=clock, sleep=clock.sleep)
+        return await c.hole("https://js.example/", "js.example", Seitentyp.START)
+
+    assert asyncio.run(lauf()).playwright.startswith(erwartet)

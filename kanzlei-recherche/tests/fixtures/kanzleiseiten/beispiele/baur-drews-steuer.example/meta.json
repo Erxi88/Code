@@ -1,0 +1,11 @@
+{
+ "domain": "baur-drews-steuer.example",
+ "urls": {
+  "start": "https://baur-drews-steuer.example/",
+  "impressum": "https://baur-drews-steuer.example/impressum",
+  "kontakt": "https://baur-drews-steuer.example/kontakt",
+  "team": "https://baur-drews-steuer.example/team"
+ },
+ "abgerufen_am": "2026-10-29T10:00:00",
+ "_hinweis": "Fiktive Kanzlei (Testdaten): durchgängig bedingte Trennstriche, Vertretung als Überschrift ohne Doppelpunkt, zwei Personen mit gleichem Nachnamen."
+}

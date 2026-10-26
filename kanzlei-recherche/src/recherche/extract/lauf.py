@@ -18,6 +18,7 @@ from ..crawl import links
 from ..models import Kandidat, LaufEintrag, SchrittStatus, Seitentyp
 from ..normalize import PlzPruefer
 from ..storage import Storage
+from ..textnorm import text_normalisieren
 from .base import AnbieterNichtErreichbar, Extractor, ExtraktionFehler
 from .merge import zusammenfuehren
 from .rules import Ausschluss, extract_impressum
@@ -55,7 +56,8 @@ def regeln_fuer(seiten, ausschluss: Ausschluss, domain: str | None):
     reihenfolge = [seiten[t] for t in (Seitentyp.IMPRESSUM, Seitentyp.KONTAKT, Seitentyp.START) if t in seiten]
     if not reihenfolge:
         return None
-    texte = [(s.text or "", [u for u, _ in links(s.html, s.final_url or s.url)] if s.html else []) for s in reihenfolge]
+    texte = [(text_normalisieren(s.text) or "", [u for u, _ in links(s.html, s.final_url or s.url)] if s.html else [])
+             for s in reihenfolge]  # fmt: skip
     (text, lnks), *weitere = texte
     return extract_impressum(text, ausschluss, lnks, domain, weitere)
 

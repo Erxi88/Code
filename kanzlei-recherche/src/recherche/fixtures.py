@@ -33,6 +33,7 @@ from .models import Kandidat, Kanzlei, Seite, Seitentyp
 from .normalize import _ortsname, normalize_rechtsform
 from .search.dedupe import adresse_key, telefon_key
 from .storage import Storage
+from .textnorm import text_normalisieren
 
 DATEIEN = {
     Seitentyp.START: "start.html",
@@ -94,7 +95,7 @@ class Fixture:
         seiten = {}
         for typ, datei in DATEIEN.items():
             if (pfad / datei).exists():
-                html = (pfad / datei).read_text(encoding="utf-8-sig")
+                html = text_normalisieren((pfad / datei).read_text(encoding="utf-8-sig")) or ""
                 url = (meta.get("urls") or {}).get(typ.value) or f"https://{domain}/{'' if typ == Seitentyp.START else typ.value}"
                 seiten[typ] = Seite(url=url, domain=domain, seitentyp=typ, http_status=200, html=html,
                                     text=html_zu_text(html), final_url=url, abgerufen_am=abgerufen)  # fmt: skip
@@ -157,8 +158,9 @@ async def fixture_holen(
     for typ, abruf in erg.seiten.items():
         (pfad / DATEIEN[typ]).write_text(abruf.html or "", encoding="utf-8")
         urls[typ.value] = abruf.final_url or abruf.url
+    playwright = {typ.value: a.playwright for typ, a in erg.seiten.items() if a.playwright}
     meta = {"domain": domain, "urls": urls, "abgerufen_am": datetime.now().replace(microsecond=0).isoformat(),
-            "crawl_hinweis": erg.grund}  # fmt: skip
+            "crawl_hinweis": erg.grund, **({"playwright": playwright} if playwright else {})}  # fmt: skip
     (pfad / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     if not (pfad / "erwartet.json").exists():
         (pfad / "erwartet.json").write_text(json.dumps(ERWARTET_VORLAGE, ensure_ascii=False, indent=1) + "\n",

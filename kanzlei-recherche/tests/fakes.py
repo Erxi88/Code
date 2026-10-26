@@ -190,7 +190,7 @@ def beispiel_seiten(domain: str) -> dict[str, tuple]:
 
 
 # OpenPLZ-Ortsnamen der fiktiven Kanzleiseiten-Beispiele (für Ort-Vereinheitlichung ohne Netz)
-BEISPIEL_ORTE = {"24103": "Kiel", "24159": "Kiel", "24937": "Flensburg", "24534": "Neumünster", "22761": "Hamburg"}
+BEISPIEL_ORTE = {"23552": "Lübeck", "24103": "Kiel", "24159": "Kiel", "24937": "Flensburg", "24534": "Neumünster", "22761": "Hamburg"}
 
 
 def fake_pruefer(orte: dict[str, str] | None = None):

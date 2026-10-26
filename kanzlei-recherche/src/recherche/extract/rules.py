@@ -16,6 +16,7 @@ import yaml
 
 from ..normalize import normalize_telefon, rechtsform_aus_text
 from ..search.dedupe import adresse_key
+from ..textnorm import text_normalisieren
 from .base import RegelErgebnis
 
 _PLZ_ORT = re.compile(
@@ -237,6 +238,8 @@ def extract_impressum(
     herangezogen, die im Impressum fehlen.
     """
     ausschluss = ausschluss or Ausschluss()
+    text = text_normalisieren(text) or ""
+    weitere_texte = [(text_normalisieren(x) or "", lnks) for x, lnks in weitere_texte or []]
     erg = RegelErgebnis()
     mails: list[str] = []
     for txt, lnks in [(text, links or []), *(weitere_texte or [])]:

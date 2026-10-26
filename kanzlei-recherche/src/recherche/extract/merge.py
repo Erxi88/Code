@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import date
 
 from ..crawl import html_zu_text
@@ -32,6 +33,7 @@ from ..models import (
 )
 from ..normalize import PlzPruefung, normalize_rechtsform, normalize_telefon
 from ..search.dedupe import adresse_key, name_tokens, telefon_key
+from ..textnorm import text_normalisieren
 from .base import LlmErgebnis, LlmPerson, RegelErgebnis
 from .personen import (
     ErkanntePerson,
@@ -48,7 +50,7 @@ from .rules import Ausschluss, rechtsform_aus_name, strasse_zerlegen
 
 
 def _text(s: Seite) -> str:
-    return html_zu_text(s.html) if s.html else (s.text or "")
+    return html_zu_text(s.html) if s.html else (text_normalisieren(s.text) or "")
 
 # keine Berufsträger, obwohl „Steuerberater" im Wort steckt
 _KEIN_BERUFSTRAEGER = re.compile(
@@ -100,18 +102,66 @@ def _namens_tokens(name: str) -> set[str]:
     return {t for t in re.split(r"[^a-zäöüß]+", name) if len(t) >= 2}
 
 
+_PARTIKEL = frozenset({"von", "van", "de", "der", "den", "zu", "la", "le", "di", "da", "ten"})
+
+
+def _name_teile(name: str) -> tuple[list[str], str] | None:
+    """(Vornamen, Nachname) ohne Titel und Anrede; Initialen als „w."."""
+    name = re.sub(r"^(?:frau|herr|herrn)\s+", "", _TITEL.sub(" ", name.lower()).strip(" .-,"))
+    woerter = [w.strip(",;-") for w in re.split(r"\s+", name) if w.strip(",;.-")]
+    woerter = [w for w in woerter if w not in _PARTIKEL and re.search(r"[a-zäöüß]", w)]
+    if not woerter:
+        return None
+    return [w if w.endswith(".") and len(w) == 2 else w.rstrip(".") for w in woerter[:-1]], woerter[-1].rstrip(".")
+
+
 def gleiche_person(a: str | None, b: str | None) -> bool:
+    """Gleicher Nachname UND gleicher Vorname (oder passende Initiale: „W. Drews" = „Wiebke Drews").
+    Nie nur über den Nachnamen: „W. Drews" ≠ „Sven Drews", „Drews" ≠ „Sven Drews"."""
     if not a or not b:
         return False
-    ta, tb = _namens_tokens(a), _namens_tokens(b)
-    return bool(ta and tb) and (ta <= tb or tb <= ta)
+    ta, tb = _name_teile(a), _name_teile(b)
+    if not ta or not tb or ta[1] != tb[1] or not ta[0] or not tb[0]:
+        return False
+    va, vb = ta[0], tb[0]
+    voll_a = {v for v in va if not v.endswith(".")}
+    voll_b = {v for v in vb if not v.endswith(".")}
+    if voll_a & voll_b:
+        return True
+    if voll_a and voll_b:
+        return False  # „Jens Hansen" ≠ „Jan Hansen"
+    # mindestens eine Seite nur mit Initiale(n): erste Vornamen müssen im Anfangsbuchstaben passen
+    return va[0][0] == vb[0][0]
+
+
+_EMAIL_IN_TEXT = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+
+
+def _email_passt(email: str, name: str) -> bool:
+    """Lokaler Teil passt zum Namen: baur@, y.baur@, yvonne.baur@, ybaur@."""
+    teile = _name_teile(name)
+    if not teile:
+        return False
+    lokal = re.sub(r"[^a-zäöüß]", "", email.split("@", 1)[0].lower())
+    nachname = re.sub(r"[^a-zäöüß]", "", teile[1])
+    vorname = re.sub(r"[^a-zäöüß]", "", teile[0][0]) if teile[0] else ""
+    return bool(nachname) and nachname in lokal or (len(vorname) > 2 and lokal.startswith(vorname))
+
+
+def _ohne_fremde_email(name: str, funktion: str | None) -> str | None:
+    """E-Mail-Adressen in der Funktion nur behalten, wenn sie zur Person passen."""
+    if not funktion or "@" not in funktion:
+        return funktion
+    text = _EMAIL_IN_TEXT.sub(lambda m: m.group(0) if _email_passt(m.group(0), name) else "", funktion)
+    return ", ".join(x for x in (s.strip() for s in re.split(r"\s*,\s*", text)) if x) or None
 
 
 def _funktion_vereinigen(a: str | None, b: str | None) -> str | None:
     teile: list[str] = []
     for f in (a, b):
         for teil in re.split(r"\s*[,;/&]\s*|\s+und\s+", f or ""):
-            if teil and not any(teil.lower() == x.lower() for x in teile):
+            kern = teil.lower().replace(" (laut impressum)", "")
+            if teil and not any(kern == x.lower().replace(" (laut impressum)", "") for x in teile):
                 teile.append(teil)
     return ", ".join(teile) or None
 
@@ -124,6 +174,7 @@ def personen_vereinigen(personen: list[LlmPerson]) -> list[LlmPerson]:
     """
     ergebnis: list[LlmPerson] = []
     for p in personen:
+        p = LlmPerson(name=p.name, titel=p.titel, funktion=_ohne_fremde_email(p.name, p.funktion))
         for i, q in enumerate(ergebnis):
             if gleiche_person(p.name, q.name):
                 name = q.name if len(q.name) >= len(p.name) else p.name
@@ -155,17 +206,33 @@ _BEZEICHNUNGEN = {
 ABSCHNITT_ZEILEN = 8
 
 
-def _namen_aus(text: str) -> list[str]:
-    """Namen aus „die Partner: Dipl.-Kfm. Jens Hansen, Maren Petersen und Ole Brandt"."""
+def _namen_mit_funktion(text: str) -> list[tuple[str, str | None]]:
+    """„die Partner: Dipl.-Kfm. Jens Hansen, Maren Petersen und Ole Brandt" → Namen;
+    „Yvonne Baur, Steuerberaterin / Sven Drews, Steuerberater" → Namen mit Berufsbezeichnung."""
     text = text.rsplit(":", 1)[-1]
-    namen = []
-    for teil in re.split(r"\s*[,;]\s*|\s+und\s+|\s+sowie\s+|\s*&\s*", text):
+    gefunden: list[tuple[str, str | None]] = []
+    teile = [x for x in re.split(r"\s*[,;]\s*|\s+/\s+|\s+und\s+|\s+sowie\s+|\s*&\s*", text) if x.strip()]
+    for k, teil in enumerate(teile):
         woerter = teil.split()
         for start in range(min(3, len(woerter))):  # einleitende Wörter („die Partner") überspringen
             if nt := name_zerlegen(" ".join(woerter[start:])):
-                namen.append(nt[0])
+                folge = teile[k + 1] if k + 1 < len(teile) else ""
+                funktion = folge if folge and not name_zerlegen(folge) and ist_berufstraeger_funktion(folge) else None
+                gefunden.append((nt[0], funktion))
                 break
-    return namen
+    return gefunden
+
+
+def _namen_aus(text: str) -> list[str]:
+    return [n for n, _ in _namen_mit_funktion(text)]
+
+
+# Überschrift ohne Doppelpunkt: „Vertretungsberechtigte Gesellschafter" – danach nur Rollenwörter
+_ROLLENWORT = re.compile(
+    r"^(?:gesellschafter\w*|geschäftsführ\w*|geschaeftsfuehr\w*|partner\w*|vorstand\w*|inhaber\w*|"
+    r"person(?:en)?|vertret\w*|sind|ist|die|der|des|und|durch|mitglieder?|kanzlei)$",
+    re.I,
+)
 
 
 def _schluessel(z: str) -> re.Match | None:
@@ -176,33 +243,48 @@ def _schluessel(z: str) -> re.Match | None:
     return None
 
 
-def _abschnitt_namen(zeilen: list[str], i: int, ende: int, gesperrt: Callable[[int], bool]) -> list[str]:
+def _abschnitt_namen(
+    zeilen: list[str], i: int, ende: int, gesperrt: Callable[[int], bool]
+) -> list[tuple[str, str | None]]:
     """Namen hinter dem Schlüsselwort in Zeile i – oder, wenn dort keine stehen, in den Folgezeilen
     bis zur nächsten Label-Zeile, Leerzeile, Schlüsselwort-Zeile oder Zeile ohne Namen."""
     z = zeilen[i]
-    if namen := _namen_aus(z[ende:]):
+    if namen := _namen_mit_funktion(z[ende:]):
         return namen
-    if z[ende:].strip(" :") and ":" not in z[ende:]:
-        return []  # Text hinter dem Schlüsselwort, aber kein Name: kein Abschnittsanfang
+    rest = z[ende:].strip(" :.")
+    if rest and ":" not in z[ende:] and not all(_ROLLENWORT.match(w.strip(",.")) for w in rest.split()):
+        return []  # Text hinter dem Schlüsselwort, aber weder Name noch Überschrift: kein Abschnittsanfang
     namen = []
     for j in range(i + 1, min(len(zeilen), i + 9)):
         folge = zeilen[j].strip()
         if not folge or gesperrt(j) or _LABEL.match(folge) or _schluessel(folge) or _BERUFSBEZEICHNUNG.search(folge):
             break
-        gefunden = _namen_aus(folge)
+        gefunden = _namen_mit_funktion(folge)
         if not gefunden:
             break
         namen += gefunden
     return namen
 
 
+@dataclass
+class Vertretung:
+    namen: list[str]  # Vertretungsberechtigte in Impressum-Reihenfolge, danach Verantwortliche
+    funktionen: dict[str, str]  # Berufsbezeichnung direkt am Namen („Yvonne Baur, Steuerberaterin")
+    bezeichnung: str | None  # einzige Berufsbezeichnung des Abschnitts
+
+
 def vertretungsberechtigte(
     impressum: str, fremd: set[int] | None = None, rahmen: set[str] | None = None
 ) -> tuple[list[str], str | None]:
+    v = vertretung(impressum, fremd, rahmen)
+    return v.namen, v.bezeichnung
+
+
+def vertretung(impressum: str, fremd: set[int] | None = None, rahmen: set[str] | None = None) -> Vertretung:
     """Im Impressum genannte Vertretungsberechtigte (danach „Verantwortlich gemäß § 5 TMG") und –
     falls genau eine im selben Abschnitt (±8 Zeilen, außerhalb von Kammer-/Fremd-Abschnitten) –
     ihre Berufsbezeichnung. Zeilen aus Navigation/Fußzeile (`rahmen`, normalisiert) zählen nicht."""
-    zeilen = impressum.splitlines()
+    zeilen = (text_normalisieren(impressum) or "").splitlines()  # Zeilenzahl bleibt (fremd-Indizes)
     fremd = fremd or set()
     rahmen = rahmen or set()
 
@@ -211,6 +293,7 @@ def vertretungsberechtigte(
 
     namen: list[str] = []
     verantwortliche: list[str] = []
+    funktionen: dict[str, str] = {}
     bezeichnung: str | None = None
     for i, z in enumerate(zeilen):
         if gesperrt(i) or len(z) > 300:
@@ -222,9 +305,11 @@ def vertretungsberechtigte(
         else:
             continue
         gefunden_namen = _abschnitt_namen(zeilen, i, m.end(), gesperrt)
-        for name in gefunden_namen:
+        for name, funktion in gefunden_namen:
             if not any(gleiche_person(name, n) for n in namen + verantwortliche):
                 ziel.append(name)
+                if funktion:
+                    funktionen[name] = funktion
         if not gefunden_namen:
             continue
         bereich = range(max(0, i - ABSCHNITT_ZEILEN), min(len(zeilen), i + ABSCHNITT_ZEILEN + 1))
@@ -236,7 +321,7 @@ def vertretungsberechtigte(
             gefunden |= {name for name, muster in _BEZEICHNUNGEN.items() if muster.search(text)}
         if len(gefunden) == 1 and bezeichnung is None:
             bezeichnung = gefunden.pop()
-    return namen + verantwortliche, bezeichnung
+    return Vertretung(namen + verantwortliche, funktionen, bezeichnung)
 
 
 def ansprechpartner(
@@ -252,14 +337,18 @@ def ansprechpartner(
     berechtigte gelten als Berufsträger, wenn im selben Impressum-Abschnitt genau eine
     Berufsbezeichnung steht.
     """
-    roh: list[LlmPerson] = list(llm.personen) if llm else []
-    roh += [LlmPerson(name=p.name, titel=p.titel, funktion=p.funktion) for p in erkannte or []]
-    vertreter, bezeichnung = vertretungsberechtigte(impressum, fremd, rahmen) if impressum else ([], None)
+    # Grundlage: strukturell erkannte Personen (Teamseiten) und Impressum; das LLM ergänzt nur
+    roh: list[LlmPerson] = [LlmPerson(name=p.name, titel=p.titel, funktion=p.funktion) for p in erkannte or []]
+    v = vertretung(impressum, fremd, rahmen) if impressum else Vertretung([], {}, None)
+    vertreter, bezeichnung = v.namen, v.bezeichnung
     # Hauptansprechpartner: erste/r Vertretungsberechtigte laut Impressum, sonst die vom LLM genannte Person
     verantwortlich = vertreter[0] if vertreter else (llm.verantwortliche_person if llm else None)
-    for v in vertreter:
-        if not any(gleiche_person(v, p.name) for p in roh):
-            roh.append(LlmPerson(name=v, funktion="laut Impressum vertretungsberechtigt"))
+    for name in vertreter:
+        if funktion := v.funktionen.get(name):
+            roh.append(LlmPerson(name=name, funktion=f"{funktion} (laut Impressum)"))
+        elif not any(gleiche_person(name, p.name) for p in roh):
+            roh.append(LlmPerson(name=name, funktion="laut Impressum vertretungsberechtigt"))
+    roh += list(llm.personen) if llm else []
     personen = personen_vereinigen(roh)
     if bezeichnung:
         personen = [

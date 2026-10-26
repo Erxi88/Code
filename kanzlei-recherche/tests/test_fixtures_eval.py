@@ -23,7 +23,7 @@ ECHT = S.pfad(S.pfade.fixtures_echt)
 AUSSCHLUSS = Ausschluss.laden(S.pfad(S.pfade.impressum_ausschluss))
 
 
-BEISPIELE = ["foerde-steuer.example", "hansen-steuerberatung.example", "mittelstand-steuer.example",
+BEISPIELE = ["baur-drews-steuer.example", "foerde-steuer.example", "hansen-steuerberatung.example", "mittelstand-steuer.example",
              "nordlicht-steuerberatung.example", "steuerbuero-schuett.example"]
 
 
@@ -32,19 +32,19 @@ def test_beispiele_vollstaendig():
     assert [f.domain for f in fx] == BEISPIELE
     assert all(f.fertig for f in fx)
     assert aufgezeichnete_modelle(fx) == ["qwen3.5:9b", "qwen3.6:27b"]
-    assert set(fx[1].seiten) == {"start", "impressum", "kontakt", "team"}
-    assert set(fx[2].seiten) == {"start", "impressum", "kontakt", "team", "team2"}
+    assert set(fx[2].seiten) == {"start", "impressum", "kontakt", "team"}
+    assert set(fx[3].seiten) == {"start", "impressum", "kontakt", "team", "team2"}
     # handgeschriebene Antworten tragen eine eigene Vorsilbe – echte Aufzeichnungen kollidieren nie damit
     assert all(p.name.startswith("handgeschrieben_") for f in fx for p in (f.pfad / "llm").glob("*.json"))
 
 
 def test_beispiele_alle_felder_richtig():
     erg = auswerten(fixtures_finden([BSP]), AUSSCHLUSS, "qwen3.5:9b", plz_pruefen=fake_pruefer().pruefe)
-    assert erg.fixtures == 5 and erg.fehler == []
+    assert erg.fixtures == 6 and erg.fehler == []
     assert all(erg.quote(f) == 1.0 for f in KERNFELDER)
-    assert erg.mittlere_laufzeit_s == pytest.approx((41.3 + 36.9 + 22.5 + 48.2 + 31.4) / 5)
+    assert erg.mittlere_laufzeit_s == pytest.approx((41.3 + 36.9 + 22.5 + 48.2 + 31.4 + 18.2) / 6)
     p, a, g = erg.mittlere_tokens
-    assert p == pytest.approx((3184 + 2210 + 1105 + 5210 + 2930) / 5)
+    assert p == pytest.approx((3184 + 2210 + 1105 + 5210 + 2930 + 2410) / 6)
 
 
 def test_ort_ohne_openplz_nicht_vereinheitlicht():
@@ -56,7 +56,8 @@ def test_ort_ohne_openplz_nicht_vereinheitlicht():
 def test_anderes_modell_mit_fehler():
     erg = auswerten(fixtures_finden([BSP]), AUSSCHLUSS, "qwen3.6:27b", plz_pruefen=fake_pruefer().pruefe)
     assert [(f.domain, f.feld) for f in erg.fehler] == [("steuerbuero-schuett.example", "rechtsform")]
-    assert erg.ohne_aufzeichnung == ["mittelstand-steuer.example", "nordlicht-steuerberatung.example"]
+    assert erg.ohne_aufzeichnung == ["baur-drews-steuer.example", "mittelstand-steuer.example",
+                                     "nordlicht-steuerberatung.example"]
     assert erg.quote("rechtsform") == pytest.approx(2 / 3)
     assert erg.mittlere_laufzeit_s == pytest.approx((12.8 + 10.4 + 6.1) / 3)
 

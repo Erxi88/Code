@@ -136,11 +136,18 @@ der nächsten Quelle füllen.**
   **Navigation und Fußzeile bleiben**, weil dort oft Adresse und Telefon stehen.
   Cookie-/Consent-Banner werden entfernt; **versteckte Elemente bleiben** (Akkordeons
   im Impressum und auf Teamseiten enthalten oft die Namen).
+- **Unsichtbare Zeichen** (`textnorm.py`) vor allen Regeln und vor dem Prompt entfernen:
+  bedingte Trennstriche (U+00AD, auch als `&shy;`), Nullbreite-Zeichen (U+200B–U+200D,
+  U+2060, U+FEFF); geschützte und schmale Leerzeichen → normales Leerzeichen; NFC. Gilt
+  für Textknoten und Attribute nach dem Parsen (Linktexte, Seitentext, trafilatura), für
+  Regel-Eingaben (auch gecachten Text) und beim Laden der Fixtures.
 - Playwright nur als Rückfall für fast leere Seiten (< `crawl.min_text_zeichen`) und für
   Teamseiten mit großem HTML, aber kaum Text (≥ `playwright_team_min_html`, Text unter
   `playwright_team_min_anteil` = 2 % des HTML; Namen per JavaScript) – nur mit
   `crawl.playwright: true` (`setup.sh --mit-playwright`). Das gerenderte HTML ersetzt das
-  ursprüngliche nur, wenn es mehr Text ergibt.
+  ursprüngliche nur, wenn es mehr Text ergibt. Das Ergebnis (gerendert, fehlgeschlagen
+  mit Grund, nicht mehr Text, nötig aber aus) steht in `meta.json` der Fixture und in der
+  Ausgabe von `fixture-add`.
 - Fehler (nicht erreichbar, HTTP-Fehler, robots.txt, kein Impressum, JavaScript-Seite,
   Weiterleitung auf Portal) → Blatt „Nicht gefunden" **mit den Discovery-Daten** (Name,
   Adresse, Telefon), damit von Hand nachgepflegt werden kann.
@@ -165,7 +172,9 @@ der nächsten Quelle füllen.**
   einmal (Abschnitt RAHMEN: Zeilen auf ≥ ¾ der Seiten, mind. 2), Cookie-Zeilen und
   Textbausteine (Datenschutz, Haftung, Urheberrecht, Streitschlichtung) raus,
   Impressum-Schlüsselstellen (vertretungsberechtigt, Partner, Geschäftsführer, Inhaber,
-  Berufsbezeichnung; ±4 Zeilen) immer vorn, dann die regelbasiert erkannten PERSONEN.
+  Berufsbezeichnung; ±4 Zeilen) immer vorn, dann die regelbasiert erkannten PERSONEN – als
+  Vorschlag, den das Modell vollständig in `personen` übernehmen soll (sonst lässt es die
+  Personen als „schon bekannt" weg).
   Budget `llm.max_text_chars: auto` = (num_ctx − 2700 Token) × 3,0 Zeichen/Token, verteilt
   nach Anteilen je Seite. Wird gekürzt oder ist der Kontext fast voll, steht ein Hinweis im
   Log und im Lauf-Protokoll. `recherche fixture-prompt --domain X [--live] [--namen]` zeigt
@@ -188,6 +197,11 @@ der nächsten Quelle füllen.**
   - Name: Discovery (Stufe B) > LLM; **Websuche-Titel gelten nicht als Discovery-Name**.
   - Discovery-Daten werden nie überschrieben; Unterschiede (normalisiert verglichen)
     stehen in der Spalte „Abweichung". Kandidatenfelder werden nur ergänzt, wenn leer.
+  - Personen: **Grundlage sind die strukturell erkannten Personen** (Teamseiten, JSON-LD,
+    Impressum); das LLM ergänzt Titel, Funktionen und weitere Personen. Zusammengeführt
+    wird nur bei gleichem Nachnamen **und** gleichem Vornamen bzw. passender Initiale
+    („W. Drews" = „Wiebke Drews", aber ≠ „Sven Drews"; „Drews" allein nie). E-Mail-Adressen
+    in einer Funktion bleiben nur, wenn der lokale Teil zum Namen passt.
   - Ansprechpartner = nur **Berufsträger und Leitung**; Mehrfachnennungen werden
     vereinigt (Funktionen und Titel). Reihenfolge: Vertretungsberechtigte in der
     Reihenfolge des Impressum-Abschnitts „vertretungsberechtigt/vertreten durch", dann
@@ -198,10 +212,14 @@ der nächsten Quelle füllen.**
     Berufsbezeichnung steht.
   - Vertretungsberechtigte im Impressum: „vertretungsberechtigt", „vertreten durch",
     „Geschäftsführer", „Inhaber" (Namen dürfen direkt folgen); „Partner", „Gesellschafter",
-    „Vorstand" nur als Label mit Doppelpunkt (sonst trifft die Navigation). Namen in den
-    Folgezeilen enden an der nächsten Leerzeile, Label-Zeile („Registergericht: …"),
-    Schlüsselwort-Zeile oder Zeile ohne Namen. „Verantwortlich gemäß § 5 TMG/§ 18 MStV"
-    zählt nachrangig (nach den Vertretungsberechtigten). Rahmenzeilen zählen nie.
+    „Vorstand" nur als Label mit Doppelpunkt (sonst trifft die Navigation). Eine Überschrift
+    ohne Doppelpunkt („Vertretungsberechtigte Gesellschafter") leitet den Abschnitt ein, wenn
+    hinter dem Schlüsselwort nur Rollenwörter stehen. Namen in derselben Zeile (getrennt
+    durch Komma, „/", „und") oder in den Folgezeilen; sie enden an der nächsten Leerzeile,
+    Label-Zeile („Registergericht: …"), Schlüsselwort-Zeile oder Zeile ohne Namen. Eine
+    Berufsbezeichnung direkt am Namen („Yvonne Baur, Steuerberaterin") gilt für diese Person.
+    „Verantwortlich gemäß § 5 TMG/§ 18 MStV" zählt nachrangig (nach den
+    Vertretungsberechtigten). Rahmenzeilen zählen nie.
   - Rechtsform kanonisch (`config/rechtsformen.yaml`: „Partnerschaftsgesellschaft mbB" →
     „PartG mbB"); Ort laut OpenPLZ („Hamburg-Rissen" → „Hamburg").
   - Adresszusatz („/ Haus 8 Süd", eigene Zeile mit Haus, Gebäude, Eingang, Etage, OG,
@@ -288,7 +306,7 @@ Schemaversion über `PRAGMA user_version` (aktuell 4, `adresszusatz`); ältere D
   `elf880`, `stb_verzeichnis`.
 - Stufe 2 (Lesen und Extrahieren): `crawl`, `extract` (Regeln + Ollama), Zusammenführung
   mit Abweichung und Konfidenz, OpenPLZ-Prüfung, Schema v3, `fixture-add`,
-  `fixture-eval` mit 5 fiktiven Beispielen. Die 15 echten Fixtures folgen (lokal).
+  `fixture-eval` mit 6 fiktiven Beispielen. Die 15 echten Fixtures folgen (lokal).
 - Nach dem ersten echten Fixture-Lauf: Prompt-Aufbau ohne Abschneiden, `fixture-prompt`,
   Personen- und Mitarbeiterzahl-Regeln, Adresszusatz (Schema v4), kanonische
   Rechtsform und Ort, Berufsträger- und Ansprechpartner-Reihenfolge.

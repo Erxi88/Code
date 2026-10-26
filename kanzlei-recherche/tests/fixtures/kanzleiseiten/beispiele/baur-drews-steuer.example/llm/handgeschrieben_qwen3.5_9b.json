@@ -1,0 +1,24 @@
+{
+ "_hinweis": "Handgeschriebene Beispielantwort für Tests – keine echte Modellausgabe (bewusst dünn).",
+ "ergebnis": {
+  "kanzleiname": "Baur & Drews Steuerberater PartG mbB",
+  "rechtsform": "Partnerschaftsgesellschaft mbB",
+  "strasse": "Breite Straße 12",
+  "plz": "23552",
+  "ort": "Lübeck",
+  "telefon": null,
+  "email": null,
+  "verantwortliche_person": null,
+  "personen": [],
+  "mitarbeiterzahl": null,
+  "mitarbeiterzahl_beleg": null,
+  "teamgroesse_klasse": null
+ },
+ "modell": "qwen3.5:9b",
+ "laufzeit_s": 18.2,
+ "prompt_tokens": 2410,
+ "antwort_tokens": 108,
+ "prompt_zeichen": 7900,
+ "num_ctx": 16384,
+ "abbruchgrund": "stop"
+}

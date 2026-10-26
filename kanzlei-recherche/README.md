@@ -21,7 +21,7 @@ Projektregeln und Arbeitsweise: siehe [CLAUDE.md](CLAUDE.md).
 | `coverage`, `fill`, `search-compare` (alle aktiven Adapter) | fertig |
 | Crawling (robots.txt, Drosselung je Domain, Cache, Playwright-Rückfall) | fertig |
 | Extraktion: Regeln + Ollama, Zusammenführung mit Abweichung, OpenPLZ, Konfidenz | fertig |
-| `fixture-add`, `fixture-eval` (Trefferquote, Laufzeit, Token je Modell), `fixture-prompt` | fertig; 5 fiktive Beispiele, echte Fixtures lokal |
+| `fixture-add`, `fixture-eval` (Trefferquote, Laufzeit, Token je Modell), `fixture-prompt` | fertig; 6 fiktive Beispiele, echte Fixtures lokal |
 | `orte` (Gemeinden aus OpenPLZ, Kreis/Einwohner aus GV-ISys, Zusatz-Suchorte Kiel/Lübeck) | fertig; bis zum ersten Lauf gilt die Startliste mit 80 Orten |
 | Einwohnerregel: Query-Varianten und Seiten je Einwohnerklasse | fertig |
 

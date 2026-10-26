@@ -31,6 +31,7 @@ from .config import CrawlConfig
 from .models import Kandidat, NichtGefunden, SchrittStatus, Seite, Seitentyp
 from .search.pipeline import ist_blockiert, normalize_domain
 from .storage import Storage
+from .textnorm import braucht_normalisierung, text_normalisieren
 
 log = logging.getLogger(__name__)
 
@@ -69,9 +70,22 @@ def _cookie_banner_entfernen(soup: BeautifulSoup) -> int:
 
 def _soup(html: str) -> BeautifulSoup:
     try:
-        return BeautifulSoup(html, "lxml")
+        soup = BeautifulSoup(text_normalisieren(html) or "", "lxml")
     except Exception:  # pragma: no cover – lxml fehlt
-        return BeautifulSoup(html, "html.parser")
+        soup = BeautifulSoup(text_normalisieren(html) or "", "html.parser")
+    _normalisieren(soup)
+    return soup
+
+
+def _normalisieren(soup: BeautifulSoup) -> None:
+    """Auch Entities (&shy;, &nbsp;, &#8203;) erst nach dem Parsen bereinigen: Textknoten und Attribute."""
+    for s in soup.find_all(string=True):
+        if braucht_normalisierung(s):
+            s.replace_with(type(s)(text_normalisieren(str(s))))  # Typ erhalten (Kommentar bleibt Kommentar)
+    for el in soup.find_all(True):
+        for k, v in list(el.attrs.items()):
+            if isinstance(v, str) and braucht_normalisierung(v):
+                el[k] = text_normalisieren(v)
 
 
 def cf_email_decode(kodiert: str) -> str | None:
@@ -128,8 +142,8 @@ def haupttext(html: str) -> str | None:
     try:
         import trafilatura
 
-        return trafilatura.extract(html_ohne_cookie_banner(html), include_comments=False, include_tables=True,
-                                   favor_recall=True)  # fmt: skip
+        return text_normalisieren(trafilatura.extract(html_ohne_cookie_banner(html), include_comments=False,
+                                                      include_tables=True, favor_recall=True))  # fmt: skip
     except Exception:  # pragma: no cover – trafilatura-Fehler bei kaputtem HTML
         return None
 
@@ -282,6 +296,7 @@ class Abruf:
     final_url: str | None = None
     fehler: str | None = None  # gesetzt, wenn kein brauchbares HTML
     aus_cache: bool = False
+    playwright: str | None = None  # Ergebnis des Playwright-Rückfalls (für fixture-add und Diagnose)
 
     @property
     def ok(self) -> bool:
@@ -426,10 +441,11 @@ class Crawler:
         if not await self.erlaubt(url):
             return Abruf(url, fehler="robots.txt verbietet den Zugriff")
         abruf = await self._mit_retries(url, domain)
-        if abruf.ok and self.cfg.playwright and (
-            len(abruf.text or "") < self.cfg.min_text_zeichen or self._team_ohne_text(abruf, typ)
-        ):
+        wenig_text = abruf.ok and (len(abruf.text or "") < self.cfg.min_text_zeichen or self._team_ohne_text(abruf, typ))
+        if wenig_text and self.cfg.playwright:
             abruf = await self._rendern(abruf)
+        elif wenig_text:
+            abruf.playwright = "nötig, aber crawl.playwright ist aus"
         if abruf.ok or (abruf.status is not None and abruf.status < 500 and abruf.status != 429):
             # endgültige Antworten cachen (auch 404); Netzfehler, 429 und 5xx sind vorübergehend
             # und werden beim nächsten Lauf (crawl --wiederholen) erneut versucht
@@ -499,9 +515,14 @@ class Crawler:
             html = await renderer(abruf.final_url or abruf.url)
         except Exception as e:  # Playwright nicht installiert, Timeout …
             log.warning("Playwright-Rückfall für %s fehlgeschlagen: %s", abruf.url, e)
+            abruf.playwright = f"fehlgeschlagen ({type(e).__name__}: {str(e).splitlines()[0][:120] if str(e) else ''})"
             return abruf
-        if html and len(text := html_zu_text(html)) > len(abruf.text or ""):
+        vorher = len(abruf.text or "")
+        if html and len(text := html_zu_text(html)) > vorher:
             abruf.html, abruf.text = html, text
+            abruf.playwright = f"gerendert ({vorher} → {len(text)} Zeichen Text)"
+        else:
+            abruf.playwright = f"gerendert, aber nicht mehr Text ({vorher} Zeichen) – ursprüngliches HTML behalten"
         return abruf
 
     # -------------------------------------------------------------- Kandidat

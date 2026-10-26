@@ -1,0 +1,14 @@
+{
+ "_status": "fertig",
+ "kanzleiname": "Baur & Drews Steuerberater PartG mbB",
+ "rechtsform": "PartG mbB",
+ "strasse": "Breite Straße 12",
+ "plz": "23552",
+ "ort": "Lübeck",
+ "telefon": "+49 451 7070120",
+ "email": "kanzlei@baur-drews-steuer.example",
+ "erster_ansprechpartner": "Yvonne Baur",
+ "berufstraeger_anzahl": 2,
+ "teamgroesse": 6,
+ "teamgroesse_klasse": null
+}

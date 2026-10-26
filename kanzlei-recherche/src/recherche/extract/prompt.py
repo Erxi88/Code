@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from ..config import LlmConfig
 from ..crawl import haupttext, html_zu_text
 from ..models import Seite, Seitentyp
+from ..textnorm import text_normalisieren
 from .personen import (
     ErkanntePerson,
     Funktionen,
@@ -107,7 +108,7 @@ def text_budget(cfg: LlmConfig) -> int:
 
 
 def _seitentext(s: Seite) -> str:
-    return html_zu_text(s.html) if s.html else (s.text or "")
+    return html_zu_text(s.html) if s.html else (text_normalisieren(s.text) or "")
 
 
 def _norm(z: str) -> str:
@@ -231,7 +232,8 @@ def baue_prompt(seiten: dict[Seitentyp, Seite], budget: int, funktionen: Funktio
     if personen:
         liste = "\n".join(f"{q.name} | {q.titel or '-'} | {q.funktion}" for q in personen)
         abschnitte.insert(1 if abschnitte and abschnitte[0][0].startswith("IMPRESSUM – ") else 0,
-                          ("PERSONEN (automatisch erkannt: Name | Titel | Funktion)", liste, 100))
+                          ("PERSONEN – Vorschlag der automatischen Erkennung (Name | Titel | Funktion); "
+                           "alle prüfen und vollständig in das Feld personen übernehmen", liste, 100))
     rahmen_text = "\n".join(rahmen)
     if rahmen_text:
         abschnitte.append(("RAHMEN (Navigation und Fußzeile, auf mehreren Seiten gleich)", rahmen_text, 8))

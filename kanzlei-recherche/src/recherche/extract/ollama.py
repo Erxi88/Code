@@ -41,8 +41,10 @@ Regeln:
 - mitarbeiterzahl nur, wenn eine Zahl ausdrücklich genannt wird (z. B. „Team aus 12 Mitarbeitern");
   Personen nicht selbst zählen.
 - teamgroesse_klasse nur, wenn keine Zahl genannt ist, aber eine Größenordnung im Text steht.
-- Der Abschnitt PERSONEN wurde automatisch aus Kacheln/Listen erkannt: als Hilfe nutzen, offensichtliche
-  Fehlerkennungen (keine Person) weglassen, fehlende Personen aus dem Text ergänzen.
+- Der Abschnitt PERSONEN ist ein automatischer VORSCHLAG aus Kacheln und Listen, noch NICHT im Ergebnis:
+  Übernimm jede dort genannte Person vollständig in `personen` (Name, Titel, Funktion – prüfe sie am Text
+  und ergänze fehlende Titel/Funktionen), lass nur offensichtliche Fehlerkennungen (keine Person) weg und
+  ergänze Personen, die nur im Text stehen. `personen` darf nicht leer bleiben, wenn Personen genannt sind.
 - RAHMEN enthält Navigation und Fußzeile, die auf allen Seiten gleich sind (oft Adresse und Telefon)."""
 
 class OllamaExtractor(Extractor):

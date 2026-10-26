@@ -3,6 +3,7 @@ search-compare | orte | fixture-add | fixture-eval."""
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 from collections import Counter
@@ -393,6 +394,10 @@ def fixture_add(
     console.print(f"Fixture abgelegt: [bold]{pfad}[/bold] ({', '.join(seiten) or 'keine Seiten'})")
     if grund:
         console.print(f"[yellow]Hinweis:[/yellow] {grund}")
+    meta_pfad = pfad / "meta.json"
+    meta = json.loads(meta_pfad.read_text(encoding="utf-8-sig")) if meta_pfad.exists() else {}
+    for typ, hinweis in (meta.get("playwright") or {}).items():
+        console.print(f"Playwright {typ}: {hinweis}")
     console.print("Jetzt erwartet.json von Hand ausfüllen und _status auf 'fertig' setzen.")
 
 

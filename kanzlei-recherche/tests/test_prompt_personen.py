@@ -250,3 +250,82 @@ def test_personen_aus_json_ld_und_versteckte_quellen():
     q = versteckte_quellen(html, "Team")
     assert (q.attribut_namen, q.noscript_namen, q.skript_namen, q.json_ld_personen) == (1, 1, 1, 2)
     assert q.anteil < 0.02 and "Person" in q.json_ld_typen
+
+
+# ---- zweiter Lauf: Überschrift ohne Doppelpunkt, Nachnamen, unsichtbare Zeichen
+
+@pytest.mark.parametrize("impressum,namen", [
+    ("Vertretungsberechtigte Gesellschafter\nYvonne Baur, Steuerberaterin / Sven Drews, Steuerberater",
+     ["Yvonne Baur", "Sven Drews"]),
+    ("Vertretungsberechtigte Gesellschafter: Yvonne Baur, Steuerberaterin / Sven Drews, Steuerberater",
+     ["Yvonne Baur", "Sven Drews"]),
+    ("Vertretungsberechtigte Geschäftsführer\nChristian Wermke\nAnna Bock\nCarl Dau\nDora Ems\n"
+     "Registergericht: Amtsgericht Hamburg", ["Christian Wermke", "Anna Bock", "Carl Dau", "Dora Ems"]),
+    ("Die Gesellschaft wird vertreten durch die Geschäftsführer\nChristian Wermke\nAnna Bock", ["Christian Wermke", "Anna Bock"]),
+    ("Geschäftsführung Kontakt Impressum\nChristian Wermke", []),  # Navigation mit starkem Schlüsselwort
+])  # fmt: skip
+def test_vertretung_ueberschrift_ohne_doppelpunkt(impressum, namen):
+    assert vertretungsberechtigte(impressum)[0] == namen
+
+
+def test_vertretung_berufsbezeichnung_am_namen():
+    from recherche.extract.merge import vertretung
+
+    v = vertretung("Vertretungsberechtigte Gesellschafter\nYvonne Baur, Steuerberaterin / Sven Drews, Steuerberater")
+    assert v.funktionen == {"Yvonne Baur": "Steuerberaterin", "Sven Drews": "Steuerberater"}
+    ap = ansprechpartner(None, [], "Vertretungsberechtigte Gesellschafter\nYvonne Baur, Steuerberaterin")
+    assert ap[0].name == "Yvonne Baur" and ist_berufstraeger(ap[0])
+
+
+@pytest.mark.parametrize("a,b,gleich", [
+    ("W. Drews", "Sven Drews", False),
+    ("Drews", "Sven Drews", False),
+    ("W. Drews", "Wiebke Drews", True),
+    ("Frau Lea Sommer", "Lea Sommer", True),
+    ("Dipl.-Kfm. Jens Hansen", "Jens Hansen", True),
+    ("Jens Hansen", "Jan Hansen", False),
+    ("Anna Maria Kruse", "Anna Kruse", True),
+])  # fmt: skip
+def test_gleiche_person_nie_nur_ueber_nachnamen(a, b, gleich):
+    from recherche.extract.merge import gleiche_person
+
+    assert gleiche_person(a, b) is gleich
+
+
+def test_personen_vereinigen_trennt_gleiche_nachnamen_und_fremde_email():
+    p = personen_vereinigen([LlmPerson(name="Sven Drews", funktion="Steuerberater"),
+                             LlmPerson(name="W. Drews", funktion="Diplom-Kauffrau / Steuerfachangestellte"),
+                             LlmPerson(name="Sven Drews", funktion="baur@kanzlei.example"),
+                             LlmPerson(name="Yvonne Baur", funktion="Steuerberaterin, baur@kanzlei.example")])
+    assert [(x.name, x.funktion) for x in p] == [
+        ("Sven Drews", "Steuerberater"), ("W. Drews", "Diplom-Kauffrau / Steuerfachangestellte"),
+        ("Yvonne Baur", "Steuerberaterin, baur@kanzlei.example")]
+
+
+def test_strukturelle_personen_sind_grundlage():
+    """Dünne LLM-Antwort ohne Personen: die erkannten Personen tragen das Ergebnis, das LLM ergänzt."""
+    erkannt = erkenne_personen("Yvonne Baur\nSteuerberaterin, Partnerin\nSven Drews\nSteuerberater")
+    assert [a.name for a in ansprechpartner(LlmErgebnis(), erkannt)] == ["Yvonne Baur", "Sven Drews"]
+    llm = LlmErgebnis(personen=[LlmPerson(name="Yvonne Baur", titel="Dipl.-Kffr.", funktion="Partnerin"),
+                                LlmPerson(name="Ole Neu", funktion="Steuerberater")])
+    ap = ansprechpartner(llm, erkannt)
+    assert [a.name for a in ap] == ["Yvonne Baur", "Sven Drews", "Ole Neu"] and ap[0].titel == "Dipl.-Kffr."
+
+
+def test_prompt_personen_als_vorschlag():
+    from recherche.extract.ollama import SYSTEM_PROMPT
+
+    seiten = {Seitentyp.TEAM: _seite(Seitentyp.TEAM, "https://x.example/team", "<p>Yvonne Baur</p><p>Steuerberaterin</p>")}
+    assert "vollständig in das Feld personen übernehmen" in baue_prompt(seiten, 40000).text
+    assert "darf nicht leer bleiben" in SYSTEM_PROMPT
+
+
+def test_unsichtbare_zeichen():
+    from recherche.crawl import links
+    from recherche.textnorm import text_normalisieren
+
+    assert text_normalisieren("Steu­er​be⁠ra﻿tung in Kiel Müller") == "Steuerberatung in Kiel Müller"
+    html = ("<p>Steu&shy;er&shy;be&shy;ra&shy;tung&nbsp;GmbH<br>Lu&#173;ru&#173;per Chaus&shy;see 125</p>"
+            "<!-- ge&shy;heim --><a href='/i' title='Im&shy;pres&shy;sum'>Im&shy;pres&shy;sum</a>")
+    assert html_zu_text(html) == "Steuerberatung GmbH\nLuruper Chaussee 125\nImpressum"
+    assert links(html, "https://a.example/") == [("https://a.example/i", "Impressum")]

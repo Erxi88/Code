@@ -21,6 +21,7 @@ import yaml
 
 from ..config import PROJEKT_DIR
 from ..models import TeamKlasse
+from ..textnorm import text_normalisieren
 
 STANDARD_FUNKTIONEN = PROJEKT_DIR / "config" / "personen_funktionen.yaml"
 
@@ -144,7 +145,7 @@ def erkenne_personen(
     """
     f = funktionen or lade_funktionen()
     rahmen = rahmen or set()
-    zeilen = [z.strip() for z in text.splitlines()]
+    zeilen = [z.strip() for z in (text_normalisieren(text) or "").splitlines()]
     zeilen = ["" if " ".join(z.lower().split()) in rahmen else z for z in zeilen]
     gefunden: list[ErkanntePerson] = []
     vergeben: set[int] = set()
