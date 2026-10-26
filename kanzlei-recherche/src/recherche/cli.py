@@ -1,9 +1,10 @@
 """Kommandozeile: recherche search | fill | coverage | crawl | extract | export | run |
-search-compare | orte."""
+search-compare | orte | fixture-add | fixture-eval."""
 
 from __future__ import annotations
 
 import logging
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Annotated
@@ -14,8 +15,23 @@ from rich.table import Table
 
 from .config import Settings, load_settings
 from .coverage import CoverageErgebnis, als_excel, berechne, load_referenz
+from .crawl import run_crawl
 from .export import export_excel
-from .models import SchrittStatus
+from .extract.base import AnbieterNichtErreichbar
+from .extract.lauf import run_extract
+from .extract.ollama import OllamaExtractor
+from .extract.rules import Ausschluss
+from .fixtures import (
+    FELDER,
+    KERNFELDER,
+    EvalErgebnis,
+    aufgezeichnete_modelle,
+    auswerten,
+    fixture_holen_sync,
+    fixtures_finden,
+)
+from .models import LaufEintrag, SchrittStatus
+from .normalize import PlzPruefer
 from .search.base import OrtsAdapter, QueryAdapter, SearchAdapter
 from .search.compare import VergleichsErgebnis, compare_adapters
 from .search.pipeline import (
@@ -138,21 +154,63 @@ def _search(ctx: Kontext, orte: str | None, adapter_name: str | None, lauf_id: s
         _lauf(ctx, st, adapter, ctx.orte(orte), lauf_id)
 
 
-def _crawl(ctx: Kontext) -> None:
+def _crawl(ctx: Kontext, limit: int | None = None, wiederholen: bool = False) -> None:
     with ctx.storage() as st:
+        if wiederholen:
+            console.print(f"{st.fehler_zuruecksetzen(ctx.bundesland, 'crawl')} fehlgeschlagene Kandidaten wieder offen.")
         offen = len(st.kandidaten(ctx.bundesland, crawl_status=SchrittStatus.OFFEN, nur_mit_website=True))
-    console.print(f"[yellow]crawl: noch nicht implementiert[/yellow] ({offen} Kandidaten mit Website offen).")
-
-
-def _extract(ctx: Kontext) -> None:
-    with ctx.storage() as st:
-        offen = len(
-            st.kandidaten(ctx.bundesland, crawl_status=SchrittStatus.FERTIG, extract_status=SchrittStatus.OFFEN)
+        if not offen:
+            console.print("crawl: keine offenen Kandidaten mit Website.")
+            return
+        cfg = ctx.settings.crawl
+        console.print(
+            f"Crawl: {min(offen, limit or offen)} von {offen} offenen Kandidaten, {cfg.parallel_domains} Domains "
+            f"parallel, {cfg.requests_per_second_per_domain:g} Anfrage/s je Domain"
+            f"{', Playwright-Rückfall an' if cfg.playwright else ''} …"
         )
+        start = time.monotonic()
+        stat = run_crawl(st, cfg, ctx.bundesland, ctx.blocklist(), limit=limit,
+                         fortschritt=lambda m: console.print(f"  {m}"))  # fmt: skip
+        st.log_lauf(
+            LaufEintrag(lauf_id=_lauf_id(), schritt="crawl", bundesland=ctx.bundesland,
+                        suchbegriff=f"{stat.fertig} gelesen, {stat.nicht_gefunden} nicht gefunden",
+                        trefferzahl=stat.fertig, anfragen=stat.anfragen,
+                        laufzeit_s=round(time.monotonic() - start, 2))
+        )  # fmt: skip
+    console.print(f"Fertig: {stat.fertig} Websites gelesen, {stat.nicht_gefunden} nicht gefunden, {stat.anfragen} Anfragen.")
+    for grund, n in sorted(stat.gruende.items(), key=lambda x: -x[1]):
+        console.print(f"  {n:4d} × {grund}")
+
+
+def _extractor(ctx: Kontext, modell: str | None) -> OllamaExtractor:
+    return OllamaExtractor(ctx.settings.llm, modell=modell)
+
+
+def _extract(
+    ctx: Kontext, ohne_llm: bool = False, modell: str | None = None, limit: int | None = None,
+    wiederholen: bool = False,
+) -> None:
+    s = ctx.settings
+    with ctx.storage() as st:
+        if wiederholen:
+            console.print(f"{st.fehler_zuruecksetzen(ctx.bundesland, 'extract')} fehlgeschlagene Kandidaten wieder offen.")
+        extractor = None if ohne_llm else _extractor(ctx, modell)
+        pruefer = PlzPruefer(s.openplz.url, cache=st)
+        ausschluss = Ausschluss.laden(s.pfad(s.pfade.impressum_ausschluss))
+        console.print(f"Extraktion mit {'nur Regeln' if ohne_llm else 'Regeln + ' + extractor.modell} …")
+        stat = run_extract(st, ctx.bundesland, extractor, pruefer, ausschluss, _lauf_id(), limit=limit,
+                           fortschritt=lambda m: console.print(f"  {m}"))  # fmt: skip
     console.print(
-        f"[yellow]extract: noch nicht implementiert[/yellow] ({offen} gecrawlte Kandidaten offen, "
-        f"Modell {ctx.settings.llm.modell})."
+        f"Fertig: {stat.fertig} Kanzleien ({stat.ohne_website} ohne Website), {stat.fehler} Fehler, "
+        f"{stat.llm_aufrufe} LLM-Aufrufe, {pruefer.anfragen} OpenPLZ-Anfragen."
     )
+    if stat.llm_aufrufe:
+        console.print(f"  im Mittel {stat.mittlere_laufzeit_s:.1f} s und {stat.tokens / stat.llm_aufrufe:.0f} Token je Kanzlei")
+    if stat.abbruch:
+        console.print(f"[yellow]Lauf vorzeitig beendet:[/yellow] {stat.abbruch}")
+        console.print("[yellow]Ollama starten (bzw. Modell laden) und denselben Befehl erneut aufrufen.[/yellow]")
+    if stat.fehler:
+        console.print("[yellow]Fehlgeschlagene Kandidaten erneut versuchen: `recherche extract --wiederholen`[/yellow]")
 
 
 def _export(ctx: Kontext, out: Path | None) -> Path:
@@ -276,16 +334,114 @@ def zeige_coverage(erg: CoverageErgebnis, top: int, quote_ziel: float) -> None:
         console.print(f"Orte für `fill --luecken` ({len(luecken)}): {', '.join(luecken[:top])}{' …' if len(luecken) > top else ''}")
 
 
-@app.command()
-def crawl(bundesland: BundeslandOpt = None, db: DbOpt = None, config: ConfigOpt = None) -> None:
-    """Kandidaten-Websites laden (Startseite, Impressum, Kontakt, Team) – Platzhalter."""
-    _crawl(_kontext(config, bundesland, db))
+LimitOpt = Annotated[int | None, typer.Option("--limit", help="höchstens so viele Kandidaten (Test)")]
+WiederholenOpt = Annotated[bool, typer.Option("--wiederholen", help="fehlgeschlagene Kandidaten erneut versuchen")]
 
 
 @app.command()
-def extract(bundesland: BundeslandOpt = None, db: DbOpt = None, config: ConfigOpt = None) -> None:
-    """Daten aus gecachten Seiten extrahieren (Regeln + LLM) – Platzhalter."""
-    _extract(_kontext(config, bundesland, db))
+def crawl(
+    bundesland: BundeslandOpt = None, db: DbOpt = None, config: ConfigOpt = None, limit: LimitOpt = None,
+    wiederholen: WiederholenOpt = False,
+) -> None:
+    """Kandidaten-Websites laden: Startseite, Impressum, Kontakt, Team (wiederaufnehmbar)."""
+    _crawl(_kontext(config, bundesland, db), limit, wiederholen)
+
+
+@app.command()
+def extract(
+    bundesland: BundeslandOpt = None,
+    db: DbOpt = None,
+    config: ConfigOpt = None,
+    ohne_llm: Annotated[bool, typer.Option("--ohne-llm", help="nur Regeln, kein Ollama")] = False,
+    modell: Annotated[str | None, typer.Option(help="Ollama-Modell statt llm.modell")] = None,
+    limit: LimitOpt = None,
+    wiederholen: WiederholenOpt = False,
+) -> None:
+    """Daten aus den gecachten Seiten extrahieren (Regeln + LLM) und mit der Discovery zusammenführen."""
+    _extract(_kontext(config, bundesland, db), ohne_llm, modell, limit, wiederholen)
+
+
+@app.command("fixture-add")
+def fixture_add(
+    domain: Annotated[str, typer.Option("--domain", help="Domain der Kanzlei, z. B. kanzlei-beispiel.de")],
+    config: ConfigOpt = None,
+    ziel: Annotated[Path | None, typer.Option(help="Zielordner (Standard: pfade.fixtures_echt)")] = None,
+) -> None:
+    """Start-, Impressum-, Kontakt- und Teamseite einer Domain als Fixture ablegen (nur lokal)."""
+    s = load_settings(config)
+    ordner = ziel or s.pfad(s.pfade.fixtures_echt)
+    pfad, grund = fixture_holen_sync(domain.strip().lower(), s.crawl, ordner)
+    seiten = sorted(p.name for p in pfad.glob("*.html"))
+    console.print(f"Fixture abgelegt: [bold]{pfad}[/bold] ({', '.join(seiten) or 'keine Seiten'})")
+    if grund:
+        console.print(f"[yellow]Hinweis:[/yellow] {grund}")
+    console.print("Jetzt erwartet.json von Hand ausfüllen und _status auf 'fertig' setzen.")
+
+
+@app.command("fixture-eval")
+def fixture_eval(
+    config: ConfigOpt = None,
+    modell: Annotated[str | None, typer.Option(help="Modell (Standard: llm.modell)")] = None,
+    live: Annotated[bool, typer.Option("--live", help="Ollama fragen und Antworten aufzeichnen")] = False,
+    nur: Annotated[str | None, typer.Option(help="nur 'beispiele' oder 'echt'")] = None,
+) -> None:
+    """Trefferquote je Feld über die Kanzleiseiten-Fixtures, mit Laufzeit und Token je Kanzlei."""
+    s = load_settings(config)
+    ordner = {"beispiele": s.pfad(s.pfade.fixtures_beispiele), "echt": s.pfad(s.pfade.fixtures_echt)}
+    fixtures = fixtures_finden([p for n, p in ordner.items() if nur in (None, n)])
+    if not fixtures:
+        _fehler("Keine Fixtures gefunden (recherche fixture-add --domain …)")
+    ausschluss = Ausschluss.laden(s.pfad(s.pfade.impressum_ausschluss))
+    modell = modell or s.llm.modell
+    extractor = OllamaExtractor(s.llm, modell=modell) if live else None
+    try:
+        erg = auswerten(fixtures, ausschluss, modell, extractor)
+    except AnbieterNichtErreichbar as e:
+        _fehler(str(e))
+    zeige_eval(erg, len(fixtures))
+    modelle = aufgezeichnete_modelle(fixtures)
+    if len(modelle) > 1:
+        zeige_modellvergleich([auswerten(fixtures, ausschluss, m) for m in modelle])
+
+
+def _quote(e: EvalErgebnis, feld: str) -> str:
+    q = e.quote(feld)
+    return "–" if q is None else f"{e.richtig.get(feld, 0)}/{e.bewertet[feld]} ({q:.0%})"
+
+
+def zeige_eval(erg: EvalErgebnis, gesamt: int) -> None:
+    offen = gesamt - erg.fixtures
+    console.print(f"Fixtures: {erg.fixtures} ausgewertet{f', {offen} noch ohne fertige erwartet.json' if offen else ''}; "
+                  f"Modell {erg.modell}")
+    if erg.ohne_aufzeichnung:
+        console.print(f"[yellow]ohne LLM-Aufzeichnung (LLM-Felder nicht bewertet):[/yellow] "
+                      f"{', '.join(erg.ohne_aufzeichnung)} – `recherche fixture-eval --live`")
+    t = Table(title="Trefferquote je Feld")
+    for col in ("Feld", "richtig / bewertet", "Kernfeld"):
+        t.add_column(col, justify="left" if col == "Feld" else "right")
+    for feld in FELDER:
+        t.add_row(feld, _quote(erg, feld), "●" if feld in KERNFELDER else "")
+    console.print(t)
+    laufzeit = erg.mittlere_laufzeit_s
+    p, a, g = erg.mittlere_tokens
+    if laufzeit is not None:
+        console.print(
+            f"Je Kanzlei im Mittel: {laufzeit:.1f} s, Token {g:.0f} (Prompt {p:.0f}, Antwort {a:.0f}) "
+            f"über {len(erg.laufzeiten)} Antworten"
+        )
+    for f in erg.fehler:
+        console.print(f"  ✗ {f.domain} · {f.feld}: ist {f.ist!r} / soll {f.soll!r}")
+
+
+def zeige_modellvergleich(ergebnisse: list[EvalErgebnis]) -> None:
+    t = Table(title="Modellvergleich (aufgezeichnete Antworten)")
+    for col in ("Modell", *KERNFELDER, "Ø s/Kanzlei", "Ø Token"):
+        t.add_column(col, justify="left" if col == "Modell" else "right")
+    for e in ergebnisse:
+        g = e.mittlere_tokens[2]
+        t.add_row(e.modell, *(_quote(e, f) for f in KERNFELDER),
+                  _zahl(e.mittlere_laufzeit_s, 1), _zahl(g))  # fmt: skip
+    console.print(t)
 
 
 @app.command()

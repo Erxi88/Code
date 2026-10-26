@@ -123,3 +123,67 @@ class FakeOrtsAdapter(OrtsAdapter):
         if ort.name in self.fehler_bei:
             raise SearchError(f"{self.name}: Fehler bei {ort.name}")
         return list(self.treffer.get(ort.name, []))
+
+
+# ---------------------------------------------------------------------- Crawler
+
+
+class FakeAsyncClock:
+    """Uhr + asynchrones sleep für Crawler-Tests (Zeit läuft nur über sleep)."""
+
+    def __init__(self) -> None:
+        self.t = 0.0
+        self.pausen: list[float] = []
+
+    def __call__(self) -> float:
+        return self.t
+
+    async def sleep(self, s: float) -> None:
+        import asyncio
+
+        self.pausen.append(s)
+        self.t += s
+        await asyncio.sleep(0)
+
+
+class FakeWeb:
+    """Fake-Websites: URL → (Status, HTML/Text, Header) oder Exception oder Liste (Antwortfolge).
+
+    Weiterleitungen über (301, "", {"location": ziel}). Unbekannte URLs liefern 404.
+    """
+
+    def __init__(self, seiten: dict, clock: FakeAsyncClock | None = None):
+        self.seiten = seiten
+        self.clock = clock
+        self.anfragen: list[tuple[str, float]] = []
+
+    def _handler(self, request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        self.anfragen.append((url, self.clock() if self.clock else 0.0))
+        antwort = self.seiten.get(url, (404, "nicht gefunden"))
+        if isinstance(antwort, list):
+            antwort = antwort.pop(0) if len(antwort) > 1 else antwort[0]
+        if isinstance(antwort, Exception):
+            raise antwort
+        status, inhalt, *rest = antwort
+        kopf = {"content-type": "text/html; charset=utf-8", **(rest[0] if rest else {})}
+        if url.endswith("/robots.txt"):
+            kopf["content-type"] = "text/plain"
+        return httpx.Response(status, text=inhalt, headers=kopf)
+
+    def client(self) -> httpx.AsyncClient:
+        return httpx.AsyncClient(transport=httpx.MockTransport(self._handler))
+
+    def urls(self) -> list[str]:
+        return [u for u, _ in self.anfragen]
+
+
+def beispiel_seiten(domain: str) -> dict[str, tuple]:
+    """Die fiktiven Kanzleiseiten-Fixtures als Fake-Website (URLs aus meta.json)."""
+    pfad = FIXTURES / "kanzleiseiten" / "beispiele" / domain
+    meta = json.loads((pfad / "meta.json").read_text(encoding="utf-8"))
+    seiten = {}
+    for typ, url in meta["urls"].items():
+        datei = {"start": "start.html", "impressum": "impressum.html", "kontakt": "kontakt.html", "team": "team.html"}[typ]
+        seiten[url] = (200, (pfad / datei).read_text(encoding="utf-8"))
+    return seiten

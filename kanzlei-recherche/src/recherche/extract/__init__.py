@@ -1,5 +1,5 @@
-"""Extraktion: regelbasiert (rules) und LLM (austauschbar über base.Extractor)."""
+"""Extraktion: regelbasiert (rules), LLM (ollama, austauschbar über base.Extractor), Zusammenführung (merge)."""
 
-from .base import Extractor, LlmErgebnis, RegelErgebnis
+from .base import Extractor, ExtraktionsAntwort, LlmErgebnis, RegelErgebnis
 
-__all__ = ["Extractor", "LlmErgebnis", "RegelErgebnis"]
+__all__ = ["Extractor", "ExtraktionsAntwort", "LlmErgebnis", "RegelErgebnis"]

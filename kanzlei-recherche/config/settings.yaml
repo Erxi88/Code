@@ -15,6 +15,9 @@ pfade:
   queries: config/queries.yaml
   blocklist: config/domain_blocklist.txt
   referenz: config/referenz_kammern.yaml
+  impressum_ausschluss: config/impressum_ausschluss.yaml
+  fixtures_beispiele: tests/fixtures/kanzleiseiten/beispiele
+  fixtures_echt: tests/fixtures/kanzleiseiten/echt   # nur lokal (.gitignore)
 
 discovery:
   # Prinzip: zuerst die günstigste Quelle vollständig ausschöpfen (Stufe A),
@@ -83,12 +86,17 @@ discovery:
       pause_jitter_s: 15.0
 
 crawl:
-  parallel_domains: 10
+  parallel_domains: 10               # so viele Domains gleichzeitig
   requests_per_second_per_domain: 1.0
   timeout_s: 15
   retries: 2
+  backoff_s: 2.0
   respect_robots: true
   user_agent: "kanzlei-recherche/0.1 (Recherche-Tool; Kontakt siehe README)"
+  max_seiten_je_domain: 6            # Start, Impressum, Kontakt, Team + Rateversuche
+  min_text_zeichen: 300              # darunter gilt eine Seite als leer (JavaScript)
+  playwright: false                  # Rückfall für JavaScript-Seiten (setup.sh --mit-playwright)
+  playwright_timeout_s: 20
 
 llm:
   provider: ollama
@@ -102,8 +110,10 @@ llm:
   #   modell: gemma4:26b         # Alternative: Gemma 4 26B-A4B (MoE)
   think: false                       # Thinking-Modus immer aus
   temperature: 0.0
-  timeout_s: 120
-  max_text_chars: 12000              # Seitentext wird vor dem LLM-Aufruf gekürzt
+  timeout_s: 300
+  num_ctx: 16384                     # Kontextfenster (Ollama-Standard ist zu klein und schneidet ab)
+  retries: 1                         # erneuter Versuch bei ungültiger Antwort
+  max_text_chars: 24000              # Text aller Seiten zusammen, vor dem LLM-Aufruf gekürzt
 
 openplz:
   url: https://openplzapi.org

@@ -62,13 +62,132 @@ def test_unbekanntes_bundesland(db_pfad):
     assert "nicht in settings.yaml" in r.output
 
 
-def test_platzhalter_laufen(db_pfad):
-    for befehl in ("crawl", "extract"):
-        r = runner.invoke(cli.app, _args(befehl, db_pfad))
-        assert r.exit_code == 0, r.output
-        assert "noch nicht implementiert" in r.output
+def test_orte_platzhalter():
     r = runner.invoke(cli.app, ["orte", "-b", "SH"])
     assert r.exit_code == 0 and "80 Orten (0 mit Einwohnerzahl)" in r.output
+
+
+@pytest.fixture
+def fake_web(monkeypatch):
+    from fakes import FakeWeb, beispiel_seiten
+
+    seiten = {**beispiel_seiten("foerde-steuer.example"), **beispiel_seiten("steuerbuero-schuett.example")}
+    seiten["https://steuerbuero-schuett.example/"] = (301, "", {"location": "https://www.steuerbuero-schuett.example/index.php"})
+    web = FakeWeb(seiten)
+    original = cli.run_crawl
+    schnell = lambda st, cfg, *a, **kw: original(st, cfg.model_copy(update={"requests_per_second_per_domain": 1000.0}),  # noqa: E731
+                                                 *a, client=web.client(), **kw)
+    monkeypatch.setattr(cli, "run_crawl", schnell)
+    return web
+
+
+@pytest.fixture
+def fake_llm(monkeypatch):
+    from test_extract_lauf import AufzeichnungsExtractor
+
+    from recherche.normalize import PlzPruefung
+
+    class Pruefer:
+        anfragen = 0
+
+        def __init__(self, *a, **kw):
+            pass
+
+        def pruefe(self, plz, ort):
+            return PlzPruefung(True, "Schleswig-Holstein")
+
+    monkeypatch.setattr(cli, "_extractor", lambda ctx, modell: AufzeichnungsExtractor())
+    monkeypatch.setattr(cli, "PlzPruefer", Pruefer)
+
+
+def test_crawl_extract_export(fake_web, fake_llm, db_pfad, tmp_path):
+    with Storage(db_pfad) as st:
+        for d in ("foerde-steuer.example", "steuerbuero-schuett.example", "weg.example"):
+            st.add_kandidat(Kandidat(bundesland="SH", domain=d, website=f"https://{d}/", telefon="0461 1" if d == "weg.example" else None))
+        st.add_kandidat(Kandidat(bundesland="SH", name="Kanzlei Ohneweb", plz="24103"))
+    r = runner.invoke(cli.app, _args("crawl", db_pfad))
+    assert r.exit_code == 0, r.output
+    assert "Fertig: 2 Websites gelesen, 1 nicht gefunden" in r.output
+    assert "1 × Startseite: HTTP 404" in r.output
+    r = runner.invoke(cli.app, _args("extract", db_pfad))
+    assert r.exit_code == 0, r.output
+    assert "Fertig: 3 Kanzleien (1 ohne Website), 0 Fehler, 2 LLM-Aufrufe" in r.output
+    assert "im Mittel 29.7 s und 1924 Token je Kanzlei" in r.output  # (2210+318 + 1105+214) / 2
+    out = tmp_path / "x.xlsx"
+    assert runner.invoke(cli.app, _args("export", db_pfad, "--out", str(out))).exit_code == 0
+    wb = load_workbook(out)
+    namen = {row[0].value: row for row in wb["Kanzleien"].iter_rows(min_row=2)}
+    assert set(namen) == {"Förde Steuerberatungsgesellschaft mbH", "Steuerbüro Thomas Schütt", None}
+    ng = list(wb["Nicht gefunden"].iter_rows(min_row=2, values_only=True))
+    assert ng[0][0] == "weg.example" and "0461 1" in ng[0]
+    protokoll = [r[1] for r in wb["Lauf-Protokoll"].iter_rows(min_row=2, values_only=True)]
+    assert protokoll == ["crawl", "extract"]
+
+
+def test_crawl_ohne_kandidaten(db_pfad):
+    r = runner.invoke(cli.app, _args("crawl", db_pfad))
+    assert r.exit_code == 0 and "keine offenen Kandidaten" in r.output
+
+
+def test_extract_ohne_llm_und_wiederholen(fake_llm, db_pfad):
+    r = runner.invoke(cli.app, _args("extract", db_pfad, "--ohne-llm", "--wiederholen"))
+    assert r.exit_code == 0, r.output
+    assert "0 fehlgeschlagene Kandidaten wieder offen" in r.output and "nur Regeln" in r.output
+
+
+def test_extract_ollama_nicht_erreichbar(monkeypatch, fake_llm, db_pfad):
+    from test_extract_lauf import AufzeichnungsExtractor, _kandidat_mit_seiten
+
+    from recherche.extract.base import AnbieterNichtErreichbar
+
+    with Storage(db_pfad) as st:
+        _kandidat_mit_seiten(st, "steuerbuero-schuett.example")
+    monkeypatch.setattr(cli, "_extractor", lambda ctx, m: AufzeichnungsExtractor(AnbieterNichtErreichbar("Ollama nicht erreichbar")))
+    r = runner.invoke(cli.app, _args("extract", db_pfad))
+    assert r.exit_code == 0 and "Lauf vorzeitig beendet: Ollama nicht erreichbar" in r.output
+
+
+def test_fixture_eval():
+    r = runner.invoke(cli.app, ["fixture-eval", "--nur", "beispiele"])
+    assert r.exit_code == 0, r.output
+    assert "Fixtures: 3 ausgewertet; Modell qwen3.5:9b" in r.output
+    assert "Trefferquote je Feld" in r.output and "3/3 (100%)" in r.output
+    assert "Je Kanzlei im Mittel: 33.6 s, Token 2478 (Prompt 2166, Antwort 311) über 3 Antworten" in r.output
+    assert "Modellvergleich" in r.output and "qwen3.6:27b" in r.output
+
+
+def test_fixture_eval_ohne_aufzeichnung():
+    r = runner.invoke(cli.app, ["fixture-eval", "--nur", "beispiele", "--modell", "gemma4:26b"])
+    assert r.exit_code == 0
+    assert "ohne LLM-Aufzeichnung" in r.output and "--live" in r.output
+    assert "Je Kanzlei im Mittel" not in r.output
+
+
+def test_fixture_eval_ohne_fixtures(tmp_path):
+    r = runner.invoke(cli.app, ["fixture-eval", "--nur", "echt"])
+    assert r.exit_code == 2 and "Keine Fixtures" in r.output
+
+
+def test_fixture_add(monkeypatch, tmp_path):
+    aufrufe = []
+
+    def holen(domain, cfg, ziel):
+        aufrufe.append((domain, ziel))
+        (ziel / domain).mkdir(parents=True)
+        (ziel / domain / "impressum.html").write_text("x")
+        return ziel / domain, None
+
+    monkeypatch.setattr(cli, "fixture_holen_sync", holen)
+    r = runner.invoke(cli.app, ["fixture-add", "--domain", "Kanzlei-Beispiel.de", "--ziel", str(tmp_path)])
+    assert r.exit_code == 0, r.output
+    assert aufrufe == [("kanzlei-beispiel.de", tmp_path)]
+    assert "impressum.html" in r.output and "erwartet.json" in r.output
+    standard = load_settings().pfad(load_settings().pfade.fixtures_echt)
+    runner.invoke(cli.app, ["fixture-add", "--domain", "b.example"])
+    assert aufrufe[1][1] == standard
+    import shutil
+
+    shutil.rmtree(standard / "b.example")
 
 
 def test_search_stufe_a_mit_kostenlog_und_wiederaufnahme(fakes, db_pfad):
@@ -186,16 +305,18 @@ def test_fill_luecken_ohne_referenz(fakes, db_pfad):
     assert r.exit_code == 2 and "Keine Orte unter der Referenz" in r.output
 
 
-def test_run(fakes, db_pfad, tmp_path):
+def test_run(fakes, fake_web, fake_llm, db_pfad, tmp_path):
     out = tmp_path / "run.xlsx"
     r = runner.invoke(cli.app, _args("run", db_pfad, "--orte", "Kiel", "--out", str(out)))
     assert r.exit_code == 0, r.output
     wb = load_workbook(out)
     assert wb["Lauf-Protokoll"].max_row > 1
-    assert wb["Kanzleien"].max_row == 1  # Extraktion noch Platzhalter
+    # a.example ist im Fake-Web nicht erreichbar → „Nicht gefunden" statt „Kanzleien"
+    assert wb["Kanzleien"].max_row == 1
+    assert wb["Nicht gefunden"]["A2"].value == "a.example"
 
 
-def test_run_mit_ddgs(fakes, db_pfad, tmp_path):
+def test_run_mit_ddgs(fakes, fake_web, fake_llm, db_pfad, tmp_path):
     r = runner.invoke(cli.app, _args("run", db_pfad, "--orte", "Kiel", "--adapter", "ddgs", "--out", str(tmp_path / "r.xlsx")))
     assert r.exit_code == 0, r.output
     assert "Websuche (Stufe A) mit ddgs" in r.output

@@ -1,0 +1,34 @@
+# Adressen und Abschnitte, die im Impressum stehen, aber NICHT die Kanzlei sind.
+# Wird von extract/rules.py genutzt. Liste bei Bedarf ergänzen (Stand: bitte prüfen).
+
+# Zeilen mit diesen Wörtern leiten einen Fremd-Abschnitt ein; Adressen und Telefonnummern in
+# den folgenden `abschnitt_zeilen` Zeilen werden ignoriert. Reguläre Ausdrücke, ohne Groß/Klein.
+abschnitt_zeilen: 6
+abschnitt_woerter:
+  - 'kammer\b'                    # Steuerberaterkammer, Wirtschaftsprüferkammer, „zuständige Kammer"
+  - 'aufsichtsbeh'
+  - 'berufshaftpflicht'
+  - 'haftpflichtversicher'
+  - 'versicherer'
+  - 'vermögensschadenhaftpflicht'
+  - 'hosting|hoster|gehostet'
+  - 'webdesign|web-design|gestaltung|realisierung|umsetzung|programmierung|konzeption'
+  - 'bildnachweis|bildquellen|fotos?:|fotografie'
+  - 'datenschutzbeauftragt'
+  - 'streitschlichtung|schlichtungsstelle'
+  - 'berufsrechtliche regelungen|steuerberatungsgesetz|berufsordnung'
+  - 'bundessteuerberaterkammer|datev'
+
+# Bekannte Fremdadressen (Straße wie im Impressum, PLZ). Ausschluss über den normalisierten
+# Adressschlüssel, unabhängig von der Schreibweise.
+adressen:
+  - {name: Steuerberaterkammer Schleswig-Holstein, strasse: Hopfenstraße 2d, plz: "24114"}
+  - {name: Bundessteuerberaterkammer, strasse: Behrenstraße 42, plz: "10117"}
+  - {name: DATEV eG, strasse: Paumgartnerstraße 6-14, plz: "90429"}
+  - {name: IONOS SE, strasse: Elgendorfer Str. 57, plz: "56410"}
+  - {name: STRATO GmbH, strasse: Otto-Ostrowski-Straße 7, plz: "10249"}
+  - {name: Hetzner Online GmbH, strasse: Industriestr. 25, plz: "91710"}
+  - {name: ALL-INKL.COM, strasse: Hauptstraße 68, plz: "02742"}
+
+# E-Mail-Präfixe, die nur nachrangig genommen werden
+email_nachrangig: [datenschutz, privacy, webmaster, noreply, no-reply, abuse, postmaster]

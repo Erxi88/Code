@@ -28,6 +28,9 @@ class PfadConfig(BaseModel):
     queries: str = "config/queries.yaml"
     blocklist: str = "config/domain_blocklist.txt"
     referenz: str = "config/referenz_kammern.yaml"
+    impressum_ausschluss: str = "config/impressum_ausschluss.yaml"
+    fixtures_beispiele: str = "tests/fixtures/kanzleiseiten/beispiele"
+    fixtures_echt: str = "tests/fixtures/kanzleiseiten/echt"  # nur lokal, in .gitignore
 
 
 # ---------------------------------------------------------------------- Quellen
@@ -150,10 +153,16 @@ class DiscoveryConfig(BaseModel):
 class CrawlConfig(BaseModel):
     parallel_domains: int = 10
     requests_per_second_per_domain: float = 1.0
-    timeout_s: int = 15
+    timeout_s: float = 15.0
     retries: int = 2
+    backoff_s: float = 2.0
     respect_robots: bool = True
     user_agent: str = "kanzlei-recherche/0.1"
+    max_seiten_je_domain: int = 6
+    min_text_zeichen: int = 300  # darunter gilt eine Seite als „ohne Text" (JavaScript)
+    playwright: bool = False  # Rückfall für JavaScript-Seiten, nur wenn aktiviert
+    playwright_timeout_s: float = 20.0
+    max_bytes: int = 3_000_000
 
 
 class LlmConfig(BaseModel):
@@ -163,8 +172,10 @@ class LlmConfig(BaseModel):
     fallback_modell: str | None = "llama3.1:8b"
     think: bool = False
     temperature: float = 0.0
-    timeout_s: int = 120
-    max_text_chars: int = 12000
+    timeout_s: float = 300.0
+    num_ctx: int = 16384  # Kontextfenster; Ollama-Standard ist zu klein und schneidet ab
+    retries: int = 1  # erneuter Versuch bei ungültiger Antwort
+    max_text_chars: int = 24000
 
 
 class OpenPlzConfig(BaseModel):

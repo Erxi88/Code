@@ -1,0 +1,305 @@
+"""Kanzleiseiten-Fixtures: abholen (fixture-add) und Trefferquote messen (fixture-eval).
+
+Ordner je Domain (tests/fixtures/kanzleiseiten/<beispiele|echt>/<domain>/):
+  start.html, impressum.html, kontakt.html, team.html   – Rohseiten (fehlende Seiten fehlen)
+  meta.json                                             – URLs je Seitentyp, Abrufdatum
+  erwartet.json                                         – von Hand ausgefüllte Sollwerte
+  llm/<modell>.json                                     – aufgezeichnete LLM-Antworten (fixture-eval --live)
+
+Echte Kanzleiseiten liegen nur lokal unter echt/ (.gitignore); committet werden nur die
+fiktiven Beispiele. Name und Ansprechpartner werden offline ausschließlich über
+aufgezeichnete Antworten bewertet – ohne Aufzeichnung werden diese Felder übersprungen.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import re
+from dataclasses import dataclass, field
+from datetime import datetime
+from pathlib import Path
+from statistics import mean
+
+import httpx
+
+from .config import CrawlConfig
+from .crawl import Crawler, html_zu_text
+from .extract.base import Extractor, ExtraktionsAntwort
+from .extract.lauf import regeln_fuer
+from .extract.merge import gleiche_person, zusammenfuehren
+from .extract.rules import Ausschluss
+from .models import Kandidat, Kanzlei, Seite, Seitentyp
+from .normalize import _ortsname
+from .search.dedupe import adresse_key, telefon_key
+from .storage import Storage
+
+DATEIEN = {
+    Seitentyp.START: "start.html",
+    Seitentyp.IMPRESSUM: "impressum.html",
+    Seitentyp.KONTAKT: "kontakt.html",
+    Seitentyp.TEAM: "team.html",
+}
+STATUS_OFFEN = "offen"
+STATUS_FERTIG = "fertig"
+ERWARTET_VORLAGE = {
+    "_status": STATUS_OFFEN,
+    "_hinweis": "Sollwerte von Hand eintragen, dann _status auf 'fertig' setzen. "
+    "null = Angabe steht nicht auf der Website. Feld entfernen = nicht bewerten.",
+    "kanzleiname": None,
+    "rechtsform": None,
+    "strasse": None,
+    "plz": None,
+    "ort": None,
+    "telefon": None,
+    "email": None,
+    "erster_ansprechpartner": None,
+    "berufstraeger_anzahl": None,
+    "teamgroesse": None,
+    "teamgroesse_klasse": None,
+}
+
+# Reihenfolge der Ausgabe; "adresse" = Straße, PLZ und Ort zusammen richtig
+FELDER = ["kanzleiname", "adresse", "strasse", "plz", "ort", "telefon", "email", "erster_ansprechpartner",
+          "rechtsform", "berufstraeger_anzahl", "teamgroesse"]  # fmt: skip
+KERNFELDER = ["kanzleiname", "adresse", "telefon", "erster_ansprechpartner"]
+# Felder, die vom LLM abhängen – ohne aufgezeichnete Antwort nicht bewertet
+LLM_FELDER = {"kanzleiname", "erster_ansprechpartner", "rechtsform", "berufstraeger_anzahl", "teamgroesse"}
+
+
+def modell_datei(modell: str) -> str:
+    return re.sub(r"[^A-Za-z0-9._-]", "_", modell) + ".json"
+
+
+@dataclass
+class Fixture:
+    pfad: Path
+    domain: str
+    meta: dict
+    erwartet: dict
+    seiten: dict[Seitentyp, Seite]
+
+    @classmethod
+    def laden(cls, pfad: Path) -> Fixture:
+        meta = json.loads((pfad / "meta.json").read_text(encoding="utf-8")) if (pfad / "meta.json").exists() else {}
+        domain = meta.get("domain") or pfad.name
+        erwartet_pfad = pfad / "erwartet.json"
+        erwartet = json.loads(erwartet_pfad.read_text(encoding="utf-8")) if erwartet_pfad.exists() else {}
+        abgerufen = datetime.fromisoformat(meta["abgerufen_am"]) if meta.get("abgerufen_am") else datetime.now()
+        seiten = {}
+        for typ, datei in DATEIEN.items():
+            if (pfad / datei).exists():
+                html = (pfad / datei).read_text(encoding="utf-8")
+                url = (meta.get("urls") or {}).get(typ.value) or f"https://{domain}/{'' if typ == Seitentyp.START else typ.value}"
+                seiten[typ] = Seite(url=url, domain=domain, seitentyp=typ, http_status=200, html=html,
+                                    text=html_zu_text(html), final_url=url, abgerufen_am=abgerufen)  # fmt: skip
+        return cls(pfad, domain, meta, erwartet, seiten)
+
+    @property
+    def fertig(self) -> bool:
+        return self.erwartet.get("_status") == STATUS_FERTIG
+
+    def aufzeichnung(self, modell: str) -> ExtraktionsAntwort | None:
+        p = self.pfad / "llm" / modell_datei(modell)
+        if not p.exists():
+            return None
+        return ExtraktionsAntwort(**json.loads(p.read_text(encoding="utf-8")))
+
+    def aufzeichnen(self, antwort: ExtraktionsAntwort, modell: str) -> Path:
+        p = self.pfad / "llm" / modell_datei(modell)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(antwort.model_dump_json(indent=1) + "\n", encoding="utf-8")
+        return p
+
+    def modelle(self) -> list[str]:
+        ordner = self.pfad / "llm"
+        if not ordner.exists():
+            return []
+        return sorted(json.loads(p.read_text(encoding="utf-8"))["modell"] for p in ordner.glob("*.json"))
+
+
+def fixtures_finden(ordner: list[Path]) -> list[Fixture]:
+    result = []
+    for o in ordner:
+        if not o.exists():
+            continue
+        for pfad in sorted(p for p in o.iterdir() if p.is_dir() and any(p.glob("*.html"))):
+            result.append(Fixture.laden(pfad))
+    return result
+
+
+# ---------------------------------------------------------------------- fixture-add
+
+
+async def fixture_holen(
+    domain: str, cfg: CrawlConfig, ziel: Path, client: httpx.AsyncClient | None = None
+) -> tuple[Path, str | None]:
+    """Lädt Start-, Impressum-, Kontakt- und Teamseite (robots.txt und Drosselung wie beim Crawl)
+    und legt sie mit meta.json und einer erwartet.json-Vorlage ab. Gibt (Ordner, Fehlergrund) zurück."""
+    with Storage(":memory:") as st:
+        crawler = Crawler(cfg, st, client=client)
+        try:
+            erg = await crawler.crawl_kandidat(
+                Kandidat(id=0, bundesland="XX", domain=domain, website=f"https://{domain}/")
+            )
+        finally:
+            await crawler.schliessen()
+    pfad = ziel / domain
+    pfad.mkdir(parents=True, exist_ok=True)
+    urls = {}
+    for typ, abruf in erg.seiten.items():
+        (pfad / DATEIEN[typ]).write_text(abruf.html or "", encoding="utf-8")
+        urls[typ.value] = abruf.final_url or abruf.url
+    meta = {"domain": domain, "urls": urls, "abgerufen_am": datetime.now().replace(microsecond=0).isoformat(),
+            "crawl_hinweis": erg.grund}  # fmt: skip
+    (pfad / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+    if not (pfad / "erwartet.json").exists():
+        (pfad / "erwartet.json").write_text(json.dumps(ERWARTET_VORLAGE, ensure_ascii=False, indent=1) + "\n",
+                                            encoding="utf-8")  # fmt: skip
+    return pfad, erg.grund
+
+
+def fixture_holen_sync(domain: str, cfg: CrawlConfig, ziel: Path, client=None) -> tuple[Path, str | None]:
+    return asyncio.run(fixture_holen(domain, cfg, ziel, client))
+
+
+# ---------------------------------------------------------------------- fixture-eval
+
+
+def _name_norm(text: str | None) -> str | None:
+    if not text:
+        return None
+    t = text.lower().replace("&", " und ").replace("+", " und ")
+    return re.sub(r"[^a-z0-9äöüß]", "", t)
+
+
+def istwerte(k: Kanzlei) -> dict:
+    return {
+        "kanzleiname": k.kanzleiname, "rechtsform": k.rechtsform, "strasse": k.strasse, "plz": k.plz,
+        "ort": k.ort, "telefon": k.telefon, "email": k.email,
+        "erster_ansprechpartner": k.hauptansprechpartner.name if k.hauptansprechpartner else None,
+        "berufstraeger_anzahl": k.berufstraeger_anzahl, "teamgroesse": k.teamgroesse,
+        "teamgroesse_klasse": k.teamgroesse_klasse.value if k.teamgroesse_klasse else None,
+    }  # fmt: skip
+
+
+def feld_richtig(feld: str, ist: dict, soll: dict) -> bool | None:
+    """True/False; None, wenn das Feld nicht bewertet wird (fehlt in erwartet.json)."""
+    if feld == "adresse":
+        teile = [feld_richtig(f, ist, soll) for f in ("strasse", "plz", "ort")]
+        return None if None in teile else all(teile)
+    if feld == "teamgroesse":
+        if "teamgroesse" not in soll and "teamgroesse_klasse" not in soll:
+            return None
+        if soll.get("teamgroesse") is not None:
+            return ist["teamgroesse"] == soll["teamgroesse"]
+        return ist["teamgroesse"] is None and ist["teamgroesse_klasse"] == soll.get("teamgroesse_klasse")
+    if feld not in soll:
+        return None
+    a, b = ist.get(feld), soll[feld]
+    if a is None or b is None:
+        return a is None and b is None
+    vergleich = {
+        "kanzleiname": lambda: _name_norm(a) == _name_norm(b),
+        "rechtsform": lambda: _name_norm(a) == _name_norm(b),
+        "strasse": lambda: adresse_key(a, "00000") == adresse_key(b, "00000"),
+        "plz": lambda: str(a) == str(b),
+        "ort": lambda: _ortsname(a) == _ortsname(b),
+        "telefon": lambda: telefon_key(a) == telefon_key(b),
+        "email": lambda: a.lower() == b.lower(),
+        "erster_ansprechpartner": lambda: gleiche_person(a, b),
+        "berufstraeger_anzahl": lambda: int(a) == int(b),
+    }
+    return vergleich[feld]()
+
+
+@dataclass
+class Abweichung:
+    domain: str
+    feld: str
+    ist: object
+    soll: object
+
+
+@dataclass
+class EvalErgebnis:
+    modell: str | None
+    fixtures: int = 0
+    richtig: dict[str, int] = field(default_factory=dict)
+    bewertet: dict[str, int] = field(default_factory=dict)
+    fehler: list[Abweichung] = field(default_factory=list)
+    laufzeiten: list[float] = field(default_factory=list)
+    prompt_tokens: list[int] = field(default_factory=list)
+    antwort_tokens: list[int] = field(default_factory=list)
+    ohne_aufzeichnung: list[str] = field(default_factory=list)
+
+    def quote(self, feld: str) -> float | None:
+        n = self.bewertet.get(feld, 0)
+        return self.richtig.get(feld, 0) / n if n else None
+
+    @property
+    def mittlere_laufzeit_s(self) -> float | None:
+        return mean(self.laufzeiten) if self.laufzeiten else None
+
+    @property
+    def mittlere_tokens(self) -> tuple[float | None, float | None, float | None]:
+        """(Prompt, Antwort, gesamt) im Mittel je Kanzlei."""
+        if not self.prompt_tokens and not self.antwort_tokens:
+            return None, None, None
+        p = mean(self.prompt_tokens) if self.prompt_tokens else 0.0
+        a = mean(self.antwort_tokens) if self.antwort_tokens else 0.0
+        return p, a, p + a
+
+
+def auswerten(
+    fixtures: list[Fixture],
+    ausschluss: Ausschluss,
+    modell: str | None,
+    extractor: Extractor | None = None,
+) -> EvalErgebnis:
+    """Trefferquote je Feld. Mit `extractor` (live) werden die Antworten zugleich aufgezeichnet."""
+    erg = EvalErgebnis(modell)
+    for fx in fixtures:
+        if not fx.fertig:
+            continue
+        erg.fixtures += 1
+        antwort = None
+        if extractor is not None:
+            antwort = extractor.extract(fx.seiten)
+            fx.aufzeichnen(antwort, modell or antwort.modell)
+        elif modell:
+            antwort = fx.aufzeichnung(modell)
+        if antwort is None:
+            erg.ohne_aufzeichnung.append(fx.domain)
+        else:
+            erg.laufzeiten.append(antwort.laufzeit_s)
+            if antwort.prompt_tokens is not None:
+                erg.prompt_tokens.append(antwort.prompt_tokens)
+            if antwort.antwort_tokens is not None:
+                erg.antwort_tokens.append(antwort.antwort_tokens)
+        regel = regeln_fuer(fx.seiten, ausschluss, fx.domain)
+        start = fx.seiten.get(Seitentyp.START)
+        kandidat = Kandidat(bundesland="XX", domain=fx.domain, website=start.url if start else None)
+        kanzlei = zusammenfuehren(kandidat, [], fx.seiten, regel, antwort.ergebnis if antwort else None)
+        ist = istwerte(kanzlei)
+        for feld in FELDER:
+            if feld in LLM_FELDER and antwort is None:
+                continue
+            richtig = feld_richtig(feld, ist, fx.erwartet)
+            if richtig is None:
+                continue
+            erg.bewertet[feld] = erg.bewertet.get(feld, 0) + 1
+            if richtig:
+                erg.richtig[feld] = erg.richtig.get(feld, 0) + 1
+            else:
+                soll = (
+                    {k: fx.erwartet.get(k) for k in ("strasse", "plz", "ort")} if feld == "adresse"
+                    else fx.erwartet.get(feld, fx.erwartet.get("teamgroesse_klasse"))
+                )  # fmt: skip
+                wert = {k: ist[k] for k in ("strasse", "plz", "ort")} if feld == "adresse" else ist.get(feld)
+                erg.fehler.append(Abweichung(fx.domain, feld, wert, soll))
+    return erg
+
+
+def aufgezeichnete_modelle(fixtures: list[Fixture]) -> list[str]:
+    return sorted({m for fx in fixtures for m in fx.modelle()})
