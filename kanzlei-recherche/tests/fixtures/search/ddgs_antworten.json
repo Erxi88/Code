@@ -1,0 +1,18 @@
+{
+  "_hinweis": "Beispielantworten im Format von ddgs.DDGS().text() (title/href/body). Fiktive Domains; Portale wie in der Realität.",
+  "Steuerberater Kiel": [
+    {"title": "Hansen & Petersen Steuerberater – Kiel", "href": "https://www.hansen-steuerberatung.example/", "body": "Ihre Steuerberater in Kiel: Jahresabschluss, Lohn, Beratung."},
+    {"title": "Steuerberater in Kiel ⇒ in Das Örtliche", "href": "https://www.dasoertliche.de/Themen/Steuerberater/Kiel.html", "body": "Steuerberater in Kiel mit Adresse und Telefonnummer."},
+    {"title": "Team – Hansen & Petersen", "href": "https://hansen-steuerberatung.example/team", "body": "Unser Team aus 18 Mitarbeitenden."},
+    {"title": "Förde Steuerberatungsgesellschaft mbH", "href": "https://foerde-steuer.example/kiel", "body": "Steuerberatung in Kiel und Flensburg."},
+    {"title": "Steuerberater Kiel - Gelbe Seiten", "href": "https://www.gelbeseiten.de/branchen/steuerberater/kiel", "body": "Die besten Steuerberater in Kiel."},
+    {"title": "Steuerkanzlei Musterhaus | Facebook", "href": "https://de-de.facebook.com/steuerkanzlei.musterhaus", "body": "Steuerkanzlei Musterhaus, Kiel."},
+    {"title": "Kanzlei Kiel-Holtenau", "href": "https://kanzlei-holtenau.example/impressum", "body": "Impressum der Kanzlei Holtenau."},
+    {"title": "kaputter Treffer", "href": "", "body": "ohne URL"}
+  ],
+  "Steuerkanzlei Kiel": [
+    {"title": "Kanzlei Holtenau – Steuerkanzlei", "href": "https://www.kanzlei-holtenau.example/", "body": "Steuerkanzlei in Kiel-Holtenau."},
+    {"title": "Steuerkanzlei Jensen", "href": "https://stb-jensen-luebeck.example/standort-kiel", "body": "Auch in Kiel für Sie da."},
+    {"title": "Steuerberater Kiel | 11880.com", "href": "https://www.11880.com/suche/steuerberater/kiel", "body": "Steuerberater in Kiel finden."}
+  ]
+}
