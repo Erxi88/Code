@@ -1,0 +1,70 @@
+from recherche.models import Ansprechpartner, Kanzlei, Konfidenz, Status, TeamKlasse
+
+
+def test_testdaten_vollstaendig(kanzleien):
+    assert len(kanzleien) == 20
+    assert {k.konfidenz for k in kanzleien} == set(Konfidenz)
+    assert len({k.domain for k in kanzleien}) == 20
+    assert all(k.domain.endswith(".example") for k in kanzleien)
+
+
+def test_testdaten_sonderfaelle(kanzleien):
+    # Teamgröße nur als Klasse
+    assert any(k.teamgroesse is None and k.teamgroesse_klasse for k in kanzleien)
+    # ganz ohne Teamgröße
+    assert any(k.teamgroesse is None and k.teamgroesse_klasse is None for k in kanzleien)
+    # fehlende Felder bleiben None
+    assert any(k.kanzleiname is None for k in kanzleien)
+    assert any(k.email is None for k in kanzleien)
+    assert any(k.bundesland is None for k in kanzleien)
+    assert any(not k.ansprechpartner for k in kanzleien)
+    assert any(len(k.ansprechpartner) >= 3 for k in kanzleien)
+
+
+def test_teamklasse_aus_zahl():
+    assert TeamKlasse.aus_zahl(1) == TeamKlasse.K1_5
+    assert TeamKlasse.aus_zahl(5) == TeamKlasse.K1_5
+    assert TeamKlasse.aus_zahl(6) == TeamKlasse.K6_15
+    assert TeamKlasse.aus_zahl(15) == TeamKlasse.K6_15
+    assert TeamKlasse.aus_zahl(16) == TeamKlasse.K16_50
+    assert TeamKlasse.aus_zahl(50) == TeamKlasse.K16_50
+    assert TeamKlasse.aus_zahl(51) == TeamKlasse.K50_PLUS
+
+
+def test_kanzlei_klasse_wird_aus_zahl_abgeleitet():
+    k = Kanzlei(domain="a.example", lauf_bundesland="SH", teamgroesse=7)
+    assert k.teamgroesse_klasse == TeamKlasse.K6_15
+    assert k.teamgroesse_anzeige == 7
+
+
+def test_kanzlei_anzeige_klasse_ohne_zahl():
+    k = Kanzlei(domain="a.example", lauf_bundesland="SH", teamgroesse_klasse=">50")
+    assert k.teamgroesse_anzeige == ">50"
+
+
+def test_kanzlei_standardwerte():
+    k = Kanzlei(domain="a.example", lauf_bundesland="SH")
+    assert k.status == Status.NEU
+    assert k.konfidenz == Konfidenz.NIEDRIG
+    assert k.hauptansprechpartner is None
+    assert k.teamgroesse_anzeige is None
+
+
+def test_hauptansprechpartner_ist_erster():
+    k = Kanzlei(
+        domain="a.example",
+        lauf_bundesland="SH",
+        ansprechpartner=[Ansprechpartner(name="A"), Ansprechpartner(name="B")],
+    )
+    assert k.hauptansprechpartner.name == "A"
+
+
+def test_ansprechpartner_anzeige():
+    assert Ansprechpartner(name="Jens Hansen", titel="Dipl.-Kfm.", funktion="StB").anzeige() == (
+        "Dipl.-Kfm. Jens Hansen (StB)"
+    )
+    assert Ansprechpartner(name="Jens Hansen").anzeige() == "Jens Hansen"
+
+
+def test_status_werte():
+    assert [s.value for s in Status] == ["neu", "geprüft", "kontaktiert", "kein Interesse", "ungültig"]
