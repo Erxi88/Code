@@ -1,0 +1,12 @@
+# Testreferenz (fiktive Zahlen): 100 Mitglieder, 0,5 Kanzleien je Mitglied → 50 Kanzleien.
+# Kiel hat einen eigenen Wert (60 Mitglieder → 30), der Rest (20) wird nach Einwohnern verteilt.
+SH:
+  quelle: Testdaten
+  stand: 2026-01-01
+  einheit: mitglieder
+  faktor: 0.5
+  gesamt: 100
+  kreise:
+    Kreisfreie Stadt Kiel: 60
+    Kreis Rendsburg-Eckernförde: null
+    Kreis Nordfriesland: null

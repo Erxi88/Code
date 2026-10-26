@@ -1,0 +1,179 @@
+{
+ "_hinweis": "Fiktive Kandidaten für test_coverage: 19 Kandidaten, Quellen brave/places/gelbeseiten. Zuordnung: Ort der Adresse > PLZ > Suchort (nur ohne Adresse); 'Hamburger Kanzlei' → unbekannt.",
+ "kandidaten": [
+  {
+   "name": "Kanzlei Kiel 1",
+   "ort": "Kiel",
+   "plz": "24103",
+   "suchort": "Kiel",
+   "quellen": [
+    "brave"
+   ]
+  },
+  {
+   "name": "Kanzlei Kiel 2",
+   "ort": "Kiel",
+   "plz": "24103",
+   "suchort": "Kiel",
+   "quellen": [
+    "brave"
+   ]
+  },
+  {
+   "name": "Kanzlei Kiel 3",
+   "ort": "Kiel",
+   "plz": "24103",
+   "suchort": "Kiel",
+   "quellen": [
+    "brave"
+   ]
+  },
+  {
+   "name": "Kanzlei Kiel 4",
+   "ort": "Kiel",
+   "plz": "24103",
+   "suchort": "Kiel",
+   "quellen": [
+    "brave"
+   ]
+  },
+  {
+   "name": "Kanzlei Kiel 5",
+   "ort": "Kiel",
+   "plz": "24103",
+   "suchort": "Kiel",
+   "quellen": [
+    "brave"
+   ]
+  },
+  {
+   "name": "Kanzlei Kiel 6",
+   "ort": "Kiel",
+   "plz": "24103",
+   "suchort": "Kiel",
+   "quellen": [
+    "brave"
+   ]
+  },
+  {
+   "name": "Kanzlei Kiel 7",
+   "ort": "Kiel",
+   "plz": "24103",
+   "suchort": "Kiel",
+   "quellen": [
+    "brave"
+   ]
+  },
+  {
+   "name": "Kanzlei Kiel 8",
+   "ort": "Kiel",
+   "plz": "24103",
+   "suchort": "Kiel",
+   "quellen": [
+    "brave",
+    "places"
+   ]
+  },
+  {
+   "name": "Kanzlei Kiel 9",
+   "ort": "Kiel",
+   "plz": "24103",
+   "suchort": "Kiel",
+   "quellen": [
+    "brave",
+    "places"
+   ]
+  },
+  {
+   "name": "Kanzlei Kiel 10",
+   "ort": "Kiel",
+   "plz": "24103",
+   "suchort": "Kiel",
+   "quellen": [
+    "places"
+   ]
+  },
+  {
+   "name": "Rendsburg A",
+   "ort": "Rendsburg",
+   "plz": "24768",
+   "suchort": "Rendsburg",
+   "quellen": [
+    "brave"
+   ]
+  },
+  {
+   "name": "Rendsburg B",
+   "ort": "Rendsburg",
+   "plz": "24768",
+   "suchort": "Rendsburg",
+   "quellen": [
+    "brave",
+    "gelbeseiten"
+   ]
+  },
+  {
+   "name": "Websuche ohne Adresse",
+   "ort": null,
+   "plz": null,
+   "suchort": "Rendsburg",
+   "quellen": [
+    "brave"
+   ]
+  },
+  {
+   "name": "Eckernförde A",
+   "ort": "Eckernförde",
+   "plz": "24340",
+   "suchort": "Eckernförde",
+   "quellen": [
+    "gelbeseiten"
+   ]
+  },
+  {
+   "name": "Husum A",
+   "ort": "Husum",
+   "plz": "25813",
+   "suchort": "Husum",
+   "quellen": [
+    "brave"
+   ]
+  },
+  {
+   "name": "Husum B",
+   "ort": "Husum",
+   "plz": "25813",
+   "suchort": "Husum",
+   "quellen": [
+    "brave"
+   ]
+  },
+  {
+   "name": "Husum C",
+   "ort": "Husum",
+   "plz": "25813",
+   "suchort": "Husum",
+   "quellen": [
+    "brave"
+   ]
+  },
+  {
+   "name": "Sylt nur PLZ",
+   "ort": null,
+   "plz": "25980",
+   "suchort": "Niebüll",
+   "quellen": [
+    "places"
+   ]
+  },
+  {
+   "name": "Hamburger Kanzlei",
+   "ort": "Hamburg",
+   "plz": "20095",
+   "suchort": "Kiel",
+   "quellen": [
+    "brave"
+   ]
+  }
+ ]
+}

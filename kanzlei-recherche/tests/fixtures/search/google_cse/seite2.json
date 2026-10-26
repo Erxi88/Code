@@ -1,0 +1,93 @@
+{
+ "kind": "customsearch#search",
+ "queries": {
+  "request": [
+   {
+    "title": "Google Custom Search - Steuerberater Kiel",
+    "totalResults": "1230",
+    "searchTerms": "Steuerberater Kiel",
+    "count": 10,
+    "startIndex": 11
+   }
+  ],
+  "nextPage": [
+   {
+    "searchTerms": "Steuerberater Kiel",
+    "count": 10,
+    "startIndex": 21
+   }
+  ]
+ },
+ "items": [
+  {
+   "kind": "customsearch#result",
+   "title": "Steuerbüro Kiel 10 – Steuerberatung",
+   "link": "https://stb-kiel-10.example/",
+   "displayLink": "stb-kiel-10.example",
+   "snippet": "Steuerberatung Nr. 10 in Kiel."
+  },
+  {
+   "kind": "customsearch#result",
+   "title": "Steuerbüro Kiel 11 – Steuerberatung",
+   "link": "https://stb-kiel-11.example/",
+   "displayLink": "stb-kiel-11.example",
+   "snippet": "Steuerberatung Nr. 11 in Kiel."
+  },
+  {
+   "kind": "customsearch#result",
+   "title": "Steuerbüro Kiel 12 – Steuerberatung",
+   "link": "https://stb-kiel-12.example/",
+   "displayLink": "stb-kiel-12.example",
+   "snippet": "Steuerberatung Nr. 12 in Kiel."
+  },
+  {
+   "kind": "customsearch#result",
+   "title": "Steuerbüro Kiel 13 – Steuerberatung",
+   "link": "https://stb-kiel-13.example/",
+   "displayLink": "stb-kiel-13.example",
+   "snippet": "Steuerberatung Nr. 13 in Kiel."
+  },
+  {
+   "kind": "customsearch#result",
+   "title": "Steuerbüro Kiel 14 – Steuerberatung",
+   "link": "https://stb-kiel-14.example/",
+   "displayLink": "stb-kiel-14.example",
+   "snippet": "Steuerberatung Nr. 14 in Kiel."
+  },
+  {
+   "kind": "customsearch#result",
+   "title": "Steuerbüro Kiel 15 – Steuerberatung",
+   "link": "https://stb-kiel-15.example/",
+   "displayLink": "stb-kiel-15.example",
+   "snippet": "Steuerberatung Nr. 15 in Kiel."
+  },
+  {
+   "kind": "customsearch#result",
+   "title": "Steuerbüro Kiel 16 – Steuerberatung",
+   "link": "https://stb-kiel-16.example/",
+   "displayLink": "stb-kiel-16.example",
+   "snippet": "Steuerberatung Nr. 16 in Kiel."
+  },
+  {
+   "kind": "customsearch#result",
+   "title": "Steuerbüro Kiel 17 – Steuerberatung",
+   "link": "https://stb-kiel-17.example/",
+   "displayLink": "stb-kiel-17.example",
+   "snippet": "Steuerberatung Nr. 17 in Kiel."
+  },
+  {
+   "kind": "customsearch#result",
+   "title": "Steuerbüro Kiel 18 – Steuerberatung",
+   "link": "https://stb-kiel-18.example/",
+   "displayLink": "stb-kiel-18.example",
+   "snippet": "Steuerberatung Nr. 18 in Kiel."
+  },
+  {
+   "kind": "customsearch#result",
+   "title": "Steuerbüro Kiel 19 – Steuerberatung",
+   "link": "https://stb-kiel-19.example/",
+   "displayLink": "stb-kiel-19.example",
+   "snippet": "Steuerberatung Nr. 19 in Kiel."
+  }
+ ]
+}

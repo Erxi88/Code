@@ -1,0 +1,93 @@
+{
+ "kind": "customsearch#search",
+ "queries": {
+  "request": [
+   {
+    "title": "Google Custom Search - Steuerberater Kiel",
+    "totalResults": "1230",
+    "searchTerms": "Steuerberater Kiel",
+    "count": 10,
+    "startIndex": 1
+   }
+  ],
+  "nextPage": [
+   {
+    "searchTerms": "Steuerberater Kiel",
+    "count": 10,
+    "startIndex": 11
+   }
+  ]
+ },
+ "items": [
+  {
+   "kind": "customsearch#result",
+   "title": "Hansen & Petersen Steuerberater PartG mbB – Kiel",
+   "link": "https://www.hansen-steuerberatung.example/",
+   "displayLink": "www.hansen-steuerberatung.example",
+   "snippet": "Ihre <strong>Steuerberater</strong> in <strong>Kiel</strong>: Jahresabschluss, Lohn, Beratung."
+  },
+  {
+   "kind": "customsearch#result",
+   "title": "Steuerberater Kiel ⇒ in Das Örtliche",
+   "link": "https://www.dasoertliche.de/Themen/Steuerberater/Kiel.html",
+   "displayLink": "www.dasoertliche.de",
+   "snippet": "<strong>Steuerberater</strong> in <strong>Kiel</strong> mit Adresse und Telefonnummer."
+  },
+  {
+   "kind": "customsearch#result",
+   "title": "Förde Steuerberatungsgesellschaft mbH",
+   "link": "https://foerde-steuer.example/kiel",
+   "displayLink": "foerde-steuer.example",
+   "snippet": "Steuerberatung in Kiel und Flensburg."
+  },
+  {
+   "kind": "customsearch#result",
+   "title": "Kanzlei Holtenau – Steuerkanzlei",
+   "link": "https://kanzlei-holtenau.example/",
+   "displayLink": "kanzlei-holtenau.example",
+   "snippet": "Steuerkanzlei in Kiel-Holtenau &amp; Umgebung."
+  },
+  {
+   "kind": "customsearch#result",
+   "title": "Steuerberater Kiel - Gelbe Seiten",
+   "link": "https://www.gelbeseiten.de/branchen/steuerberater/kiel",
+   "displayLink": "www.gelbeseiten.de",
+   "snippet": "Die besten Steuerberater in Kiel."
+  },
+  {
+   "kind": "customsearch#result",
+   "title": "Steuerkanzlei Musterhaus | Facebook",
+   "link": "https://de-de.facebook.com/steuerkanzlei.musterhaus",
+   "displayLink": "de-de.facebook.com",
+   "snippet": "Steuerkanzlei Musterhaus, Kiel."
+  },
+  {
+   "kind": "customsearch#result",
+   "title": "Steuerbüro Kiel 06 – Steuerberatung",
+   "link": "https://stb-kiel-06.example/",
+   "displayLink": "stb-kiel-06.example",
+   "snippet": "Steuerberatung Nr. 6 in Kiel."
+  },
+  {
+   "kind": "customsearch#result",
+   "title": "Steuerbüro Kiel 07 – Steuerberatung",
+   "link": "https://stb-kiel-07.example/",
+   "displayLink": "stb-kiel-07.example",
+   "snippet": "Steuerberatung Nr. 7 in Kiel."
+  },
+  {
+   "kind": "customsearch#result",
+   "title": "Steuerbüro Kiel 08 – Steuerberatung",
+   "link": "https://stb-kiel-08.example/",
+   "displayLink": "stb-kiel-08.example",
+   "snippet": "Steuerberatung Nr. 8 in Kiel."
+  },
+  {
+   "kind": "customsearch#result",
+   "title": "Steuerbüro Kiel 09 – Steuerberatung",
+   "link": "https://stb-kiel-09.example/",
+   "displayLink": "stb-kiel-09.example",
+   "snippet": "Steuerberatung Nr. 9 in Kiel."
+  }
+ ]
+}

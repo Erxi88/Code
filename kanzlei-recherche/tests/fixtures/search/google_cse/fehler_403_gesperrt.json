@@ -1,0 +1,14 @@
+{
+ "error": {
+  "code": 403,
+  "message": "This project does not have the access to Custom Search JSON API.",
+  "errors": [
+   {
+    "message": "This project does not have the access to Custom Search JSON API.",
+    "domain": "global",
+    "reason": "forbidden"
+   }
+  ],
+  "status": "PERMISSION_DENIED"
+ }
+}

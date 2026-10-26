@@ -1,0 +1,48 @@
+{
+ "type": "search",
+ "query": {
+  "original": "Steuerberater Kiel",
+  "more_results_available": false,
+  "country": "de"
+ },
+ "web": {
+  "type": "search",
+  "results": [
+   {
+    "title": "Hansen & Petersen – Team",
+    "url": "https://hansen-steuerberatung.example/team",
+    "description": "Unser Team.",
+    "language": "de",
+    "type": "search_result"
+   },
+   {
+    "title": "Steuerkanzlei Nord",
+    "url": "https://steuerkanzlei-nord.example/",
+    "description": "Kiel-Gaarden.",
+    "language": "de",
+    "type": "search_result"
+   },
+   {
+    "title": "StB Ostufer",
+    "url": "https://stb-ostufer.example/kontakt",
+    "description": "Kontakt.",
+    "language": "de",
+    "type": "search_result"
+   },
+   {
+    "title": "Kanzlei am Wall",
+    "url": "https://kanzlei-am-wall.example/",
+    "description": "Am Wall 1, Kiel.",
+    "language": "de",
+    "type": "search_result"
+   },
+   {
+    "title": "Steuerberater Kiel | 11880.com",
+    "url": "https://www.11880.com/suche/steuerberater/kiel",
+    "description": "Steuerberater finden.",
+    "language": "de",
+    "type": "search_result"
+   }
+  ]
+ }
+}

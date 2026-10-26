@@ -1,0 +1,14 @@
+{
+ "error": {
+  "code": 429,
+  "message": "Quota exceeded for quota metric 'Queries' and limit 'Queries per minute per user'.",
+  "errors": [
+   {
+    "message": "Quota exceeded",
+    "domain": "global",
+    "reason": "rateLimitExceeded"
+   }
+  ],
+  "status": "RESOURCE_EXHAUSTED"
+ }
+}

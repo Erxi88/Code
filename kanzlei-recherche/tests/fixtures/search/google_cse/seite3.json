@@ -1,0 +1,44 @@
+{
+ "kind": "customsearch#search",
+ "queries": {
+  "request": [
+   {
+    "title": "Google Custom Search - Steuerberater Kiel",
+    "totalResults": "1230",
+    "searchTerms": "Steuerberater Kiel",
+    "count": 10,
+    "startIndex": 21
+   }
+  ]
+ },
+ "items": [
+  {
+   "kind": "customsearch#result",
+   "title": "Hansen & Petersen – Team",
+   "link": "https://hansen-steuerberatung.example/team",
+   "displayLink": "hansen-steuerberatung.example",
+   "snippet": "Unser Team."
+  },
+  {
+   "kind": "customsearch#result",
+   "title": "Steuerkanzlei Nord",
+   "link": "https://steuerkanzlei-nord.example/",
+   "displayLink": "steuerkanzlei-nord.example",
+   "snippet": "Kiel-Gaarden."
+  },
+  {
+   "kind": "customsearch#result",
+   "title": "StB Ostufer",
+   "link": "https://stb-ostufer.example/kontakt",
+   "displayLink": "stb-ostufer.example",
+   "snippet": "Kontakt."
+  },
+  {
+   "kind": "customsearch#result",
+   "title": "Kanzlei am Wall",
+   "link": "https://kanzlei-am-wall.example/",
+   "displayLink": "kanzlei-am-wall.example",
+   "snippet": "Am Wall 1, Kiel."
+  }
+ ]
+}
