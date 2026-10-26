@@ -1,0 +1,56 @@
+[
+ {
+  "postalCode": "24806",
+  "name": "Hasselberg",
+  "municipality": {
+   "key": "01058077",
+   "name": "Hasselberg",
+   "type": "Gemeinde"
+  },
+  "district": {
+   "key": "01058",
+   "name": "Rendsburg-Eckernförde",
+   "type": "Kreis"
+  },
+  "federalState": {
+   "key": "01",
+   "name": "Schleswig-Holstein"
+  }
+ },
+ {
+  "postalCode": "24376",
+  "name": "Hasselberg",
+  "municipality": {
+   "key": "01059040",
+   "name": "Hasselberg",
+   "type": "Gemeinde"
+  },
+  "district": {
+   "key": "01059",
+   "name": "Schleswig-Flensburg",
+   "type": "Kreis"
+  },
+  "federalState": {
+   "key": "01",
+   "name": "Schleswig-Holstein"
+  }
+ },
+ {
+  "postalCode": "25764",
+  "name": "Wesselburenerkoog",
+  "municipality": {
+   "key": "01051130",
+   "name": "Wesselburenerkoog",
+   "type": "Gemeinde"
+  },
+  "district": {
+   "key": "01051",
+   "name": "Dithmarschen",
+   "type": "Kreis"
+  },
+  "federalState": {
+   "key": "01",
+   "name": "Schleswig-Holstein"
+  }
+ }
+]

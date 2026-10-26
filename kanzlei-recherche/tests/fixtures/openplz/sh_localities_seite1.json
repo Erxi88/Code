@@ -1,0 +1,92 @@
+[
+ {
+  "postalCode": "24103",
+  "name": "Kiel",
+  "municipality": {
+   "key": "01002000",
+   "name": "Kiel, Landeshauptstadt",
+   "type": "Kreisfreie Stadt"
+  },
+  "district": {
+   "key": "01002",
+   "name": "Kiel, Landeshauptstadt",
+   "type": "Kreisfreie Stadt"
+  },
+  "federalState": {
+   "key": "01",
+   "name": "Schleswig-Holstein"
+  }
+ },
+ {
+  "postalCode": "24159",
+  "name": "Kiel",
+  "municipality": {
+   "key": "01002000",
+   "name": "Kiel, Landeshauptstadt",
+   "type": "Kreisfreie Stadt"
+  },
+  "district": {
+   "key": "01002",
+   "name": "Kiel, Landeshauptstadt",
+   "type": "Kreisfreie Stadt"
+  },
+  "federalState": {
+   "key": "01",
+   "name": "Schleswig-Holstein"
+  }
+ },
+ {
+  "postalCode": "24159",
+  "name": "Kiel-Holtenau",
+  "municipality": {
+   "key": "01002000",
+   "name": "Kiel, Landeshauptstadt",
+   "type": "Kreisfreie Stadt"
+  },
+  "district": {
+   "key": "01002",
+   "name": "Kiel, Landeshauptstadt",
+   "type": "Kreisfreie Stadt"
+  },
+  "federalState": {
+   "key": "01",
+   "name": "Schleswig-Holstein"
+  }
+ },
+ {
+  "postalCode": "24105",
+  "name": "Kiel",
+  "municipality": {
+   "key": "01002000",
+   "name": "Kiel, Landeshauptstadt",
+   "type": "Kreisfreie Stadt"
+  },
+  "district": {
+   "key": "01002",
+   "name": "Kiel, Landeshauptstadt",
+   "type": "Kreisfreie Stadt"
+  },
+  "federalState": {
+   "key": "01",
+   "name": "Schleswig-Holstein"
+  }
+ },
+ {
+  "postalCode": "23552",
+  "name": "Lübeck",
+  "municipality": {
+   "key": "01003000",
+   "name": "Lübeck, Hansestadt",
+   "type": "Kreisfreie Stadt"
+  },
+  "district": {
+   "key": "01003",
+   "name": "Lübeck, Hansestadt",
+   "type": "Kreisfreie Stadt"
+  },
+  "federalState": {
+   "key": "01",
+   "name": "Schleswig-Holstein"
+  }
+ }
+]

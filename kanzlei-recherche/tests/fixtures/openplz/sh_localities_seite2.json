@@ -1,0 +1,92 @@
+[
+ {
+  "postalCode": "23570",
+  "name": "Lübeck",
+  "municipality": {
+   "key": "01003000",
+   "name": "Lübeck, Hansestadt",
+   "type": "Kreisfreie Stadt"
+  },
+  "district": {
+   "key": "01003",
+   "name": "Lübeck, Hansestadt",
+   "type": "Kreisfreie Stadt"
+  },
+  "federalState": {
+   "key": "01",
+   "name": "Schleswig-Holstein"
+  }
+ },
+ {
+  "postalCode": "24937",
+  "name": "Flensburg",
+  "municipality": {
+   "key": "01001000",
+   "name": "Flensburg, Stadt",
+   "type": "Kreisfreie Stadt"
+  },
+  "district": {
+   "key": "01001",
+   "name": "Flensburg, Stadt",
+   "type": "Kreisfreie Stadt"
+  },
+  "federalState": {
+   "key": "01",
+   "name": "Schleswig-Holstein"
+  }
+ },
+ {
+  "postalCode": "24939",
+  "name": "Flensburg",
+  "municipality": {
+   "key": "01001000",
+   "name": "Flensburg, Stadt",
+   "type": "Kreisfreie Stadt"
+  },
+  "district": {
+   "key": "01001",
+   "name": "Flensburg, Stadt",
+   "type": "Kreisfreie Stadt"
+  },
+  "federalState": {
+   "key": "01",
+   "name": "Schleswig-Holstein"
+  }
+ },
+ {
+  "postalCode": "25746",
+  "name": "Heide",
+  "municipality": {
+   "key": "01051044",
+   "name": "Heide, Stadt",
+   "type": "Stadt"
+  },
+  "district": {
+   "key": "01051",
+   "name": "Dithmarschen",
+   "type": "Kreis"
+  },
+  "federalState": {
+   "key": "01",
+   "name": "Schleswig-Holstein"
+  }
+ },
+ {
+  "postalCode": "25813",
+  "name": "Husum",
+  "municipality": {
+   "key": "01054056",
+   "name": "Husum, Stadt",
+   "type": "Stadt"
+  },
+  "district": {
+   "key": "01054",
+   "name": "Nordfriesland",
+   "type": "Kreis"
+  },
+  "federalState": {
+   "key": "01",
+   "name": "Schleswig-Holstein"
+  }
+ }
+]
