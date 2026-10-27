@@ -199,6 +199,8 @@ _VERTRETUNG_STARK = re.compile(
 _VERTRETUNG_SCHWACH = re.compile(r"(?<![\w-])(?:gesellschafter\w*|partner(?:in|innen)?\b(?![.-]\w)|vorstand)", re.I)
 # „Verantwortlich gemäß § 5 TMG: Olaf Müller-Madaus" – nachrangig nach den Vertretungsberechtigten
 _VERANTWORTLICH = re.compile(r"\bverantwortlich\w*", re.I)
+# Wörter, die selbst einen Fremd-Abschnitt kennzeichnen (Schlüsselwort-Zeile bleibt dann gesperrt)
+_FREMD_WORT = re.compile(r"kammer|versicher|aufsicht|hoster|hosting|webdesign|datenschutzbeauftragt", re.I)
 _LABEL = re.compile(r"^[^:]{2,60}:")  # „Registergericht: …" beendet einen Abschnitt
 _BERUFSBEZEICHNUNG = re.compile(r"berufsbezeichnung\w*\s*:?\s*(.*)", re.I)
 _BEZEICHNUNGEN = {
@@ -288,7 +290,7 @@ def _abschnitt_namen(
     namen = []
     for j in range(i + 1, min(len(zeilen), i + 9)):
         folge = zeilen[j].strip()
-        if not folge or gesperrt(j):
+        if not folge or gesperrt(j) or _FREMD_WORT.search(folge):
             break
         # neue Schlüsselwort-Zeile („Geschäftsführer: …") beginnt einen eigenen Abschnitt –
         # eine Namenszeile mit Funktion am Ende („Yvonne Baur, Geschäftsführerin") nicht
@@ -343,10 +345,16 @@ def vertretung(impressum: str, fremd: set[int] | None = None, rahmen: set[str] |
             stark, ziel = True, verantwortliche
         else:
             continue
-        if gesperrt(i):
-            protokoll.append(f"Zeile {i + 1} „{z[:70]}“ → übersprungen ({'Fremd-Abschnitt' if i in fremd else 'Navigation/Fußzeile'})")
+        # Eine Zeile, die mit dem Schlüsselwort beginnt („Geschäftsführer: …"), beginnt einen eigenen
+        # Abschnitt – auch direkt hinter den Kammer-Adressen (Fremd-Abschnitt); ein Satz im Fremd-Abschnitt
+        # („… Versicherung AG, vertreten durch den Vorstand …") bleibt gesperrt
+        im_rahmen = " ".join(z.lower().split()) in rahmen
+        eigener_abschnitt = i in fremd and _nur_rollenwoerter(z[: m.start()]) and not _FREMD_WORT.search(z)
+        if im_rahmen or (i in fremd and not eigener_abschnitt):
+            protokoll.append(f"Zeile {i + 1} „{z[:70]}“ → übersprungen ({'Navigation/Fußzeile' if im_rahmen else 'Fremd-Abschnitt'})")
             continue
-        gefunden_namen, grund = _abschnitt_namen(zeilen, i, m, stark, gesperrt)
+        folge_gesperrt = (lambda j: " ".join(zeilen[j].lower().split()) in rahmen) if eigener_abschnitt else gesperrt
+        gefunden_namen, grund = _abschnitt_namen(zeilen, i, m, stark, folge_gesperrt)
         protokoll.append(f"Zeile {i + 1} „{z[:70]}“ → {grund}")
         for name, funktion in gefunden_namen:
             if not any(gleiche_person(name, n) for n in namen + verantwortliche):
@@ -465,6 +473,44 @@ def teamgroesse(
     return None, None, None
 
 
+# Berufsbezeichnungen, die zum Namen einer Partnerschaft gehören („… PartG mbB Steuerberater")
+_NAMENS_BERUF = re.compile(
+    r"^(?:steuerberater\w*|wirtschaftspr[uü]f\w*|rechtsanw[aä]lt\w*|vereidigte[rn]?|buchpr[uü]fer\w*|"
+    r"steuerbevollm[aä]chtigt\w*|und|&|\+|,|/|·|-|–)$",
+    re.I,
+)
+
+
+_PARTNERSCHAFT = re.compile(r"partnerschaft|partg|\bund\s+partner\b|&\s*partner\b", re.I)
+
+
+def _woerter(text: str) -> list[str]:
+    return [w for w in re.split(r"[\s,;·|]+", text.lower()) if w]
+
+
+def name_vervollstaendigen(name: str | None, impressum: str | None) -> str | None:
+    """„Baur Drews Partnerschaftsgesellschaft mbB" → „… mbB Steuerberater", wenn das Impressum den Namen
+    mit angehängter Berufsbezeichnung führt (in derselben oder der nächsten Zeile). Nur bei
+    Partnerschaften – dort gehören die Berufsbezeichnungen zum Namen (§ 2 PartGG); bei einer
+    Einzelkanzlei ist „Steuerberater" unter dem Namen die Berufsbezeichnung des Inhabers.
+    Nur Berufswörter werden ergänzt, nie anderer Text."""
+    if not name or not impressum or not _PARTNERSCHAFT.search(name):
+        return name
+    soll = _woerter(name)
+    zeilen = [z.strip() for z in (text_normalisieren(impressum) or "").splitlines()][:60]
+    for i, z in enumerate(zeilen):
+        ist = _woerter(z)
+        if ist[: len(soll)] != soll:
+            continue
+        rest = ist[len(soll):]
+        if rest and len(rest) <= 6 and all(_NAMENS_BERUF.match(w) for w in rest):
+            return z.rstrip(" ,;")
+        folge = _woerter(zeilen[i + 1]) if not rest and i + 1 < len(zeilen) else []
+        if folge and len(folge) <= 6 and all(_NAMENS_BERUF.match(w) for w in folge):
+            return f"{z.rstrip(' ,;')} {zeilen[i + 1].strip()}"
+    return name
+
+
 def _adresse_text(strasse: str | None, plz: str | None, ort: str | None) -> str:
     return ", ".join(x for x in (strasse, " ".join(y for y in (plz, ort) if y)) if x)
 
@@ -492,7 +538,8 @@ def zusammenfuehren(
     abweichungen: list[str] = []
 
     # ---- Name: Discovery (Stufe B) > LLM
-    llm_name = llm.kanzleiname if llm else None
+    impressum_text = _text(seiten[Seitentyp.IMPRESSUM]) if Seitentyp.IMPRESSUM in seiten else None
+    llm_name = name_vervollstaendigen(llm.kanzleiname if llm else None, impressum_text)
     name = disc["name"] or llm_name
     if disc["name"] and llm_name and not (name_tokens(disc["name"]) & name_tokens(llm_name)):
         abweichungen.append(f"Name: {disc['quelle_name']} „{disc['name']}“ / Website „{llm_name}“")
@@ -543,7 +590,6 @@ def zusammenfuehren(
         for p in erkenne_personen(_text(s), rahmen=rahmen) + personen_aus_json_ld(s.html):
             if not any(gleiche_person(p.name, q.name) for q in erkannte):
                 erkannte.append(p)
-    impressum_text = _text(seiten[Seitentyp.IMPRESSUM]) if Seitentyp.IMPRESSUM in seiten else None
     fremd = ausschluss.fremd_zeilen(impressum_text.splitlines()) if ausschluss and impressum_text else None
     personen = ansprechpartner(llm, erkannte, impressum_text, fremd, rahmen)
     angabe = mitarbeiterzahl([_text(s) for s in seiten.values()])

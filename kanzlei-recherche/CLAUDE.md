@@ -202,6 +202,10 @@ der nächsten Quelle füllen.**
 - Zusammenführung (`merge.py`):
   - Adresse (als Einheit) und Telefon: Discovery (Stufe B) > Regeln > LLM.
   - Name: Discovery (Stufe B) > LLM; **Websuche-Titel gelten nicht als Discovery-Name**.
+    Bei Partnerschaften wird der LLM-Name um die Berufsbezeichnungen ergänzt, wenn das
+    Impressum sie direkt dahinter führt (gleiche oder nächste Zeile, nur Berufswörter):
+    „… PartG mbB Steuerberater" (§ 2 PartGG). Bei Einzelkanzleien nicht – dort ist
+    „Steuerberater" unter dem Namen die Berufsbezeichnung des Inhabers.
   - Discovery-Daten werden nie überschrieben; Unterschiede (normalisiert verglichen)
     stehen in der Spalte „Abweichung". Kandidatenfelder werden nur ergänzt, wenn leer.
   - Personen: **Grundlage sind die strukturell erkannten Personen** (Teamseiten, JSON-LD,
@@ -225,7 +229,10 @@ der nächsten Quelle füllen.**
     berechtigte Gesellschafter der … mbB"), außer sie sieht wie Navigation aus (mehrere
     Menüwörter). Namen in derselben Zeile (getrennt durch Komma, „/", „und", auch „Name
     (Funktion)") oder in den Folgezeilen; sie enden an der nächsten Leerzeile, einer Zeile
-    ohne Namen oder einer Zeile, die mit einem Schlüsselwort beginnt. Eine
+    ohne Namen, einer Zeile, die mit einem Schlüsselwort beginnt, oder einer Kammer-/
+    Versicherungszeile. Eine Zeile, die mit dem Schlüsselwort beginnt („Geschäftsführer: …"),
+    zählt auch im Fremd-Abschnitt direkt hinter den Kammer-Adressen; ein Satz dort
+    („… Versicherung AG, vertreten durch den Vorstand …") nicht. Eine
     Berufsbezeichnung direkt am Namen („Yvonne Baur, Steuerberaterin") gilt für diese Person.
     „Verantwortlich gemäß § 5 TMG/§ 18 MStV" zählt nachrangig (nach den
     Vertretungsberechtigten). Rahmenzeilen zählen nie.

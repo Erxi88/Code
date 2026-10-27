@@ -2,7 +2,7 @@
 
 import pytest
 
-from recherche.config import LlmConfig
+from recherche.config import PROJEKT_DIR, LlmConfig
 from recherche.crawl import finde_unterseiten, html_zu_text
 from recherche.extract.base import LlmErgebnis, LlmPerson
 from recherche.extract.merge import (
@@ -16,6 +16,8 @@ from recherche.extract.personen import erkenne_personen, mitarbeiterzahl, name_z
 from recherche.extract.prompt import baue_prompt, schluesselstellen, text_budget
 from recherche.models import Seite, Seitentyp, TeamKlasse
 from recherche.normalize import normalize_rechtsform, rechtsform_aus_text
+
+STANDARD_AUSSCHLUSS = PROJEKT_DIR / "config" / "impressum_ausschluss.yaml"
 
 
 def _seite(typ, url, html):
@@ -342,11 +344,24 @@ def test_unsichtbare_zeichen():
 def test_vertretung_protokoll():
     from recherche.extract.merge import vertretung
 
-    v = vertretung("Partner Berufsträger Historie\nZuständige Kammer: Steuerberaterkammer\nGeschäftsführer: Anna Bock",
-                   fremd={1, 2})
+    v = vertretung("Partner Berufsträger Historie\nZuständige Kammer: Steuerberaterkammer\n"
+                   "Versicherung AG, vertreten durch den Vorstand Max Muster", fremd={1, 2})
     assert v.namen == []
     assert v.protokoll == ["Zeile 1 „Partner Berufsträger Historie“ → keine Namen, keine Überschrift",
-                           "Zeile 3 „Geschäftsführer: Anna Bock“ → übersprungen (Fremd-Abschnitt)"]
+                           "Zeile 3 „Versicherung AG, vertreten durch den Vorstand Max Muster“ → übersprungen (Fremd-Abschnitt)"]
+
+
+def test_vertretung_hinter_kammer_adressen():
+    """Drei Kammern im Impressum, danach die Geschäftsführer: deren Zeile beginnt einen eigenen Abschnitt."""
+    from recherche.extract.merge import vertretung
+    from recherche.extract.rules import Ausschluss
+
+    impressum = ("Zuständige Kammern:\nSteuerberaterkammer Hamburg\nRaboisen 32\nWirtschaftsprüferkammer\n"
+                 "Rauchstraße 26\nGeschäftsführer:\nChristian Wermke\nIna Chen\n"
+                 "Berufshaftpflichtversicherung: Muster Versicherung AG, vertreten durch den Vorstand Max Muster")
+    ausschluss = Ausschluss.laden(STANDARD_AUSSCHLUSS)
+    v = vertretung(impressum, ausschluss.fremd_zeilen(impressum.splitlines()))
+    assert v.namen == ["Christian Wermke", "Ina Chen"]
 
 
 def test_mehrere_funktionszeilen_untereinander():
@@ -368,3 +383,24 @@ def test_firmenname_und_kammer_sind_keine_personen():
     assert erkenne_personen("Baur Drews\nBD-Partner") == []  # „BD-Partner" ist keine Funktion
     v = vertretung("E-Mail: office@bd-partner.de\nBD-Partner\nPartner: Anna Bock")
     assert v.namen == ["Anna Bock"] and len(v.protokoll) == 1
+
+
+@pytest.mark.parametrize("impressum,erwartet", [
+    ("Impressum\nBaur Drews Partnerschaftsgesellschaft mbB Steuerberater\nHauptstr. 1",
+     "Baur Drews Partnerschaftsgesellschaft mbB Steuerberater"),
+    ("Baur Drews Partnerschaftsgesellschaft mbB\nSteuerberater & Wirtschaftsprüfer",
+     "Baur Drews Partnerschaftsgesellschaft mbB Steuerberater & Wirtschaftsprüfer"),
+    ("Baur Drews Partnerschaftsgesellschaft mbB\nHauptstraße 1", "Baur Drews Partnerschaftsgesellschaft mbB"),
+    ("Baur Drews Partnerschaftsgesellschaft mbB, Steuerberater, Sitz Kiel", "Baur Drews Partnerschaftsgesellschaft mbB"),
+])  # fmt: skip
+def test_name_um_berufsbezeichnung_vervollstaendigen(impressum, erwartet):
+    from recherche.extract.merge import name_vervollstaendigen
+
+    assert name_vervollstaendigen("Baur Drews Partnerschaftsgesellschaft mbB", impressum) == erwartet
+
+
+def test_einzelkanzlei_name_ohne_berufsbezeichnung():
+    from recherche.extract.merge import name_vervollstaendigen
+
+    assert name_vervollstaendigen("Steuerbüro Thomas Schütt", "Steuerbüro Thomas Schütt\nSteuerberater") == \
+        "Steuerbüro Thomas Schütt"

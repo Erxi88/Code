@@ -51,7 +51,7 @@ _KEINE_NAMEN = frozenset(
     buchhaltung jahresabschluss beratung wirtschaftsprüfung rechtsberatung sanierung international galerie
     faq glossar login suche menü menu zurück weiter kontaktformular rückruf termine expertise tätigkeitsfelder
     tätigkeitsschwerpunkte mitarbeiter mitarbeitende experten historie anfahrt chaussee straße strasse weg
-    allee platz ring damm""".split()
+    allee platz ring damm vorstand vorstände aufsichtsrat geschäftsleitung""".split()
 )
 # Institutionen, keine Personen: „Wirtschaftsprüferkammer Berlin", „Amtsgericht Kiel"
 _INSTITUTION = re.compile(r"(?:kammer|gericht|register|versicherung|verband|bank|gmbh|straße|strasse|chaussee)$", re.I)
