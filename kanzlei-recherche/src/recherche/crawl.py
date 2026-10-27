@@ -184,7 +184,7 @@ MUSTER: dict[Seitentyp, dict[str, list[tuple[str, int]]]] = {
                  ("uber-uns", 7), ("about", 5), ("wir", 6), ("partner", 6), ("experten", 6), ("personen", 5),
                  ("kanzlei", 5), ("menschen", 5)],
         "text": [("unser team", 12), ("team", 10), ("mitarbeiter", 9), ("ansprechpartner", 9), ("berufstraeger", 9),
-                 ("ueber uns", 7), ("=partner", 6), ("unsere partner", 6), ("experten", 6), ("die kanzlei", 5),
+                 ("ueber uns", 7), ("=partner", 6), ("unsere partner", 6), ("experten", 6), ("berater", 9), ("die kanzlei", 5),
                  ("=kanzlei", 5), ("=wir", 6), ("menschen", 5)],
     },
 }  # fmt: skip
@@ -193,7 +193,8 @@ ABZUEGE: dict[Seitentyp, list[tuple[str, int]]] = {
     Seitentyp.IMPRESSUM: [("datenschutz", -15)],
     Seitentyp.KONTAKT: [("datenschutz", -15), ("impressum", -6)],
     Seitentyp.TEAM: [("karriere", -8), ("jobs", -8), ("stellen", -8), ("ausbildung", -6), ("datenschutz", -15),
-                     ("kooperationspartner", -8), ("netzwerk", -4)],
+                     ("kooperationspartner", -8), ("netzwerk", -4), ("honorar", -8), ("preise", -6),
+                     ("gebuehren", -6), ("empfehlungen", -8), ("digitale", -5)],
 }
 TYP_WORT = {Seitentyp.IMPRESSUM: "impressum", Seitentyp.KONTAKT: "kontakt", Seitentyp.TEAM: "team"}
 MINDESTPUNKTE = 5

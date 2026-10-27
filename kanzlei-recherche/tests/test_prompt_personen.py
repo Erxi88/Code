@@ -417,3 +417,40 @@ def test_einzelkanzlei_name_ohne_berufsbezeichnung():
 ])  # fmt: skip
 def test_vertretung_tippfehler_gender_paragraf(impressum, namen):
     assert vertretungsberechtigte(impressum)[0] == namen
+
+
+@pytest.mark.parametrize("url,text,mindestens,hoechstens", [
+    ("https://a.example/kanzlei/berater/", "Berater", 11, 99),
+    ("https://a.example/kanzlei/honorar/", "Honorar", -99, 3),
+    ("https://a.example/kiel/partner-empfehlungen", "Partner & Empfehlungen", -99, 3),
+    ("https://a.example/digitale-kanzlei/", "Digitale Kanzlei", -99, 3),
+    ("https://a.example/steuerberater-kiel/", "Steuerberater in Kiel", -99, 3),  # „berater" nicht im Pfad
+])  # fmt: skip
+def test_team_linkpunkte(url, text, mindestens, hoechstens):
+    from recherche.crawl import punkte
+
+    assert mindestens <= punkte(Seitentyp.TEAM, url, text) <= hoechstens
+
+
+def test_berater_seite_vor_honorar():
+    html = ("<a href='/kanzlei/'>Kanzlei</a><a href='/kanzlei/honorar/'>Honorar</a>"
+            "<a href='/kanzlei/berater/'>Berater</a>")
+    u = finde_unterseiten(html, "https://b.example/", "b.example")
+    assert u[Seitentyp.TEAM] == "https://b.example/kanzlei/berater/"
+    assert u[Seitentyp.TEAM2] == "https://b.example/kanzlei/"
+
+
+def test_berufsbezeichnung_aus_partnerschaftsname():
+    from recherche.extract.merge import bezeichnung_aus_partnerschaftsname as b
+
+    assert b("Brandenburg und Partner mbB Steuerberater") == "Steuerberater"
+    assert b("Baur Drews Partnerschaftsgesellschaft mbB Steuerberater & Wirtschaftsprüfer") is None  # zwei Berufe
+    assert b("Steuerbüro Thomas Schütt Steuerberater") is None  # keine Partnerschaft
+    ap = ansprechpartner(None, [], "Vertreten durch:\nStefan Brandenburg", kanzleiname="Brandenburg und Partner mbB Steuerberater")
+    assert ap[0].name == "Stefan Brandenburg" and ist_berufstraeger(ap[0])
+
+
+def test_rollentitel_und_doppelte_kommas():
+    assert name_zerlegen("Rating Advisor") is None
+    p = erkenne_personen("Torsten Petereit\nGesellschafter – Geschäftsführer\nWirtschaftsprüfer,\nRechtsanwalt")
+    assert p[0].funktion == "Gesellschafter – Geschäftsführer, Wirtschaftsprüfer, Rechtsanwalt"

@@ -51,7 +51,8 @@ _KEINE_NAMEN = frozenset(
     buchhaltung jahresabschluss beratung wirtschaftsprüfung rechtsberatung sanierung international galerie
     faq glossar login suche menü menu zurück weiter kontaktformular rückruf termine expertise tätigkeitsfelder
     tätigkeitsschwerpunkte mitarbeiter mitarbeitende experten historie anfahrt chaussee straße strasse weg
-    allee platz ring damm vorstand vorstände aufsichtsrat geschäftsleitung""".split()
+    allee platz ring damm vorstand vorstände aufsichtsrat geschäftsleitung
+    rating advisor consultant consulting manager office service senior junior associate""".split()
 )
 # Institutionen, keine Personen: „Wirtschaftsprüferkammer Berlin", „Amtsgericht Kiel"
 _INSTITUTION = re.compile(r"(?:kammer|gericht|register|versicherung|verband|bank|gmbh|straße|strasse|chaussee)$", re.I)
@@ -185,7 +186,7 @@ def erkenne_personen(
                 break
             folge.append(j)
         if folge:
-            hinzu(nt, ", ".join(zeilen[j] for j in folge), i)
+            hinzu(nt, ", ".join(zeilen[j].strip(" ,;") for j in folge), i)
             vergeben.update({i, *folge})
         elif i > 0 and zeilen[i - 1] and i - 1 not in vergeben and _ist_funktion(zeilen[i - 1], f) \
                 and not _beginnt_mit_name(zeilen[i - 1]):

@@ -383,12 +383,22 @@ def vertretung(impressum: str, fremd: set[int] | None = None, rahmen: set[str] |
     return Vertretung(namen + verantwortliche, funktionen, bezeichnung, protokoll)
 
 
+def bezeichnung_aus_partnerschaftsname(name: str | None) -> str | None:
+    """„Brandenburg und Partner mbB Steuerberater" → „Steuerberater": Der Name einer Partnerschaft nennt
+    die Berufe aller Partner (§ 2 PartGG) – steht dort genau einer, gilt er für die Vertretungsberechtigten."""
+    if not name or not _PARTNERSCHAFT.search(name):
+        return None
+    berufe = {b for b, muster in _BEZEICHNUNGEN.items() if muster.search(name)}
+    return berufe.pop() if len(berufe) == 1 else None
+
+
 def ansprechpartner(
     llm: LlmErgebnis | None,
     erkannte: list[ErkanntePerson] | None = None,
     impressum: str | None = None,
     fremd: set[int] | None = None,
     rahmen: set[str] | None = None,
+    kanzleiname: str | None = None,
 ) -> list[Ansprechpartner]:
     """Berufsträger und Leitung aus LLM, Regel-Erkennung und Impressum.
 
@@ -409,6 +419,8 @@ def ansprechpartner(
             roh.append(LlmPerson(name=name, funktion="laut Impressum vertretungsberechtigt"))
     roh += list(llm.personen) if llm else []
     personen = personen_vereinigen(roh)
+    if not bezeichnung and vertreter:
+        bezeichnung = bezeichnung_aus_partnerschaftsname(kanzleiname)
     if bezeichnung:
         personen = [
             LlmPerson(name=p.name, titel=p.titel, funktion=_funktion_vereinigen(p.funktion, f"{bezeichnung} (laut Impressum)"))
@@ -599,7 +611,7 @@ def zusammenfuehren(
             if not any(gleiche_person(p.name, q.name) for q in erkannte):
                 erkannte.append(p)
     fremd = ausschluss.fremd_zeilen(impressum_text.splitlines()) if ausschluss and impressum_text else None
-    personen = ansprechpartner(llm, erkannte, impressum_text, fremd, rahmen)
+    personen = ansprechpartner(llm, erkannte, impressum_text, fremd, rahmen, name)
     angabe = mitarbeiterzahl([_text(s) for s in seiten.values()])
     zahl, klasse, basis = teamgroesse(llm, team_seiten, erkannte, angabe)
     hat_personeninfo = llm is not None or bool(erkannte) or bool(personen)

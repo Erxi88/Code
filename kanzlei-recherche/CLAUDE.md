@@ -122,8 +122,9 @@ der nächsten Quelle füllen.**
 - Für jeden Kandidaten **mit Website**: Start bei `https://<domain>/` (Rückfall `http://`,
   dann Treffer-URL), Links sammeln, Impressum-/Kontakt-/Team-Seite über Pfad und Linktext
   erkennen (`/impressum`, `/kontakt`, `/team`, `/ueber-uns`, `/kanzlei`, `/wir`,
-  „Unser Team", „Mitarbeiter", „Ansprechpartner", „Berufsträger", „Partner", „Über uns";
-  Abzüge für Datenschutz, Karriere, Jobs, Kooperationspartner). Das Impressum wird auch
+  „Unser Team", „Mitarbeiter", „Ansprechpartner", „Berufsträger", „Partner", „Über uns",
+  „Berater" (nur Linktext – im Pfad träfe es `/steuerberater-kiel/`); Abzüge für
+  Datenschutz, Karriere, Jobs, Kooperationspartner, Honorar, Preise, Empfehlungen). Das Impressum wird auch
   über den Linktext erkannt, wenn der Pfad fremd ist (`/information/license`). Die zweitbeste
   Team-Kandidatin wird als `team2` gelesen (z. B. `/berufstraeger` und `/ueber-uns`) –
   höchstens 6 Abrufe je Domain. Ohne Impressum-Link wird `/impressum` geraten (Soft-404 wird erkannt).
@@ -220,7 +221,8 @@ der nächsten Quelle füllen.**
   - „Berufsträger (Anzahl)" zählt StB/WP/RA/vBP, Berufstitel nur mit Wortgrenze;
     Fach­angestellte, Fachwirt, Fachassistent, Fachgehilfe und Anwärter nie.
     Vertretungsberechtigte zählen, wenn im selben Impressum-Abschnitt genau **eine**
-    Berufsbezeichnung steht.
+    Berufsbezeichnung steht – oder, bei einer Partnerschaft, wenn ihr Name genau einen
+    Beruf nennt („Brandenburg und Partner mbB Steuerberater"; § 2 PartGG).
   - Vertretungsberechtigte im Impressum: „vertretungsberechtigt" (auch der Tippfehler
     „vertretungberechtigt" und Gender-Klammern wie „(r)"), „vertreten durch",
     „Geschäftsführer", „Inhaber" (Namen dürfen direkt folgen); „Partner", „Gesellschafter",
