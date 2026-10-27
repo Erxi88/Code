@@ -14,13 +14,14 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from ..crawl import links
+from ..crawl import links, meta_texte
 from ..models import Kandidat, LaufEintrag, SchrittStatus, Seitentyp
 from ..normalize import PlzPruefer
 from ..storage import Storage
 from ..textnorm import text_normalisieren
 from .base import AnbieterNichtErreichbar, Extractor, ExtraktionFehler
 from .merge import zusammenfuehren
+from .prompt import seiten_rahmen
 from .rules import Ausschluss, extract_impressum
 
 log = logging.getLogger(__name__)
@@ -58,8 +59,12 @@ def regeln_fuer(seiten, ausschluss: Ausschluss, domain: str | None):
         return None
     texte = [(text_normalisieren(s.text) or "", [u for u, _ in links(s.html, s.final_url or s.url)] if s.html else [])
              for s in reihenfolge]  # fmt: skip
+    # letzter Rückfall: Meta-Beschreibungen (E-Mail steht manchmal nur dort)
+    meta = "\n".join(m for s in reihenfolge for m in meta_texte(s.html))
+    if meta:
+        texte.append((meta, []))
     (text, lnks), *weitere = texte
-    return extract_impressum(text, ausschluss, lnks, domain, weitere)
+    return extract_impressum(text, ausschluss, lnks, domain, weitere, rahmen=seiten_rahmen(seiten))
 
 
 def run_extract(

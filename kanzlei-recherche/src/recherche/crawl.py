@@ -148,6 +148,20 @@ def haupttext(html: str) -> str | None:
         return None
 
 
+def meta_texte(html: str | None) -> list[str]:
+    """Inhalte von <meta name="description">, og:description, keywords – manche Kanzleien nennen die
+    E-Mail-Adresse nur dort."""
+    if not html:
+        return []
+    soup = _soup(html)
+    texte = []
+    for m in soup.find_all("meta"):
+        art = (m.get("name") or m.get("property") or "").lower()
+        if art in ("description", "og:description", "twitter:description", "keywords") and m.get("content"):
+            texte.append(m["content"])
+    return texte
+
+
 def links(html: str, basis_url: str) -> list[tuple[str, str]]:
     """(absolute URL, Linktext) aller <a href> – inkl. entschlüsselter Cloudflare-Mails."""
     soup = _soup(html)
@@ -182,9 +196,12 @@ MUSTER: dict[Seitentyp, dict[str, list[tuple[str, int]]]] = {
     Seitentyp.TEAM: {
         "pfad": [("team", 10), ("mitarbeiter", 9), ("ansprechpartner", 9), ("berufstraeger", 9), ("ueber-uns", 7),
                  ("uber-uns", 7), ("about", 5), ("wir", 6), ("partner", 6), ("experten", 6), ("personen", 5),
+                 ("unsere-steuerberater", 10), ("koepfe", 8),
                  ("kanzlei", 5), ("menschen", 5)],
         "text": [("unser team", 12), ("team", 10), ("mitarbeiter", 9), ("ansprechpartner", 9), ("berufstraeger", 9),
-                 ("ueber uns", 7), ("=partner", 6), ("unsere partner", 6), ("experten", 6), ("berater", 9), ("die kanzlei", 5),
+                 ("ueber uns", 7), ("=partner", 6), ("unsere partner", 6), ("experten", 6), ("berater", 9),
+                 ("unsere steuerberater", 11), ("=steuerberater", 9), ("=steuerberaterinnen", 9), ("beraterinnen", 9),
+                 ("koepfe", 8), ("=menschen", 7), ("wir ueber uns", 8), ("die kanzlei", 5),
                  ("=kanzlei", 5), ("=wir", 6), ("menschen", 5)],
     },
 }  # fmt: skip

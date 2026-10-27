@@ -21,6 +21,7 @@ class RegelErgebnis(BaseModel):
     ort: str | None = None
     telefon: str | None = None
     email: str | None = None
+    hinweise: list[str] = Field(default_factory=list)  # → Spalte „Abweichung"
 
 
 class LlmPerson(BaseModel):

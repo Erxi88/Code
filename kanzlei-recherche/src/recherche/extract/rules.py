@@ -42,7 +42,7 @@ _DOT = re.compile(r"\s*(?:\(|\[|\{)\s*(?:dot|punkt)\s*(?:\)|\]|\})\s*", re.I)
 class Ausschluss:
     abschnitt_zeilen: int = 6
     abschnitt_muster: list[re.Pattern] = field(default_factory=list)
-    adressen: set[str] = field(default_factory=set)  # adresse_key
+    adressen: dict[str, str] = field(default_factory=dict)  # adresse_key → Name der Institution
     email_nachrangig: tuple[str, ...] = ()
 
     @classmethod
@@ -53,7 +53,8 @@ class Ausschluss:
         return cls(
             abschnitt_zeilen=int(d.get("abschnitt_zeilen", 6)),
             abschnitt_muster=[re.compile(m, re.I) for m in d.get("abschnitt_woerter", [])],
-            adressen={k for a in d.get("adressen", []) if (k := adresse_key(a.get("strasse"), str(a.get("plz"))))},
+            adressen={k: a.get("name") or "" for a in d.get("adressen", [])
+                      if (k := adresse_key(a.get("strasse"), str(a.get("plz"))))},
             email_nachrangig=tuple(d.get("email_nachrangig", [])),
         )
 
@@ -206,13 +207,13 @@ def entschleiern(text: str) -> str:
 
 def emails(text: str, links: list[str] | None = None) -> list[str]:
     """E-Mail-Adressen aus mailto-Links und Text (auch „info (at) kanzlei.de"), Reihenfolge erhalten."""
-    gefunden: list[str] = []
+    # Text vor mailto-Links: der Link steht oft in der Fußzeile („wp@"), die Adresse im Impressum („info@")
+    gefunden = [m.group(0).lower().rstrip(".") for m in _EMAIL.finditer(entschleiern(text))]
     for href in links or []:
         if href.lower().startswith("mailto:"):
             adresse = href[7:].split("?", 1)[0].strip()
             if _EMAIL.fullmatch(adresse):
                 gefunden.append(adresse.lower())
-    gefunden += [m.group(0).lower().rstrip(".") for m in _EMAIL.finditer(entschleiern(text))]
     return list(dict.fromkeys(gefunden))
 
 
@@ -225,41 +226,86 @@ def beste_email(kandidaten: list[str], domain: str | None, nachrangig: tuple[str
     return min(kandidaten, key=rang) if kandidaten else None
 
 
+_MOBIL = re.compile(r"^\+491[567]")
+# Nummer ohne Beschriftung in eigener Zeile („0431 38575740", „+49 (0)431 3857 5740")
+_NUMMER_ALLEIN = re.compile(r"^\(?\+?\d[\d\s/()\-–.]{6,}\d$")
+
+
+def ist_mobil(nummer: str | None) -> bool:
+    return bool(nummer) and bool(_MOBIL.match(nummer))
+
+
+def _festnetz_zuerst(nummern: list[str]) -> list[str]:
+    return [n for n in nummern if not ist_mobil(n)] + [n for n in nummern if ist_mobil(n)]
+
+
+def _fremde_institution(zeilen: list[str], i: int, name: str) -> bool:
+    """Steht der Name der Institution („Steuerberaterkammer Schleswig-Holstein") bei der Adresse?"""
+    woerter = [w for w in re.split(r"\W+", name.lower()) if len(w) >= 4]
+    umgebung = " ".join(zeilen[max(0, i - 3): i + 1]).lower()
+    return bool(woerter) and any(w in umgebung for w in woerter[:2])
+
+
 def extract_impressum(
     text: str,
     ausschluss: Ausschluss | None = None,
     links: list[str] | None = None,
     domain: str | None = None,
     weitere_texte: list[tuple[str, list[str]]] | None = None,
+    rahmen: set[str] | None = None,
 ) -> RegelErgebnis:
     """Erste Adresse, Telefonnummer und E-Mail außerhalb von Fremd-Abschnitten.
 
-    `weitere_texte` (z. B. Kontakt- und Startseite) werden in Reihenfolge nur für Felder
-    herangezogen, die im Impressum fehlen.
+    `weitere_texte` (z. B. Kontakt- und Startseite, zuletzt Meta-Beschreibungen) werden in Reihenfolge nur
+    für Felder herangezogen, die im Impressum fehlen. Telefon: Festnetz vor Mobil, Impressum vor den
+    anderen Seiten – eine Mobilnummer der Startseite („Neumandanten-Hotline") nur als Rückfall.
+    E-Mail: Impressum-Text vor Navigation/Fußzeile (`rahmen`) vor mailto-Links.
     """
     ausschluss = ausschluss or Ausschluss()
+    rahmen = rahmen or set()
     text = text_normalisieren(text) or ""
     weitere_texte = [(text_normalisieren(x) or "", lnks) for x, lnks in weitere_texte or []]
     erg = RegelErgebnis()
     mails: list[str] = []
-    for txt, lnks in [(text, links or []), *(weitere_texte or [])]:
+    mobil: str | None = None
+    for nr, (txt, lnks) in enumerate([(text, links or []), *(weitere_texte or [])]):
         zeilen = txt.splitlines()
         fremd = ausschluss.fremd_zeilen(zeilen)
+        adresse_zeile = None
         if erg.plz is None:
-            for a in adressen(zeilen):
-                if a.zeile in fremd or adresse_key(a.strasse, a.plz) in ausschluss.adressen:
-                    continue
-                erg.strasse, erg.plz, erg.ort, erg.adresszusatz = a.strasse, a.plz, a.ort, a.zusatz
-                break
+            kandidaten = [a for a in adressen(zeilen) if a.zeile not in fremd]
+            bekannt = {id(a): ausschluss.adressen.get(adresse_key(a.strasse, a.plz)) for a in kandidaten}
+            gewaehlt = next((a for a in kandidaten if bekannt[id(a)] is None), None)
+            if gewaehlt is None:
+                # nur eine Adresse der Ausschlussliste, nicht im Kammer-Abschnitt und ohne den Namen der
+                # Institution davor: die Kanzlei sitzt dort (z. B. im Haus der Kammer) – mit Hinweis
+                gewaehlt = next((a for a in kandidaten if bekannt[id(a)]
+                                 and not _fremde_institution(zeilen, a.zeile, bekannt[id(a)])), None)
+                if gewaehlt is not None:
+                    erg.hinweise.append(f"Adresse {gewaehlt.strasse}, {gewaehlt.plz} gleicht {bekannt[id(gewaehlt)]} "
+                                        "(Ausschlussliste) – als Kanzleiadresse übernommen, bitte prüfen")
+            if gewaehlt is not None:
+                erg.strasse, erg.plz, erg.ort, erg.adresszusatz = gewaehlt.strasse, gewaehlt.plz, gewaehlt.ort, gewaehlt.zusatz
+                adresse_zeile = gewaehlt.zeile
         if erg.telefon is None:
-            erg.telefon = next((nr for nr, i in telefone(zeilen) if i not in fremd), None)
-            if erg.telefon is None:
-                erg.telefon = next(
-                    (n for h in lnks if h.lower().startswith("tel:") and (n := normalize_telefon(h[4:]))), None
-                )
+            nummern = [n for n, i in telefone(zeilen) if i not in fremd]
+            nummern += [n for h in lnks if h.lower().startswith("tel:") and (n := normalize_telefon(h[4:]))]
+            if nr == 0 and adresse_zeile is not None:  # Impressum: unbeschriftete Nummer direkt bei der Adresse
+                for z in zeilen[adresse_zeile + 1: adresse_zeile + 4]:
+                    if _NUMMER_ALLEIN.match(z.strip()) and not _FAX_DAVOR.search(z) and (n := normalize_telefon(z)):
+                        nummern.append(n)
+            nummern = _festnetz_zuerst(list(dict.fromkeys(nummern)))
+            if nummern and not ist_mobil(nummern[0]):
+                erg.telefon = nummern[0]
+            elif nummern and mobil is None:
+                mobil = nummern[0]
         if not mails:
-            fremd_text = "\n".join(z for i, z in enumerate(zeilen) if i not in fremd)
-            mails = emails(fremd_text, [h for h in lnks if h.lower().startswith("mailto:")])
+            eigene = [z for i, z in enumerate(zeilen) if i not in fremd and " ".join(z.lower().split()) not in rahmen]
+            im_rahmen = [z for i, z in enumerate(zeilen) if i not in fremd and " ".join(z.lower().split()) in rahmen]
+            mails = emails("\n".join(eigene)) + emails("\n".join(im_rahmen),
+                                                       [h for h in lnks if h.lower().startswith("mailto:")])
+            mails = list(dict.fromkeys(mails))
+    erg.telefon = erg.telefon or mobil
     erg.email = beste_email(mails, domain, ausschluss.email_nachrangig)
     return erg
 

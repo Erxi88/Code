@@ -99,7 +99,7 @@ def test_telefon_aus_tel_link(ausschluss):
 def test_emails_entschleiert_und_aus_mailto():
     assert entschleiern("info [at] kanzlei (dot) example") == "info@kanzlei.example"
     assert emails("Mail: kanzlei{at}a.example", ["mailto:Info@A.example?subject=Hallo"]) == [
-        "info@a.example", "kanzlei@a.example"]
+        "kanzlei@a.example", "info@a.example"]  # Text vor mailto-Link (Fußzeile)
 
 
 def test_beste_email():
@@ -117,7 +117,7 @@ def test_fehlendes_aus_weiteren_seiten(ausschluss):
 
 def test_nichts_gefunden_bleibt_null(ausschluss):
     r = extract_impressum("Impressum\nHier entsteht eine neue Website.", ausschluss)
-    assert all(v is None for v in r.model_dump().values())
+    assert all(v is None for k, v in r.model_dump().items() if k != "hinweise") and r.hinweise == []
 
 
 @pytest.mark.parametrize(("name", "form"), [
@@ -150,3 +150,32 @@ def test_rechtsform_aus_name(name, form):
 def test_adresszusatz(text, erwartet):
     r = extract_impressum("Kanzlei\n" + text, Ausschluss())
     assert (r.strasse, r.adresszusatz) == erwartet
+
+
+def test_kanzlei_im_haus_der_kammer(ausschluss):
+    """stb-kiel: Kanzlei und Kammer in der Hopfenstraße 2d – oben ohne Kammernamen = Kanzleiadresse."""
+    text = ("Impressum\nBenthin | Schwark | Hansen | Kühl\nPartnerschaft mbB\nHopfenstraße 2d\n24114 Kiel\n"
+            "Telefon: 0431 123456\nZuständige Kammer: Steuerberaterkammer Schleswig-Holstein\nHopfenstraße 2d\n24114 Kiel")
+    r = extract_impressum(text, ausschluss)
+    assert (r.strasse, r.plz) == ("Hopfenstraße 2d", "24114")
+    assert "Steuerberaterkammer Schleswig-Holstein (Ausschlussliste)" in r.hinweise[0]
+    nur_kammer = "Impressum\nSteuerberaterkammer Schleswig-Holstein\nHopfenstraße 2d\n24114 Kiel"
+    assert extract_impressum(nur_kammer, ausschluss).plz is None
+
+
+def test_festnetz_vor_mobil_und_impressum_vor_startseite(ausschluss):
+    impressum = "900 GRAD Steuerberatungsgesellschaft PartmbB\nHolstenstraße 1\n24103 Kiel\n0431 38575740"
+    start = "Neumandanten-Hotline: Tel. 0176 41466224"
+    r = extract_impressum(impressum, ausschluss, weitere_texte=[(start, [])])
+    assert r.telefon == "+49 431 38575740"
+    r = extract_impressum("Kanzlei\nWall 5\n24103 Kiel\nMobil: 0176 41466224\nTel. 0431 123456", ausschluss)
+    assert r.telefon == "+49 431 123456"
+    assert extract_impressum("Kanzlei\nWall 5\n24103 Kiel", ausschluss,
+                             weitere_texte=[(start, [])]).telefon == "+49 176 41466224"  # nur Mobil: Rückfall
+
+
+def test_email_impressum_vor_fusszeile(ausschluss):
+    text = "Impressum\nE-Mail: info@rut.example\nwp@rut.example"
+    r = extract_impressum(text, ausschluss, links=["mailto:wp@rut.example"], domain="rut.example",
+                          rahmen={"wp@rut.example"})
+    assert r.email == "info@rut.example"
