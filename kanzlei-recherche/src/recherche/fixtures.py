@@ -351,6 +351,7 @@ class PromptDiagnose:
     # alle Personen nach der Zusammenführung: (Name, Funktion, Herkunft, Berufsträger?)
     personen: list[tuple[str, str, str, bool]] = field(default_factory=list)
     nur_im_rahmen: list[str] = field(default_factory=list)  # Personen, die nur in Navigation/Fußzeile stehen
+    umfeld: dict[str, str] = field(default_factory=dict)  # Name → Zeilen rund um den Namen auf der Teamseite
     playwright: dict = field(default_factory=dict)  # meta.json: Ergebnis des Playwright-Nachlaufs je Seite
 
     @property
@@ -372,6 +373,7 @@ def prompt_diagnose(fx: Fixture, llm_cfg, ausschluss: Ausschluss, modell: str | 
     from .extract.merge import (
         _text,
         ansprechpartner,
+        erkannte_personen,
         gleiche_person,
         ist_berufstraeger,
         ist_leitung,
@@ -384,7 +386,6 @@ def prompt_diagnose(fx: Fixture, llm_cfg, ausschluss: Ausschluss, modell: str | 
     from .extract.personen import (
         erkenne_personen,
         mitarbeiterzahl,
-        personen_aus_json_ld,
         versteckte_quellen,
     )
     from .extract.prompt import baue_prompt, seiten_rahmen, text_budget
@@ -413,15 +414,18 @@ def prompt_diagnose(fx: Fixture, llm_cfg, ausschluss: Ausschluss, modell: str | 
     aufzeichnung = fx.aufzeichnung(modell) if modell else None
     # Berufsträger wie in der Zusammenführung – mit Herkunft, um Fehlzählungen zu finden
     llm = aufzeichnung.ergebnis if aufzeichnung else None
-    erkannte: list = []
+    team_seiten = [s for typ in (Seitentyp.TEAM, Seitentyp.TEAM2) if (s := fx.seiten.get(typ)) is not None]
+    erkannte = erkannte_personen(team_seiten, rahmen)
     versteckt = {}
     nur_im_rahmen: list[str] = []
-    for typ in (Seitentyp.TEAM, Seitentyp.TEAM2):
-        if (s := fx.seiten.get(typ)) is not None:
-            versteckt[typ] = versteckte_quellen(s.html, _text(s))
-            for q in erkenne_personen(_text(s), rahmen=rahmen) + personen_aus_json_ld(s.html):
-                if not any(gleiche_person(q.name, x.name) for x in erkannte):
-                    erkannte.append(q)
+    umfeld: dict[str, str] = {}
+    for s in team_seiten:
+        versteckt[s.seitentyp] = versteckte_quellen(s.html, _text(s))
+        zeilen = [z.strip() for z in _text(s).splitlines() if z.strip()]
+        for q in erkannte:  # Zeilen rund um den Namen: zeigt, wo Funktionen verloren gehen
+            if q.name not in umfeld and (i := next((k for k, z in enumerate(zeilen) if q.name in z), None)) is not None:
+                umfeld[q.name] = " ⏎ ".join(z[:60] for z in zeilen[max(0, i - 1): i + 5])
+        if True:
             for q in erkenne_personen(_text(s)):  # ohne Rahmen-Filter: was ginge nur dort verloren?
                 if not any(gleiche_person(q.name, x.name) for x in erkannte) and q.name not in nur_im_rahmen:
                     nur_im_rahmen.append(f"{q.name} | {q.funktion}")
@@ -456,5 +460,5 @@ def prompt_diagnose(fx: Fixture, llm_cfg, ausschluss: Ausschluss, modell: str | 
         fx.domain, prompt, len(SYSTEM_PROMPT), links, arten, len(vertreter), bezeichnung,
         angabe.beleg if angabe else None, felder, aufzeichnung, vertreter, berufstraeger,
         aps[0].name if aps else None, versteckt, v.protokoll, personen, nur_im_rahmen,
-        fx.meta.get("playwright") or {},
+        playwright=fx.meta.get("playwright") or {}, umfeld=umfeld,
     )  # fmt: skip

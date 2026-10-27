@@ -512,6 +512,10 @@ def fixture_prompt(
         console.print(f"Alle Personen nach Zusammenführung ({len(d.personen)}): Name | Funktion | Herkunft | Berufsträger")
         for name_, funktion, hs, bt in d.personen:
             console.print(f"  {name_} | {funktion or '–'} | {hs} | {'ja' if bt else 'nein'}")
+        if d.umfeld:
+            console.print("Teamseite – Zeilen ab dem Namen (⏎ = Zeilenumbruch):")
+            for name_, zeilen in d.umfeld.items():
+                console.print(f"  {name_}: {zeilen}")
         for zeile in d.nur_im_rahmen:
             console.print(f"  [yellow]nur in Navigation/Fußzeile, nicht gezählt:[/yellow] {zeile}")
     console.print(f"Mitarbeiterzahl (Regel): {d.mitarbeiter_beleg or '–'}")

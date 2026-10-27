@@ -200,8 +200,9 @@ der nächsten Quelle füllen.**
 - Personen (`personen.py`, `config/personen_funktionen.yaml`): Kacheln/Listen auf beiden
   Teamseiten. Ein Name gilt nur mit einer Funktion aus der Liste **in derselben Zeile**
   („Name – Funktion", „Name (Funktion)"), **in der Folgezeile** (auch mehrere
-  Funktionszeilen untereinander: „Gesellschafter" / „Steuerberater"; eine Zeile, die mit
-  einem Namen beginnt, ist die nächste Person) oder direkt darüber (Kachel mit Rolle als
+  Funktionszeilen untereinander: „Gesellschafter" / „Steuerberater", bis zu zwei Kontaktzeilen
+  dazwischen werden übersprungen, Aufzählungen mit Kommas dürfen bis 220 Zeichen lang sein;
+  eine Zeile, die mit einem Namen beginnt, ist die nächste Person) oder direkt darüber (Kachel mit Rolle als
   Überschrift); Zeilen aus dem RAHMEN, Menüwörter („Berufsträger", „Firmenphilosophie",
   „Historie" …) und Institutionen („…kammer", „…gericht") sind nie Namen; „BD-Partner"
   (Bindestrich davor) ist keine Funktion und kein Impressum-Schlüsselwort. Initialen („W. Drews") und Anrede
@@ -210,7 +211,9 @@ der nächsten Quelle füllen.**
   „StB Dipl.-Kfm.", „WP/StB") gehören zum Titel; ein Berufskürzel dort genügt als Funktion.
   Kundenstimmen mit fremder Firma („Geschäftsführer der Muster GmbH") sind keine Personen
   der Kanzlei; ein Eintrag ohne Vornamen („Steuerberater Schreiner") entfällt neben
-  derselben Person mit Vornamen. Zusätzlich Personen aus JSON-LD (schema.org `Person` mit `jobTitle`).
+  derselben Person mit Vornamen. Zusätzlich Personen aus JSON-LD (schema.org `Person` mit `jobTitle`)
+  und aus Bild-Attributen („Name, Funktion …" in alt/title); dieselbe Person aus mehreren
+  Quellen → Funktionen vereinigt. `fixture-prompt --namen` zeigt die Zeilen ab jedem Namen.
   Mitarbeiterzahl-Regel auf allen Seiten inkl. Startseite („28 Expert:innen", „Team von 28",
   „15-köpfig"; Gender-Schreibweisen normalisiert; „über N" → Klasse über N).
 - Fehlende Felder bleiben `null` – **nie raten**. Konfidenz berechnet der Code, nicht das LLM.
@@ -226,7 +229,8 @@ der nächsten Quelle füllen.**
   - Personen: **Grundlage sind die strukturell erkannten Personen** (Teamseiten, JSON-LD,
     Impressum); das LLM ergänzt Titel, Funktionen und weitere Personen. Zusammengeführt
     wird nur bei gleichem Nachnamen **und** gleichem Vornamen bzw. passender Initiale
-    („W. Drews" = „Wiebke Drews", aber ≠ „Sven Drews"; „Drews" allein nie). E-Mail-Adressen
+    („W. Drews" = „Wiebke Drews", aber ≠ „Sven Drews"; „Drews" allein nie) oder wenn ein
+    Vorname Teil des anderen ist („Alexander Hamdorf" = „Johann-Alexander Hamdorf"). E-Mail-Adressen
     in einer Funktion bleiben nur, wenn der lokale Teil zum Namen passt.
   - Ansprechpartner = nur **Berufsträger und Leitung**; Mehrfachnennungen werden
     vereinigt (Funktionen und Titel). Reihenfolge: Vertretungsberechtigte in der

@@ -150,8 +150,28 @@ def ist_externe_funktion(funktion: str | None) -> bool:
 
 
 def _ist_funktion(zeile: str, f: Funktionen) -> bool:
-    return (len(zeile) <= 120 and len(zeile.split()) <= 12 and bool(f.muster_alle.search(zeile))
+    # Aufzählungen dürfen länger sein („Dipl.-Betriebswirt, Steuerberater, Fachberater für … (DStV e.V.), …")
+    grenze = (220, 30) if zeile.count(",") >= 2 else (120, 12)
+    return (len(zeile) <= grenze[0] and len(zeile.split()) <= grenze[1] and bool(f.muster_alle.search(zeile))
             and not ist_externe_funktion(zeile))  # fmt: skip
+
+
+# Kontaktzeilen zwischen Funktion und Qualifikation in einer Kachel („trenner@…", „Tel. 0431 …", „vCard")
+_KONTAKTZEILE = re.compile(
+    r"^(?:\S+@\S+|(?:tel|telefon|fon|fax|mobil|e-?mail|mail)\b.*|\+?\d[\d\s/()\-–.]{5,}|vcard|kontakt|mehr\s+erfahren|"
+    r"profil|lebenslauf|zur\s+person)$",
+    re.I,
+)
+
+
+def _funktion_saeubern(text: str) -> str:
+    text = text.strip(" ,;:–-")
+    # Klammer nur entfernen, wenn sie nicht geschlossen wird: „(DStV e.V.)" bleibt
+    while text.startswith("(") and ")" not in text:
+        text = text[1:].strip()
+    while text.endswith(")") and text.count("(") < text.count(")"):
+        text = text[:-1].strip()
+    return text
 
 
 def _beginnt_mit_name(zeile: str) -> bool:
@@ -180,7 +200,7 @@ def erkenne_personen(
         schluessel = frozenset(name.lower().split())
         if any(frozenset(p.name.lower().split()) == schluessel for p in gefunden):
             return
-        gefunden.append(ErkanntePerson(name, titel, funktion.strip(" ,;:–-()"), i))
+        gefunden.append(ErkanntePerson(name, titel, _funktion_saeubern(funktion), i))
 
     for i, z in enumerate(zeilen):
         if not z or i in vergeben:
@@ -196,8 +216,11 @@ def erkenne_personen(
             continue
         # Funktion in der Folgezeile – auch mehrere Funktionszeilen untereinander
         # („Sven Drews" / „Gesellschafter" / „Steuerberater")
-        folge = []
-        for j in range(i + 1, min(len(zeilen), i + 4)):
+        folge, uebersprungen = [], 0
+        for j in range(i + 1, min(len(zeilen), i + 7)):
+            if folge and uebersprungen < 2 and zeilen[j] and _KONTAKTZEILE.match(zeilen[j]):
+                uebersprungen += 1  # Kontaktzeile innerhalb der Kachel überspringen
+                continue
             if not (zeilen[j] and _ist_funktion(zeilen[j], f) and not _beginnt_mit_name(zeilen[j])):
                 break
             folge.append(j)
@@ -314,6 +337,27 @@ def personen_aus_json_ld(html: str | None, funktionen: Funktionen | None = None)
             funktion = o.get("jobTitle") if isinstance(o.get("jobTitle"), str) else ""
             if (nt := name_zerlegen(o["name"])) and _ist_funktion(funktion, f):
                 gefunden.append(ErkanntePerson(nt[0], nt[1], funktion, -1))
+    return gefunden
+
+
+def personen_aus_attributen(html: str | None, funktionen: Funktionen | None = None) -> list[ErkanntePerson]:
+    """„Hans-Joachim Trenner, Geschäftsführer, Dipl.-Volkswirt, Steuerberater" in alt/title/aria-label eines
+    Bildes – manche Teamseiten nennen die Qualifikationen nur dort. Nur mit Funktion aus der Liste."""
+    if not html or not re.search(r"\b(?:alt|title|aria-label)=", html):
+        return []
+    from bs4 import BeautifulSoup
+
+    f = funktionen or lade_funktionen()
+    gefunden: list[ErkanntePerson] = []
+    for el in BeautifulSoup(html, "lxml").find_all(True):
+        for k in ("alt", "title", "aria-label"):
+            wert = text_normalisieren(el.get(k)) if isinstance(el.get(k), str) else None
+            if not wert or len(wert) > 220:
+                continue
+            teile = _TRENNER.split(wert, maxsplit=1)
+            if len(teile) == 2 and (nt := name_zerlegen(teile[0])) and _ist_funktion(teile[1], f):
+                if not any(p.name == nt[0] for p in gefunden):
+                    gefunden.append(ErkanntePerson(nt[0], nt[1], _funktion_saeubern(teile[1]), -1))
     return gefunden
 
 

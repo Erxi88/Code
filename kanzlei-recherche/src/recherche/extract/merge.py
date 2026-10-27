@@ -52,6 +52,7 @@ from .personen import (
     ist_leitung_funktion,
     mitarbeiterzahl,
     name_zerlegen,
+    personen_aus_attributen,
     personen_aus_json_ld,
 )
 from .prompt import seiten_rahmen
@@ -140,6 +141,11 @@ def gleiche_person(a: str | None, b: str | None) -> bool:
     voll_a = {v for v in va if not v.endswith(".")}
     voll_b = {v for v in vb if not v.endswith(".")}
     if voll_a & voll_b:
+        return True
+    # Vorname Teil des anderen: „Alexander Hamdorf" = „Johann-Alexander Hamdorf" (Doppelname, zweiter Vorname)
+    teile_a = {x for v in voll_a for x in v.split("-") if len(x) >= 3}
+    teile_b = {x for v in voll_b for x in v.split("-") if len(x) >= 3}
+    if teile_a & teile_b:
         return True
     if voll_a and voll_b:
         return False  # „Jens Hansen" ≠ „Jan Hansen"
@@ -626,6 +632,22 @@ def name_aus_impressum(name: str | None, impressum: str | None, fremd: set[int] 
     return name
 
 
+def erkannte_personen(team_seiten: list[Seite], rahmen: set[str] | None = None) -> list[ErkanntePerson]:
+    """Personen beider Teamseiten aus Text, JSON-LD und Bild-Attributen; dieselbe Person mehrfach →
+    Funktionen und Titel vereinigt (Reihenfolge der ersten Nennung)."""
+    erkannte: list[ErkanntePerson] = []
+    for s in team_seiten:
+        for p in erkenne_personen(_text(s), rahmen=rahmen) + personen_aus_json_ld(s.html) + personen_aus_attributen(s.html):
+            for i, q in enumerate(erkannte):
+                if gleiche_person(p.name, q.name):
+                    erkannte[i] = ErkanntePerson(q.name if len(q.name) >= len(p.name) else p.name, q.titel or p.titel,
+                                                 _funktion_vereinigen(q.funktion, p.funktion) or "", q.zeile)
+                    break
+            else:
+                erkannte.append(p)
+    return erkannte
+
+
 def _adresse_text(strasse: str | None, plz: str | None, ort: str | None) -> str:
     return ", ".join(x for x in (strasse, " ".join(y for y in (plz, ort) if y)) if x)
 
@@ -704,11 +726,7 @@ def zusammenfuehren(
 
     # ---- Personen und Teamgröße: Regel-Erkennung auf den Teamseiten + LLM + Impressum
     team_seiten = [seiten[t] for t in (Seitentyp.TEAM, Seitentyp.TEAM2) if t in seiten]
-    erkannte: list[ErkanntePerson] = []
-    for s in team_seiten:
-        for p in erkenne_personen(_text(s), rahmen=rahmen) + personen_aus_json_ld(s.html):
-            if not any(gleiche_person(p.name, q.name) for q in erkannte):
-                erkannte.append(p)
+    erkannte = erkannte_personen(team_seiten, rahmen)
     personen = ansprechpartner(llm, erkannte, impressum_text, fremd, rahmen, name)
     if rechtsform is None and ist_einzelkanzlei(name, impressum_text,
                                                 vertretung(impressum_text, fremd, rahmen).namen if impressum_text else []):

@@ -596,3 +596,38 @@ def test_fax_und_steuernummer_sind_kein_telefon():
 
     r = extract_impressum("A\nWall 5\n24103 Kiel\nTelefax\n0431 38575741\nSteuernummer\n19/123/45678", Ausschluss())
     assert r.telefon is None
+
+
+def test_vorname_teil_des_doppelnamens():
+    from recherche.extract.merge import gleiche_person
+
+    assert gleiche_person("Alexander Hamdorf", "Johann-Alexander Hamdorf")
+    assert gleiche_person("Hans Trenner", "Hans-Joachim Trenner")
+    assert not gleiche_person("Alexander Hamdorf", "Johann Hamdorf")
+    ap = ansprechpartner(LlmErgebnis(personen=[LlmPerson(name="Johann-Alexander Hamdorf", funktion="Steuerberater")]),
+                         [], "Vertreten durch:\nAlexander Hamdorf")
+    assert len(ap) == 1 and ap[0].name == "Johann-Alexander Hamdorf"
+
+
+@pytest.mark.parametrize("text,funktion", [
+    ("Hans-Joachim Trenner\nGeschäftsführer\ntrenner@tw.example\nDipl.-Volkswirt, Steuerberater",
+     "Geschäftsführer, Dipl.-Volkswirt, Steuerberater"),
+    ("Niels Benthin\nPartner\nTel. 0431 123456\nE-Mail\nDipl.-Betriebswirt, Steuerberater",
+     "Partner, Dipl.-Betriebswirt, Steuerberater"),
+    ("Niels Benthin\nPartner\nDipl.-Betriebswirt, Steuerberater, Fachberater für Heilberufe (DStV e.V.), "
+     "Fachberater für Unternehmensnachfolge (DStV e.V.), Zertifizierter Berater für Praxisabgaben",
+     "Partner, Dipl.-Betriebswirt, Steuerberater, Fachberater für Heilberufe (DStV e.V.), Fachberater für "
+     "Unternehmensnachfolge (DStV e.V.), Zertifizierter Berater für Praxisabgaben"),
+])  # fmt: skip
+def test_qualifikationen_hinter_kontaktzeilen_und_lange_aufzaehlung(text, funktion):
+    p = erkenne_personen(text)
+    assert p[0].funktion == funktion and ist_berufstraeger(LlmPerson(name=p[0].name, funktion=p[0].funktion))
+
+
+def test_qualifikationen_im_bild_attribut():
+    from recherche.extract.merge import erkannte_personen
+
+    html = ("<h3>Hans-Joachim Trenner</h3><p>Geschäftsführer</p>"
+            "<img alt='Hans-Joachim Trenner, Geschäftsführer, Dipl.-Volkswirt, Steuerberater' src='t.jpg'>")
+    p = erkannte_personen([_seite(Seitentyp.TEAM, "https://tw.example/team", html)])
+    assert [(x.name, x.funktion) for x in p] == [("Hans-Joachim Trenner", "Geschäftsführer, Dipl.-Volkswirt, Steuerberater")]
