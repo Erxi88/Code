@@ -25,11 +25,18 @@ from ..textnorm import text_normalisieren
 
 STANDARD_FUNKTIONEN = PROJEKT_DIR / "config" / "personen_funktionen.yaml"
 
+# Titel und vorangestellte Berufsbezeichnungen („StB Dipl.-Kfm.", „Diplom-Betriebswirt", „Steuerberater …")
+_BERUF_VORN = r"(?:StB|WP|RA|RAin|vBP|StBin|Steuerberater(?:in)?|Rechtsanw(?:alt|ältin)|Wirtschaftsprüfer(?:in)?)"
 _TITEL = re.compile(
     r"^(?:(?:Prof\.|Dr\.(?:\s*(?:rer\.\s*pol\.|jur\.|oec\.))?|Dipl\.-?\s?[A-ZÄÖÜa-zäöü]+\.?(?:\s*\((?:FH|BA|DH)\))?|"
-    r"M\.\s?(?:Sc|A)\.|B\.\s?(?:Sc|A)\.|LL\.\s?M\.|MBA|Mag\.)\s*)+"
+    r"Diplom-[A-ZÄÖÜ][a-zäöüß]+(?:\s*\((?:FH|BA|DH)\))?|"
+    r"M\.\s?(?:Sc|A)\.|B\.\s?(?:Sc|A)\.|LL\.\s?[MB]\.|MBA|Mag\.|" + _BERUF_VORN + r"(?:\s*/\s*" + _BERUF_VORN + r")*" +
+    r"(?=\s))\s*,?\s*)+"
 )
-_TITEL_HINTEN = re.compile(r",\s*((?:M\.\s?Sc\.|M\.\s?A\.|B\.\s?Sc\.|B\.\s?A\.|LL\.\s?M\.|MBA|Dipl\.-?\s?\w+\.?)(?:\s*\(\w+\))?)\s*$")
+_TITEL_HINTEN = re.compile(
+    r",\s*((?:M\.\s?Sc\.|M\.\s?A\.|B\.\s?Sc\.|B\.\s?A\.|LL\.\s?M\.|MBA|Dipl\.-?\s?\w+\.?|StB|WP|RA|vBP)"
+    r"(?:\s*\(\w+\))?(?:\s*,\s*(?:StB|WP|RA|vBP))*)\s*$"
+)
 _PARTIKEL = frozenset({"von", "van", "de", "der", "den", "zu", "la", "le", "di", "da", "ten"})
 _NAME_WORT = re.compile(r"^[A-ZÄÖÜ][a-zäöüßé]+(?:-[A-ZÄÖÜ][a-zäöüßé]+)?\.?$")
 _INITIALE = re.compile(r"^[A-ZÄÖÜ]\.$")  # „W. Drews" – nur als erstes Wort
@@ -134,8 +141,17 @@ def name_zerlegen(text: str) -> tuple[str, str | None] | None:
     return text, " ".join(titel_teile) or None
 
 
+# Kundenstimme / Referenz: „Geschäftsführer der Muster GmbH", „Mandant seit 2010"
+_FREMDE_FIRMA = re.compile(r"\b(?:gmbh|ag|kg|ohg|gbr|e\.\s?k\.|e\.\s?v\.|ug|se|mandant\w*|kunde\w*)\b", re.I)
+
+
+def ist_externe_funktion(funktion: str | None) -> bool:
+    return bool(funktion) and bool(_FREMDE_FIRMA.search(funktion))
+
+
 def _ist_funktion(zeile: str, f: Funktionen) -> bool:
-    return len(zeile) <= 120 and len(zeile.split()) <= 12 and bool(f.muster_alle.search(zeile))
+    return (len(zeile) <= 120 and len(zeile.split()) <= 12 and bool(f.muster_alle.search(zeile))
+            and not ist_externe_funktion(zeile))  # fmt: skip
 
 
 def _beginnt_mit_name(zeile: str) -> bool:
@@ -192,6 +208,9 @@ def erkenne_personen(
                 and not _beginnt_mit_name(zeilen[i - 1]):
             hinzu(nt, zeilen[i - 1], i)  # Funktion über dem Namen (Kachel mit Rolle als Überschrift)
             vergeben.update({i - 1, i})
+        elif nt[1] and (b := f.muster_berufstraeger.search(nt[1])):
+            hinzu(nt, b.group(0), i)  # „StB Justyna Slama": die Berufsbezeichnung steht vor dem Namen
+            vergeben.add(i)
     return gefunden
 
 

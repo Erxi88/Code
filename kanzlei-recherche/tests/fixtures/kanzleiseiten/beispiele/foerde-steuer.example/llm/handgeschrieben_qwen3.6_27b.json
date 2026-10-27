@@ -21,8 +21,8 @@
     "funktion": "Steuerberaterin"
    }
   ],
-  "mitarbeiterzahl": null,
-  "mitarbeiterzahl_beleg": null,
+  "mitarbeiterzahl": 12,
+  "mitarbeiterzahl_beleg": "12 Mitarbeiter (falsch gelesen)",
   "teamgroesse_klasse": "16-50"
  },
  "modell": "qwen3.6:27b",

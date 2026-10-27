@@ -5,6 +5,10 @@
   varianten:
     - 'partg\s*m\.?\s*b\.?\s*b\.?'
     - 'partgmbb'
+    - 'part\s*mbb'                  # „PartmbB", „Part mbB"
+    - 'partnerschaft\s+m\.?\s*b\.?\s*b\.?'   # „Partnerschaft mbB"
+    - '(?:und|&)\s*partner\s+m\.?\s*b\.?\s*b\.?'  # „Brandenburg und Partner mbB"
+    - '\bmbb\b'                     # „mbB" gibt es nur bei der Partnerschaft
     - 'partnerschaftsgesellschaft\s+m\.?\s*b\.?\s*b\.?'
     - 'partnerschaftsgesellschaft\s+mit\s+beschränkter\s+berufshaftung'
     - 'partnerschaft\s+mit\s+beschränkter\s+berufshaftung'

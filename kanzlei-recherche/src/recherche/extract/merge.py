@@ -31,7 +31,12 @@ from ..models import (
     Seitentyp,
     TeamKlasse,
 )
-from ..normalize import PlzPruefung, normalize_rechtsform, normalize_telefon
+from ..normalize import (
+    PlzPruefung,
+    normalize_rechtsform,
+    normalize_telefon,
+    rechtsform_aus_text,
+)
 from ..search.dedupe import adresse_key, name_tokens, telefon_key
 from ..textnorm import text_normalisieren
 from .base import LlmErgebnis, LlmPerson, RegelErgebnis
@@ -43,13 +48,14 @@ from .personen import (
     Mitarbeiterzahl,
     erkenne_personen,
     ist_berufstraeger_funktion,
+    ist_externe_funktion,
     ist_leitung_funktion,
     mitarbeiterzahl,
     name_zerlegen,
     personen_aus_json_ld,
 )
 from .prompt import seiten_rahmen
-from .rules import Ausschluss, rechtsform_aus_name, strasse_zerlegen
+from .rules import Ausschluss, strasse_zerlegen
 
 
 def _text(s: Seite) -> str:
@@ -105,6 +111,9 @@ def _namens_tokens(name: str) -> set[str]:
     return {t for t in re.split(r"[^a-zäöüß]+", name) if len(t) >= 2}
 
 
+_BERUFSWORT = re.compile(
+    r"^(?:steuerberater(?:in)?|rechtsanw(?:alt|ältin)|wirtschaftsprüfer(?:in)?|stb|wp|ra|rain|vbp|frau|herr|herrn)$"
+)
 _PARTIKEL = frozenset({"von", "van", "de", "der", "den", "zu", "la", "le", "di", "da", "ten"})
 
 
@@ -112,7 +121,8 @@ def _name_teile(name: str) -> tuple[list[str], str] | None:
     """(Vornamen, Nachname) ohne Titel und Anrede; Initialen als „w."."""
     name = re.sub(r"^(?:frau|herr|herrn)\s+", "", _TITEL.sub(" ", name.lower()).strip(" .-,"))
     woerter = [w.strip(",;-") for w in re.split(r"\s+", name) if w.strip(",;.-")]
-    woerter = [w for w in woerter if w not in _PARTIKEL and re.search(r"[a-zäöüß]", w)]
+    # Berufsbezeichnungen und Kürzel sind keine Vornamen („Steuerberater Schreiner", „StB Slama")
+    woerter = [w for w in woerter if w not in _PARTIKEL and re.search(r"[a-zäöüß]", w) and not _BERUFSWORT.match(w)]
     if not woerter:
         return None
     return [w if w.endswith(".") and len(w) == 2 else w.rstrip(".") for w in woerter[:-1]], woerter[-1].rstrip(".")
@@ -177,6 +187,8 @@ def personen_vereinigen(personen: list[LlmPerson]) -> list[LlmPerson]:
     """
     ergebnis: list[LlmPerson] = []
     for p in personen:
+        if ist_externe_funktion(p.funktion):
+            continue  # Kundenstimme / Referenz („Geschäftsführer der Muster GmbH")
         p = LlmPerson(name=p.name, titel=p.titel, funktion=_ohne_fremde_email(p.name, p.funktion))
         for i, q in enumerate(ergebnis):
             if gleiche_person(p.name, q.name):
@@ -186,6 +198,13 @@ def personen_vereinigen(personen: list[LlmPerson]) -> list[LlmPerson]:
                 break
         else:
             ergebnis.append(p)
+    # „Steuerberater Schreiner" (ohne Vornamen) neben „Andreas Schreiner": kein eigener Mensch
+    def ohne_vorname(q: LlmPerson) -> bool:
+        teile = _name_teile(q.name)
+        return bool(teile) and not teile[0]
+
+    ergebnis = [q for q in ergebnis if not (ohne_vorname(q) and any(
+        not ohne_vorname(x) and (_name_teile(x.name) or ([], ""))[1] == _name_teile(q.name)[1] for x in ergebnis))]
     return ergebnis
 
 
@@ -245,7 +264,8 @@ def _namen_aus(text: str) -> list[str]:
 # Überschrift ohne Doppelpunkt: „Vertretungsberechtigte Gesellschafter" – danach nur Rollenwörter
 _ROLLENWORT = re.compile(
     r"^(?:gesellschafter\w*|geschäftsführ\w*|geschaeftsfuehr\w*|partner\w*|vorstand\w*|inhaber\w*|"
-    r"person(?:en)?|vertret\w*|sind|ist|die|der|des|und|durch|mitglieder?|kanzlei)$",
+    r"person(?:en)?|vertret\w*|sind|ist|die|der|des|und|durch|mitglieder?|kanzlei|"
+    r"inhaltlich|redaktionell|presserechtlich|journalistisch|verantwortlich\w*|für|den|inhalt|seite)$",
     re.I,
 )
 
@@ -531,6 +551,69 @@ def name_vervollstaendigen(name: str | None, impressum: str | None) -> str | Non
     return name
 
 
+_REGISTER = re.compile(r"\b(?:HR\s?[AB]|PR)\s?\d|handelsregister|partnerschaftsregister|registergericht|registernummer", re.I)
+_NAME_VORSILBE = re.compile(r"^(?:steuerbüro|steuerkanzlei|kanzlei|steuerberatung|büro)\s+", re.I)
+_GESELLSCHAFT_HINWEIS = re.compile(r"&|\bund\b|\+|partner|gesellschaft|\|", re.I)
+
+
+def _impressum_kopf(impressum: str | None, fremd: set[int] | None, rahmen: set[str] | None, n: int = 40) -> list[str]:
+    """Die ersten n Zeilen des Impressums ohne Fremd-Abschnitte und ohne Navigation/Fußzeile."""
+    zeilen = (text_normalisieren(impressum) or "").splitlines()
+    fremd, rahmen = fremd or set(), rahmen or set()
+    return [z.strip() for i, z in enumerate(zeilen[:n])
+            if z.strip() and i not in fremd and " ".join(z.lower().split()) not in rahmen]  # fmt: skip
+
+
+def rechtsform_aus_seiten(name: str | None, impressum: str | None, fremd: set[int] | None = None,
+                          rahmen: set[str] | None = None) -> str | None:
+    """Rechtsform per Regel – vor dem LLM: zuerst aus dem Kanzleinamen, dann aus dem Impressum-Kopf
+    („Partnerschaft mbB", „GmbH"; Fremd-Abschnitte wie Hoster und Kammer zählen nicht)."""
+    if form := rechtsform_aus_text(name):
+        return form
+    for z in _impressum_kopf(impressum, fremd, rahmen):
+        if len(z) <= 160 and (form := rechtsform_aus_text(z)) and form != "Einzelkanzlei":
+            return form
+    return None
+
+
+def ist_einzelkanzlei(name: str | None, impressum: str | None, vertreter: list[str]) -> bool:
+    """Einzelperson mit Berufstitel, keine Gesellschaftsform: „Steuerberater Andreas Schreiner",
+    „Steuerbüro Thomas Schütt" – oder genau ein Inhaber/Vertreter und kein Registereintrag."""
+    if name and not _GESELLSCHAFT_HINWEIS.search(name):
+        rest = _NAME_VORSILBE.sub("", name.strip())
+        if (nt := name_zerlegen(rest)) and len(nt[0].split()) <= 3 and (nt[1] or rest != name.strip()):
+            return True
+    return len(vertreter) == 1 and bool(impressum) and not _REGISTER.search(impressum or "")
+
+
+def name_aus_impressum(name: str | None, impressum: str | None, fremd: set[int] | None = None,
+                       rahmen: set[str] | None = None) -> str | None:
+    """Der Name im Impressum hat Vorrang vor Logo/Startseite: „900 GRAD STEUERBERATUNG" →
+    „900 GRAD Steuerberatungsgesellschaft PartmbB", „Steuerberater Schreiner" → „Steuerberater
+    Andreas Schreiner". Übernommen wird eine Zeile aus dem Impressum-Kopf, die alle Wörter des Namens
+    enthält (auch als Wortanfang) und höchstens 3 weitere – Rechtsform, Berufswörter oder Namen."""
+    if not name or not impressum:
+        return name
+    soll = [w for w in _woerter(name) if w not in "&+|-–"]
+    for z in _impressum_kopf(impressum, fremd, rahmen, 25):
+        if ":" in z or len(z) > 90 or not (1 <= len(soll)):
+            continue
+        ist = [w for w in _woerter(z) if w not in "&+|-–"]
+        if len(ist) <= len(soll) or len(ist) > len(soll) + 3:
+            continue
+        rest = list(ist)
+        for w in soll:
+            treffer = next((x for x in rest if x == w or (len(w) >= 5 and x.startswith(w))), None)
+            if treffer is None:
+                break
+            rest.remove(treffer)
+        else:
+            original = {w.lower(): w for w in re.split(r"[\s,;·|]+", z) if w}
+            if all(rechtsform_aus_text(w) or _NAMENS_BERUF.match(w) or original.get(w, w)[:1].isupper() for w in rest):
+                return z.rstrip(" ,;")
+    return name
+
+
 def _adresse_text(strasse: str | None, plz: str | None, ort: str | None) -> str:
     return ", ".join(x for x in (strasse, " ".join(y for y in (plz, ort) if y)) if x)
 
@@ -555,11 +638,14 @@ def zusammenfuehren(
 ) -> Kanzlei:
     disc = discovery_werte(funde)
     regel = regel or RegelErgebnis()
-    abweichungen: list[str] = []
+    abweichungen: list[str] = list(regel.hinweise)
 
     # ---- Name: Discovery (Stufe B) > LLM
     impressum_text = _text(seiten[Seitentyp.IMPRESSUM]) if Seitentyp.IMPRESSUM in seiten else None
-    llm_name = name_vervollstaendigen(llm.kanzleiname if llm else None, impressum_text)
+    rahmen = seiten_rahmen(seiten)
+    fremd = ausschluss.fremd_zeilen(impressum_text.splitlines()) if ausschluss and impressum_text else None
+    llm_name = name_vervollstaendigen(
+        name_aus_impressum(llm.kanzleiname if llm else None, impressum_text, fremd, rahmen), impressum_text)
     name = disc["name"] or llm_name
     if disc["name"] and llm_name and not (name_tokens(disc["name"]) & name_tokens(llm_name)):
         abweichungen.append(f"Name: {disc['quelle_name']} „{disc['name']}“ / Website „{llm_name}“")
@@ -600,18 +686,21 @@ def zusammenfuehren(
         telefon = web_tel
 
     email = regel.email or ((llm.email or "").strip().lower() or None if llm else None)
-    rechtsform = normalize_rechtsform(llm.rechtsform if llm else None) or rechtsform_aus_name(name)
+    # Rechtsform: Regel aus Name und Impressum vor dem LLM; Einzelkanzlei nur, wenn sonst nichts passt
+    rechtsform = rechtsform_aus_seiten(name, impressum_text, fremd, rahmen) or normalize_rechtsform(
+        llm.rechtsform if llm else None)
 
     # ---- Personen und Teamgröße: Regel-Erkennung auf den Teamseiten + LLM + Impressum
     team_seiten = [seiten[t] for t in (Seitentyp.TEAM, Seitentyp.TEAM2) if t in seiten]
-    rahmen = seiten_rahmen(seiten)
     erkannte: list[ErkanntePerson] = []
     for s in team_seiten:
         for p in erkenne_personen(_text(s), rahmen=rahmen) + personen_aus_json_ld(s.html):
             if not any(gleiche_person(p.name, q.name) for q in erkannte):
                 erkannte.append(p)
-    fremd = ausschluss.fremd_zeilen(impressum_text.splitlines()) if ausschluss and impressum_text else None
     personen = ansprechpartner(llm, erkannte, impressum_text, fremd, rahmen, name)
+    if rechtsform is None and ist_einzelkanzlei(name, impressum_text,
+                                                vertretung(impressum_text, fremd, rahmen).namen if impressum_text else []):
+        rechtsform = "Einzelkanzlei"
     angabe = mitarbeiterzahl([_text(s) for s in seiten.values()])
     zahl, klasse, basis = teamgroesse(llm, team_seiten, erkannte, angabe)
     hat_personeninfo = llm is not None or bool(erkannte) or bool(personen)

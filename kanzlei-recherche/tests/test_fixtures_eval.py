@@ -55,10 +55,11 @@ def test_ort_ohne_openplz_nicht_vereinheitlicht():
 
 def test_anderes_modell_mit_fehler():
     erg = auswerten(fixtures_finden([BSP]), AUSSCHLUSS, "qwen3.6:27b", plz_pruefen=fake_pruefer().pruefe)
-    assert [(f.domain, f.feld) for f in erg.fehler] == [("steuerbuero-schuett.example", "rechtsform")]
+    # handgeschriebene 27b-Antwort für Förde mit falsch gelesener Mitarbeiterzahl (das LLM hat Vorrang)
+    assert [(f.domain, f.feld) for f in erg.fehler] == [("foerde-steuer.example", "teamgroesse")]
     assert erg.ohne_aufzeichnung == ["baur-drews-steuer.example", "mittelstand-steuer.example",
                                      "nordlicht-steuerberatung.example"]
-    assert erg.quote("rechtsform") == pytest.approx(2 / 3)
+    assert erg.quote("teamgroesse") == pytest.approx(2 / 3) and erg.quote("rechtsform") == 1.0
     assert erg.mittlere_laufzeit_s == pytest.approx((12.8 + 10.4 + 6.1) / 3)
 
 

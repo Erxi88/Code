@@ -375,6 +375,7 @@ def prompt_diagnose(fx: Fixture, llm_cfg, ausschluss: Ausschluss, modell: str | 
         gleiche_person,
         ist_berufstraeger,
         ist_leitung,
+        name_aus_impressum,
         name_vervollstaendigen,
         personen_vereinigen,
         vertretung,
@@ -424,7 +425,8 @@ def prompt_diagnose(fx: Fixture, llm_cfg, ausschluss: Ausschluss, modell: str | 
             for q in erkenne_personen(_text(s)):  # ohne Rahmen-Filter: was ginge nur dort verloren?
                 if not any(gleiche_person(q.name, x.name) for x in erkannte) and q.name not in nur_im_rahmen:
                     nur_im_rahmen.append(f"{q.name} | {q.funktion}")
-    name = name_vervollstaendigen(llm.kanzleiname if llm else None, impressum or None)
+    name = name_vervollstaendigen(name_aus_impressum(llm.kanzleiname if llm else None, impressum or None, fremd, rahmen),
+                                  impressum or None)
     aps = ansprechpartner(llm, erkannte, impressum or None, fremd, rahmen, name)
     berufstraeger = []
     for a in aps:

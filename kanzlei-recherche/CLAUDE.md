@@ -123,7 +123,9 @@ der nächsten Quelle füllen.**
   dann Treffer-URL), Links sammeln, Impressum-/Kontakt-/Team-Seite über Pfad und Linktext
   erkennen (`/impressum`, `/kontakt`, `/team`, `/ueber-uns`, `/kanzlei`, `/wir`,
   „Unser Team", „Mitarbeiter", „Ansprechpartner", „Berufsträger", „Partner", „Über uns",
-  „Berater" (nur Linktext – im Pfad träfe es `/steuerberater-kiel/`); Abzüge für
+  „Berater", „Unsere Steuerberater", „Steuerberater" (nur als ganzer Linktext), „Beraterinnen",
+  „Köpfe", „Menschen", „Wir über uns" („berater" nur im Linktext – im Pfad träfe es
+  `/steuerberater-kiel/`); Abzüge für
   Datenschutz, Karriere, Jobs, Kooperationspartner, Honorar, Preise, Empfehlungen). Das Impressum wird auch
   über den Linktext erkannt, wenn der Pfad fremd ist (`/information/license`). Die zweitbeste
   Team-Kandidatin wird als `team2` gelesen (z. B. `/berufstraeger` und `/ueber-uns`) –
@@ -158,9 +160,16 @@ der nächsten Quelle füllen.**
 - Austauschbar über ein Interface (`extract/base.py`), damit später weitere Anbieter
   ergänzt werden können.
 - Stufe 1 regelbasiert (`rules.py`): Straße, PLZ, Ort, Telefon (über
-  `normalize_telefon`), E-Mail aus dem Impressum (Rückfall Kontakt-, Startseite).
-  Adressen/Telefone in Fremd-Abschnitten (Kammer, Aufsicht, Versicherung, Hoster,
-  Webdesign) werden ignoriert: `config/impressum_ausschluss.yaml`.
+  `normalize_telefon`), E-Mail aus dem Impressum (Rückfall Kontakt-, Startseite, zuletzt
+  Meta-Beschreibungen). Adressen/Telefone in Fremd-Abschnitten (Kammer, Aufsicht,
+  Versicherung, Hoster, Webdesign) werden ignoriert: `config/impressum_ausschluss.yaml`.
+  - Bekannte Fremdadressen der Ausschlussliste gelten nur dann als fremd, wenn sie im
+    Fremd-Abschnitt stehen, der Name der Institution davor steht oder das Impressum eine
+    andere Adresse nennt. Steht dort nur diese Adresse (Kanzlei im Haus der Kammer), wird
+    sie übernommen, mit Hinweis in „Abweichung".
+  - Telefon: Festnetz vor Mobil (015/016/017), Impressum vor den anderen Seiten; eine
+    unbeschriftete Nummer direkt unter der Impressum-Adresse zählt. Mobil nur als Rückfall.
+  - E-Mail: Impressum-Text vor Navigation/Fußzeile vor mailto-Links.
 - Stufe 2 LLM über Ollama (`ollama.py`, URL und Modell aus `settings.yaml`) auf allen
   Seiten: Name, Rechtsform, Personen (Name, Titel, Funktion), genannte
   Mitarbeiterzahl/Größenklasse; Adresse/Telefon/E-Mail nur als Rückfall.
@@ -196,7 +205,11 @@ der nächsten Quelle füllen.**
   „Historie" …) und Institutionen („…kammer", „…gericht") sind nie Namen; „BD-Partner"
   (Bindestrich davor) ist keine Funktion und kein Impressum-Schlüsselwort. Initialen („W. Drews") und Anrede
   („Frau …") sind erlaubt; `*kauffrau` in der Liste trifft auch Komposita
-  („Einzelhandelskauffrau"). Zusätzlich Personen aus JSON-LD (schema.org `Person` mit `jobTitle`).
+  („Einzelhandelskauffrau"). Titel und Berufskürzel vor dem Namen („Diplom-Betriebswirt",
+  „StB Dipl.-Kfm.", „WP/StB") gehören zum Titel; ein Berufskürzel dort genügt als Funktion.
+  Kundenstimmen mit fremder Firma („Geschäftsführer der Muster GmbH") sind keine Personen
+  der Kanzlei; ein Eintrag ohne Vornamen („Steuerberater Schreiner") entfällt neben
+  derselben Person mit Vornamen. Zusätzlich Personen aus JSON-LD (schema.org `Person` mit `jobTitle`).
   Mitarbeiterzahl-Regel auf allen Seiten inkl. Startseite („28 Expert:innen", „Team von 28",
   „15-köpfig"; Gender-Schreibweisen normalisiert; „über N" → Klasse über N).
 - Fehlende Felder bleiben `null` – **nie raten**. Konfidenz berechnet der Code, nicht das LLM.
@@ -240,8 +253,15 @@ der nächsten Quelle füllen.**
     Paragrafenangaben („gemäß § 18 Abs. 2 MStV", „im Sinne des DDG") stören die
     Überschriften-Erkennung nicht. „Verantwortlich gemäß § 5 TMG/§ 18 MStV" zählt nachrangig (nach den
     Vertretungsberechtigten). Rahmenzeilen zählen nie.
-  - Rechtsform kanonisch (`config/rechtsformen.yaml`: „Partnerschaftsgesellschaft mbB" →
-    „PartG mbB"); Ort laut OpenPLZ („Hamburg-Rissen" → „Hamburg").
+  - Name: Steht im Impressum-Kopf eine Zeile mit allen Wörtern des LLM-Namens und
+    höchstens drei weiteren (Rechtsform, Berufswörter, Namen), hat sie Vorrang vor Logo und
+    Startseite („900 GRAD STEUERBERATUNG" → „900 GRAD Steuerberatungsgesellschaft PartmbB").
+  - Rechtsform per Regel **vor dem LLM**: aus dem Kanzleinamen, dann aus dem Impressum-Kopf
+    (ohne Fremd-Abschnitte). „mbB", „PartmbB", „und Partner mbB" → PartG mbB. Ohne
+    Gesellschaftsform: Einzelperson mit Berufstitel im Namen („Steuerberater Andreas
+    Schreiner", „Steuerbüro Thomas Schütt") oder genau ein Vertreter ohne Registereintrag →
+    Einzelkanzlei. Kanonisch nach `config/rechtsformen.yaml`; Ort laut OpenPLZ
+    („Hamburg-Rissen" → „Hamburg").
   - Adresszusatz („/ Haus 8 Süd", eigene Zeile mit Haus, Gebäude, Eingang, Etage, OG,
     Hinterhof, c/o; auch in Klammern, mehrteilig oder nach einem Zeilenumbruch hinter
     „/") steht im eigenen Feld; die PLZ-Zeile darf bis zu zwei Zeilen unter der Straße

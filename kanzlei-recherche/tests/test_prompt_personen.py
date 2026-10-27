@@ -454,3 +454,93 @@ def test_rollentitel_und_doppelte_kommas():
     assert name_zerlegen("Rating Advisor") is None
     p = erkenne_personen("Torsten Petereit\nGesellschafter – Geschäftsführer\nWirtschaftsprüfer,\nRechtsanwalt")
     assert p[0].funktion == "Gesellschafter – Geschäftsführer, Wirtschaftsprüfer, Rechtsanwalt"
+
+
+# ---- 12 echte Fixtures: Rechtsform, Name aus dem Impressum, Titel vor dem Namen, Kundenstimmen
+
+@pytest.mark.parametrize("name,impressum,form", [
+    ("Brandenburg und Partner mbB Steuerberater", None, "PartG mbB"),
+    ("900 GRAD Steuerberatungsgesellschaft PartmbB", None, "PartG mbB"),
+    ("Benthin | Schwark | Hansen | Kühl", "Impressum\nBenthin | Schwark | Hansen | Kühl\nPartnerschaft mbB", "PartG mbB"),
+    ("Kanzlei Nord", "Kanzlei Nord\nWebdesign: Agentur GmbH", None),  # Fremd-Abschnitt zählt nicht
+])  # fmt: skip
+def test_rechtsform_aus_name_und_impressum(name, impressum, form):
+    from recherche.extract.merge import rechtsform_aus_seiten
+    from recherche.extract.rules import Ausschluss
+
+    zeilen = (impressum or "").splitlines()
+    assert rechtsform_aus_seiten(name, impressum, Ausschluss.laden(STANDARD_AUSSCHLUSS).fremd_zeilen(zeilen)) == form
+
+
+@pytest.mark.parametrize("name,impressum,vertreter,einzel", [
+    ("Steuerberater Andreas Schreiner", "x", [], True),
+    ("Steuerbüro Thomas Schütt", "x", [], True),
+    ("Hansen & Petersen Steuerberater PartG mbB", "x", [], False),
+    ("Kanzlei Nord", "Inhaber: Max Muster", ["Max Muster"], True),
+    ("Kanzlei Nord", "Registergericht Kiel HRB 123", ["Max Muster"], False),
+])  # fmt: skip
+def test_einzelkanzlei(name, impressum, vertreter, einzel):
+    from recherche.extract.merge import ist_einzelkanzlei
+
+    assert ist_einzelkanzlei(name, impressum, vertreter) is einzel
+
+
+@pytest.mark.parametrize("llm_name,impressum,erwartet", [
+    ("900 GRAD STEUERBERATUNG", "Angaben gemäß § 5 TMG\n900 GRAD Steuerberatungsgesellschaft PartmbB\nHolstenstraße 1",
+     "900 GRAD Steuerberatungsgesellschaft PartmbB"),
+    ("Steuerberater Schreiner", "Impressum\nSteuerberater Andreas Schreiner\nMarktstr. 3", "Steuerberater Andreas Schreiner"),
+    ("Kanzlei Nord", "Kanzlei Nord Steuerberatung GmbH Hamburg Kiel Lübeck Berlin", "Kanzlei Nord"),  # zu viel Zusatz
+])  # fmt: skip
+def test_name_aus_impressum(llm_name, impressum, erwartet):
+    from recherche.extract.merge import name_aus_impressum
+
+    assert name_aus_impressum(llm_name, impressum) == erwartet
+
+
+@pytest.mark.parametrize("text,erwartet", [
+    ("Diplom-Betriebswirt Niels Benthin", ("Niels Benthin", "Diplom-Betriebswirt")),
+    ("StB Dipl.-Kfm. Niels Benthin", ("Niels Benthin", "StB Dipl.-Kfm.")),
+    ("WP/StB Sven Kamchen", ("Sven Kamchen", "WP/StB")),
+    ("Niels Benthin, StB", ("Niels Benthin", "StB")),
+    ("Steuerberater Andreas Schreiner", ("Andreas Schreiner", "Steuerberater")),
+    ("Steuerberater Schreiner", None),
+])  # fmt: skip
+def test_titel_und_berufskuerzel_vor_dem_namen(text, erwartet):
+    assert name_zerlegen(text) == erwartet
+
+
+def test_teamseite_titel_prokurist_kundenstimme():
+    text = ("Dipl.-Betriebswirt Niels Benthin\nSteuerberater, Partner\nStB Justyna Slama\nMax Kunde\n"
+            "Geschäftsführer der Muster GmbH\nOle Prok\nProkurist")
+    assert [(p.name, p.funktion) for p in erkenne_personen(text)] == [
+        ("Niels Benthin", "Steuerberater, Partner"), ("Justyna Slama", "StB"), ("Ole Prok", "Prokurist")]
+
+
+def test_name_ohne_vorname_neben_derselben_person():
+    p = personen_vereinigen([LlmPerson(name="Andreas Schreiner", funktion="Steuerberater"),
+                             LlmPerson(name="Steuerberater Schreiner", funktion="Inhaber"),
+                             LlmPerson(name="Max Kunde", funktion="Geschäftsführer der Muster GmbH")])
+    assert [x.name for x in p] == ["Andreas Schreiner"]
+
+
+@pytest.mark.parametrize("url,text", [
+    ("https://a.example/unsere-steuerberater", "Unsere Steuerberater"),
+    ("https://a.example/team/", "Steuerberater"),
+    ("https://a.example/koepfe", "Köpfe"),
+    ("https://a.example/wir/", "Wir über uns"),
+    ("https://a.example/team/beraterinnen", "Beraterinnen"),
+])  # fmt: skip
+def test_weitere_team_linktexte(url, text):
+    from recherche.crawl import punkte
+
+    assert punkte(Seitentyp.TEAM, url, text) >= 9
+
+
+def test_email_aus_meta_beschreibung():
+    from recherche.extract.lauf import regeln_fuer
+    from recherche.extract.rules import Ausschluss
+
+    html = ('<html><head><meta name="description" content="Steuerberatung in Kiel – info@sievert.example">'
+            '</head><body><p>Sievert und Partner</p><p>Wall 5</p><p>24103 Kiel</p></body></html>')
+    seiten = {Seitentyp.IMPRESSUM: _seite(Seitentyp.IMPRESSUM, "https://sievert.example/impressum", html)}
+    assert regeln_fuer(seiten, Ausschluss(), "sievert.example").email == "info@sievert.example"
