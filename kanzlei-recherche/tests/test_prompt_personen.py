@@ -404,3 +404,16 @@ def test_einzelkanzlei_name_ohne_berufsbezeichnung():
 
     assert name_vervollstaendigen("Steuerbüro Thomas Schütt", "Steuerbüro Thomas Schütt\nSteuerberater") == \
         "Steuerbüro Thomas Schütt"
+
+
+@pytest.mark.parametrize("impressum,namen", [
+    # Tippfehler „Vertretungberechtigte" und Gender-Klammer
+    ("Vertretungberechtigte(r) Gesellschafter\nChristian Wermke\nSteffen Asmus", ["Christian Wermke", "Steffen Asmus"]),
+    ("Vertretungsberechtigte(r) Geschäftsführer(in)\nAnna Bock", ["Anna Bock"]),
+    # Paragrafenangabe hinter dem Schlüsselwort
+    ("Inhaltlich Verantwortlicher gemäß § 18 Abs. 2 MStV\nChristian Wermke", ["Christian Wermke"]),
+    ("Verantwortlich im Sinne des DDG\nAnna Bock", ["Anna Bock"]),
+    ("Verantwortlich nach § 5 TMG:\nAnna Bock", ["Anna Bock"]),
+])  # fmt: skip
+def test_vertretung_tippfehler_gender_paragraf(impressum, namen):
+    assert vertretungsberechtigte(impressum)[0] == namen

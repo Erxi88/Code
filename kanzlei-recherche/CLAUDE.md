@@ -221,7 +221,8 @@ der nächsten Quelle füllen.**
     Fach­angestellte, Fachwirt, Fachassistent, Fachgehilfe und Anwärter nie.
     Vertretungsberechtigte zählen, wenn im selben Impressum-Abschnitt genau **eine**
     Berufsbezeichnung steht.
-  - Vertretungsberechtigte im Impressum: „vertretungsberechtigt", „vertreten durch",
+  - Vertretungsberechtigte im Impressum: „vertretungsberechtigt" (auch der Tippfehler
+    „vertretungberechtigt" und Gender-Klammern wie „(r)"), „vertreten durch",
     „Geschäftsführer", „Inhaber" (Namen dürfen direkt folgen); „Partner", „Gesellschafter",
     „Vorstand" mit Doppelpunkt, mit Namen in derselben Zeile („Die Gesellschafter Yvonne
     Baur und …") oder als reine Überschrift („Die Partner"). Bei starken Schlüsselwörtern
@@ -234,7 +235,8 @@ der nächsten Quelle füllen.**
     zählt auch im Fremd-Abschnitt direkt hinter den Kammer-Adressen; ein Satz dort
     („… Versicherung AG, vertreten durch den Vorstand …") nicht. Eine
     Berufsbezeichnung direkt am Namen („Yvonne Baur, Steuerberaterin") gilt für diese Person.
-    „Verantwortlich gemäß § 5 TMG/§ 18 MStV" zählt nachrangig (nach den
+    Paragrafenangaben („gemäß § 18 Abs. 2 MStV", „im Sinne des DDG") stören die
+    Überschriften-Erkennung nicht. „Verantwortlich gemäß § 5 TMG/§ 18 MStV" zählt nachrangig (nach den
     Vertretungsberechtigten). Rahmenzeilen zählen nie.
   - Rechtsform kanonisch (`config/rechtsformen.yaml`: „Partnerschaftsgesellschaft mbB" →
     „PartG mbB"); Ort laut OpenPLZ („Hamburg-Rissen" → „Hamburg").

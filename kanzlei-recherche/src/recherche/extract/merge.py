@@ -193,7 +193,7 @@ def personen_vereinigen(personen: list[LlmPerson]) -> list[LlmPerson]:
 # Schwache („Partner", „Gesellschafter") nur als Label mit Doppelpunkt – sonst trifft die Navigation
 # („Partner Berufsträger Firmenphilosophie Historie").
 _VERTRETUNG_STARK = re.compile(
-    r"vertretungsberechtigt\w*|vertreten\s+durch|geschäftsführ\w*|geschaeftsfuehr\w*|inhaber\w*", re.I
+    r"vertretungs?berechtigt\w*|vertreten\s+durch|geschäftsführ\w*|geschaeftsfuehr\w*|inhaber\w*", re.I
 )
 # nicht in Domains und Firmennamen („bd-partner.de", „BD-Partner")
 _VERTRETUNG_SCHWACH = re.compile(r"(?<![\w-])(?:gesellschafter\w*|partner(?:in|innen)?\b(?![.-]\w)|vorstand)", re.I)
@@ -260,7 +260,15 @@ def _schluessel(z: str) -> tuple[re.Match, bool] | None:
     return None
 
 
+_GENDER_KLAMMER = re.compile(r"\((?:r|e|in|innen|n)\)", re.I)  # „Vertretungsberechtigte(r)", „Partner(in)"
+# Paragrafenangabe hinter dem Schlüsselwort: „gemäß § 18 Abs. 2 MStV", „nach § 5 TMG", „im Sinne des DDG"
+_RECHTSGRUNDLAGE = re.compile(
+    r"\b(?:gem(?:äß|aess|\.)|nach|i\.?\s?s\.?\s?(?:d|v)\.?|im\s+sinne\s+de[rs]|laut)\b.*$|§.*$", re.I
+)
+
+
 def _nur_rollenwoerter(text: str) -> bool:
+    text = _GENDER_KLAMMER.sub("", text)
     return all(_ROLLENWORT.match(w.strip(",.:()")) for w in text.split() if w.strip(",.:()"))
 
 
@@ -280,7 +288,7 @@ def _abschnitt_namen(
     z = zeilen[i]
     if namen := _namen_mit_funktion(z[m.end():]):
         return namen, f"{len(namen)} Namen in der Zeile"
-    rest = z[m.end():].strip(" :.")
+    rest = _RECHTSGRUNDLAGE.sub("", _GENDER_KLAMMER.sub("", z[m.end():])).strip(" :.")
     label = ":" in z[m.end():] or z.rstrip().endswith(":")
     ueberschrift = _nur_rollenwoerter(rest) and _nur_rollenwoerter(z[: m.start()])
     if stark:
