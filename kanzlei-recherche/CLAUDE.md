@@ -167,8 +167,9 @@ der nächsten Quelle füllen.**
     Fremd-Abschnitt stehen, der Name der Institution davor steht oder das Impressum eine
     andere Adresse nennt. Steht dort nur diese Adresse (Kanzlei im Haus der Kammer), wird
     sie übernommen, mit Hinweis in „Abweichung".
-  - Telefon: Festnetz vor Mobil (015/016/017), Impressum vor den anderen Seiten; eine
-    unbeschriftete Nummer direkt unter der Impressum-Adresse zählt. Mobil nur als Rückfall.
+  - Telefon: Festnetz vor Mobil (015/016/017), Impressum vor den anderen Seiten. Neben
+    „Tel/Telefon/Fon" zählen „Telefonnummer", „Rufnummer", „Zentrale", „Büro", ☎ und im
+    Impressum jede unbeschriftete Nummernzeile mit Vorwahl (nicht hinter „Fax"). Mobil nur als Rückfall.
   - E-Mail: Impressum-Text vor Navigation/Fußzeile vor mailto-Links.
 - Stufe 2 LLM über Ollama (`ollama.py`, URL und Modell aus `settings.yaml`) auf allen
   Seiten: Name, Rechtsform, Personen (Name, Titel, Funktion), genannte
@@ -255,12 +256,14 @@ der nächsten Quelle füllen.**
     Vertretungsberechtigten). Rahmenzeilen zählen nie.
   - Name: Steht im Impressum-Kopf eine Zeile mit allen Wörtern des LLM-Namens und
     höchstens drei weiteren (Rechtsform, Berufswörter, Namen), hat sie Vorrang vor Logo und
-    Startseite („900 GRAD STEUERBERATUNG" → „900 GRAD Steuerberatungsgesellschaft PartmbB").
+    Startseite („900 GRAD STEUERBERATUNG" → „900 GRAD Steuerberatungsgesellschaft PartmbB");
+    auch über zwei kurze Zeilen („Steuerberater" / „Andreas Schreiner"), nie mit Menüwörtern.
   - Rechtsform per Regel **vor dem LLM**: aus dem Kanzleinamen, dann aus dem Impressum-Kopf
     (ohne Fremd-Abschnitte). „mbB", „PartmbB", „und Partner mbB" → PartG mbB. Ohne
     Gesellschaftsform: Einzelperson mit Berufstitel im Namen („Steuerberater Andreas
-    Schreiner", „Steuerbüro Thomas Schütt") oder genau ein Vertreter ohne Registereintrag →
-    Einzelkanzlei. Kanonisch nach `config/rechtsformen.yaml`; Ort laut OpenPLZ
+    Schreiner", „Steuerbüro Thomas Schütt", auch „Steuerberater Schreiner") oder genau ein
+    Vertreter ohne Registernummer (HRB/PR …; „keine Eintragung im Handelsregister" zählt nicht)
+    → Einzelkanzlei. Einzelkanzlei mit einem Berufsträger und ohne Teamseite: Teamgröße 1. Kanonisch nach `config/rechtsformen.yaml`; Ort laut OpenPLZ
     („Hamburg-Rissen" → „Hamburg").
   - Adresszusatz („/ Haus 8 Süd", eigene Zeile mit Haus, Gebäude, Eingang, Etage, OG,
     Hinterhof, c/o; auch in Klammern, mehrteilig oder nach einem Zeilenumbruch hinter

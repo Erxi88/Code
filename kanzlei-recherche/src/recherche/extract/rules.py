@@ -30,7 +30,8 @@ _STRASSE = re.compile(
 _KEINE_PLZ_DAVOR = re.compile(r"(?:HR\s?[AB]|PR|VR|GnR|Nr\.?|Nummer|Konto|IBAN|BLZ|seit|ab|bis|von|ca\.?)\s*:?\s*$", re.I)
 _STRASSE_NEIN = re.compile(r"^(tel|fon|fax|postfach|ust|hrb|hra|amtsgericht|steuer-?nr|steuernummer|pr \d)", re.I)
 _TEL_LABEL = re.compile(
-    r"(?<![a-zäöü])(?:tel(?:efon)?|fon|phone|t)\s*\.?\s*:?\s*(\(?\+?\d[\d\s/()\-–.]{4,}\d)", re.I
+    r"(?:(?<![a-zäöü])(?:tel(?:efon)?(?:nummer)?|rufnummer|fon|phone|t|zentrale|büro|sekretariat)|[☎📞✆])"
+    r"\s*\.?\s*:?\s*(\(?\+?\d[\d\s/()\-–.]{4,}\d)", re.I
 )
 _FAX_DAVOR = re.compile(r"(fax|telefax)\s*\.?\s*:?\s*$", re.I)
 _EMAIL = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
@@ -228,7 +229,7 @@ def beste_email(kandidaten: list[str], domain: str | None, nachrangig: tuple[str
 
 _MOBIL = re.compile(r"^\+491[567]")
 # Nummer ohne Beschriftung in eigener Zeile („0431 38575740", „+49 (0)431 3857 5740")
-_NUMMER_ALLEIN = re.compile(r"^\(?\+?\d[\d\s/()\-–.]{6,}\d$")
+_NUMMER_ALLEIN = re.compile(r"^(?:\(?0|\+)[\d\s/()\-–.]{6,}\d$")  # mit Vorwahl – keine Steuer-/Registernummer
 
 
 def ist_mobil(nummer: str | None) -> bool:
@@ -271,7 +272,6 @@ def extract_impressum(
     for nr, (txt, lnks) in enumerate([(text, links or []), *(weitere_texte or [])]):
         zeilen = txt.splitlines()
         fremd = ausschluss.fremd_zeilen(zeilen)
-        adresse_zeile = None
         if erg.plz is None:
             kandidaten = [a for a in adressen(zeilen) if a.zeile not in fremd]
             bekannt = {id(a): ausschluss.adressen.get(adresse_key(a.strasse, a.plz)) for a in kandidaten}
@@ -286,13 +286,15 @@ def extract_impressum(
                                         "(Ausschlussliste) – als Kanzleiadresse übernommen, bitte prüfen")
             if gewaehlt is not None:
                 erg.strasse, erg.plz, erg.ort, erg.adresszusatz = gewaehlt.strasse, gewaehlt.plz, gewaehlt.ort, gewaehlt.zusatz
-                adresse_zeile = gewaehlt.zeile
         if erg.telefon is None:
             nummern = [n for n, i in telefone(zeilen) if i not in fremd]
             nummern += [n for h in lnks if h.lower().startswith("tel:") and (n := normalize_telefon(h[4:]))]
-            if nr == 0 and adresse_zeile is not None:  # Impressum: unbeschriftete Nummer direkt bei der Adresse
-                for z in zeilen[adresse_zeile + 1: adresse_zeile + 4]:
-                    if _NUMMER_ALLEIN.match(z.strip()) and not _FAX_DAVOR.search(z) and (n := normalize_telefon(z)):
+            if nr == 0:  # Impressum: unbeschriftete Nummer in eigener Zeile (nicht hinter „Fax")
+                for i, z in enumerate(zeilen):
+                    davor = zeilen[i - 1] if i > 0 else ""
+                    if i in fremd or not _NUMMER_ALLEIN.match(z.strip()) or re.search(r"fax\W*$", davor, re.I):
+                        continue
+                    if n := normalize_telefon(z):
                         nummern.append(n)
             nummern = _festnetz_zuerst(list(dict.fromkeys(nummern)))
             if nummern and not ist_mobil(nummern[0]):

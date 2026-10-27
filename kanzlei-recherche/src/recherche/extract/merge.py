@@ -551,7 +551,8 @@ def name_vervollstaendigen(name: str | None, impressum: str | None) -> str | Non
     return name
 
 
-_REGISTER = re.compile(r"\b(?:HR\s?[AB]|PR)\s?\d|handelsregister|partnerschaftsregister|registergericht|registernummer", re.I)
+# nur ein echter Registereintrag – „Eine Eintragung im Handelsregister besteht nicht" zählt nicht
+_REGISTER = re.compile(r"\b(?:HR\s?[AB]|PR|GnR|VR)\s?\d|registernummer\s*:?\s*\w*\d", re.I)
 _NAME_VORSILBE = re.compile(r"^(?:steuerbüro|steuerkanzlei|kanzlei|steuerberatung|büro)\s+", re.I)
 _GESELLSCHAFT_HINWEIS = re.compile(r"&|\bund\b|\+|partner|gesellschaft|\|", re.I)
 
@@ -560,8 +561,9 @@ def _impressum_kopf(impressum: str | None, fremd: set[int] | None, rahmen: set[s
     """Die ersten n Zeilen des Impressums ohne Fremd-Abschnitte und ohne Navigation/Fußzeile."""
     zeilen = (text_normalisieren(impressum) or "").splitlines()
     fremd, rahmen = fremd or set(), rahmen or set()
-    return [z.strip() for i, z in enumerate(zeilen[:n])
-            if z.strip() and i not in fremd and " ".join(z.lower().split()) not in rahmen]  # fmt: skip
+    # erst filtern, dann zählen: lange Navigation am Seitenanfang verdrängt sonst den Inhalt
+    return [z.strip() for i, z in enumerate(zeilen)
+            if z.strip() and i not in fremd and " ".join(z.lower().split()) not in rahmen][:n]  # fmt: skip
 
 
 def rechtsform_aus_seiten(name: str | None, impressum: str | None, fremd: set[int] | None = None,
@@ -583,6 +585,10 @@ def ist_einzelkanzlei(name: str | None, impressum: str | None, vertreter: list[s
         rest = _NAME_VORSILBE.sub("", name.strip())
         if (nt := name_zerlegen(rest)) and len(nt[0].split()) <= 3 and (nt[1] or rest != name.strip()):
             return True
+        # „Steuerberater Schreiner": Berufsbezeichnung und Nachname
+        woerter = rest.split()
+        if len(woerter) == 2 and _BERUFSWORT.match(woerter[0].lower()) and re.match(r"^[A-ZÄÖÜ][a-zäöüß-]+$", woerter[1]):
+            return True
     return len(vertreter) == 1 and bool(impressum) and not _REGISTER.search(impressum or "")
 
 
@@ -595,7 +601,12 @@ def name_aus_impressum(name: str | None, impressum: str | None, fremd: set[int] 
     if not name or not impressum:
         return name
     soll = [w for w in _woerter(name) if w not in "&+|-–"]
-    for z in _impressum_kopf(impressum, fremd, rahmen, 25):
+    kopf = _impressum_kopf(impressum, fremd, rahmen, 25)
+    # auch zwei kurze Zeilen hintereinander („Steuerberater" / „Andreas Schreiner")
+    paare = [f"{a} {b}" for a, b in zip(kopf, kopf[1:], strict=False) if len(a) <= 40 and len(b) <= 40 and ":" not in a + b]
+    if any([w for w in _woerter(z) if w not in "&+|-–"] == soll for z in kopf):
+        return name  # steht genau so im Impressum
+    for z in kopf + paare:
         if ":" in z or len(z) > 90 or not (1 <= len(soll)):
             continue
         ist = [w for w in _woerter(z) if w not in "&+|-–"]
@@ -609,7 +620,8 @@ def name_aus_impressum(name: str | None, impressum: str | None, fremd: set[int] 
             rest.remove(treffer)
         else:
             original = {w.lower(): w for w in re.split(r"[\s,;·|]+", z) if w}
-            if all(rechtsform_aus_text(w) or _NAMENS_BERUF.match(w) or original.get(w, w)[:1].isupper() for w in rest):
+            if all((rechtsform_aus_text(w) or _NAMENS_BERUF.match(w) or original.get(w, w)[:1].isupper())
+                   and w not in _MENUEWOERTER for w in rest):
                 return z.rstrip(" ,;")
     return name
 
@@ -703,6 +715,9 @@ def zusammenfuehren(
         rechtsform = "Einzelkanzlei"
     angabe = mitarbeiterzahl([_text(s) for s in seiten.values()])
     zahl, klasse, basis = teamgroesse(llm, team_seiten, erkannte, angabe)
+    berufstraeger = sum(1 for p in personen if ist_berufstraeger(p))
+    if zahl is None and klasse is None and rechtsform == "Einzelkanzlei" and not team_seiten and berufstraeger == 1:
+        zahl, basis = 1, "Einzelkanzlei ohne Teamseite: ein Berufsträger"
     hat_personeninfo = llm is not None or bool(erkannte) or bool(personen)
 
     # ---- Website, Quellen, Datum
@@ -740,7 +755,7 @@ def zusammenfuehren(
         website=website,
         website_vorhanden=bool(kandidat.domain or kandidat.website),
         ansprechpartner=personen,
-        berufstraeger_anzahl=sum(1 for p in personen if ist_berufstraeger(p)) if hat_personeninfo else None,
+        berufstraeger_anzahl=berufstraeger if hat_personeninfo else None,
         teamgroesse=zahl,
         teamgroesse_klasse=klasse,
         teamgroesse_basis=basis,

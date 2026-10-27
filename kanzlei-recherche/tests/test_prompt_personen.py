@@ -544,3 +544,55 @@ def test_email_aus_meta_beschreibung():
             '</head><body><p>Sievert und Partner</p><p>Wall 5</p><p>24103 Kiel</p></body></html>')
     seiten = {Seitentyp.IMPRESSUM: _seite(Seitentyp.IMPRESSUM, "https://sievert.example/impressum", html)}
     assert regeln_fuer(seiten, Ausschluss(), "sievert.example").email == "info@sievert.example"
+
+
+def test_rechtsform_hinter_langer_navigation():
+    from recherche.extract.merge import rechtsform_aus_seiten
+
+    nav = "\n".join(f"Menüpunkt {i}" for i in range(45))
+    impressum = nav + "\nImpressum\nBenthin | Schwark | Hansen | Kühl\nPartnerschaft mbB"
+    rahmen = {f"menüpunkt {i}" for i in range(45)}
+    assert rechtsform_aus_seiten("Benthin | Schwark | Hansen | Kühl", impressum, rahmen=rahmen) == "PartG mbB"
+
+
+def test_einzelkanzlei_schreiner():
+    from recherche.extract.merge import ist_einzelkanzlei, name_aus_impressum
+
+    impressum = "Impressum\nSteuerberater\nAndreas Schreiner\nMarktstr. 3\nEine Eintragung im Handelsregister besteht nicht."
+    assert name_aus_impressum("Steuerberater Schreiner", impressum) == "Steuerberater Andreas Schreiner"
+    assert ist_einzelkanzlei("Steuerberater Schreiner", impressum, [])
+    assert name_aus_impressum("Steuerbüro Thomas Schütt", "Impressum & Kontakt\nSteuerbüro Thomas Schütt") == \
+        "Steuerbüro Thomas Schütt"
+
+
+def test_einzelkanzlei_ohne_teamseite_teamgroesse_eins():
+    from recherche.extract.merge import zusammenfuehren
+    from recherche.models import Kandidat
+
+    html = ("<p>Impressum</p><p>Steuerberater</p><p>Andreas Schreiner</p><p>Marktstr. 3</p><p>24534 Neumünster</p>"
+            "<p>Berufsbezeichnung: Steuerberater</p><p>Inhaber: Andreas Schreiner</p>")
+    seiten = {Seitentyp.IMPRESSUM: _seite(Seitentyp.IMPRESSUM, "https://s.example/impressum", html)}
+    k = zusammenfuehren(Kandidat(id=1, bundesland="SH", domain="s.example"), [], seiten, None,
+                        LlmErgebnis(kanzleiname="Steuerberater Schreiner"))
+    assert (k.kanzleiname, k.rechtsform, k.berufstraeger_anzahl) == ("Steuerberater Andreas Schreiner", "Einzelkanzlei", 1)
+    assert (k.teamgroesse, k.teamgroesse_klasse.value if k.teamgroesse_klasse else None) == (1, "1-5")
+
+
+@pytest.mark.parametrize("zeilen", [
+    "Zentrale: 0431 38575740",
+    "Telefonnummer: 0431 38575740",
+    "x\ny\nz\nw\n0431 38575740",  # unbeschriftet, weiter unten im Impressum
+])  # fmt: skip
+def test_festnetz_im_impressum_ohne_tel_kennzeichen(zeilen):
+    from recherche.extract.rules import Ausschluss, extract_impressum
+
+    impressum = "900 GRAD PartmbB\nHolstenstraße 1\n24103 Kiel\n" + zeilen
+    r = extract_impressum(impressum, Ausschluss(), weitere_texte=[("Hotline: Tel. 0176 41466224", [])])
+    assert r.telefon == "+49 431 38575740"
+
+
+def test_fax_und_steuernummer_sind_kein_telefon():
+    from recherche.extract.rules import Ausschluss, extract_impressum
+
+    r = extract_impressum("A\nWall 5\n24103 Kiel\nTelefax\n0431 38575741\nSteuernummer\n19/123/45678", Ausschluss())
+    assert r.telefon is None
