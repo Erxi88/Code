@@ -188,9 +188,12 @@ der nächsten Quelle füllen.**
   bei den Teamseiten.
 - Personen (`personen.py`, `config/personen_funktionen.yaml`): Kacheln/Listen auf beiden
   Teamseiten. Ein Name gilt nur mit einer Funktion aus der Liste **in derselben Zeile**
-  („Name – Funktion", „Name (Funktion)"), **in der Folgezeile** oder direkt darüber
-  (Kachel mit Rolle als Überschrift); Zeilen aus dem RAHMEN und Menüwörter („Berufsträger",
-  „Firmenphilosophie", „Historie" …) sind nie Namen. Initialen („W. Drews") und Anrede
+  („Name – Funktion", „Name (Funktion)"), **in der Folgezeile** (auch mehrere
+  Funktionszeilen untereinander: „Gesellschafter" / „Steuerberater"; eine Zeile, die mit
+  einem Namen beginnt, ist die nächste Person) oder direkt darüber (Kachel mit Rolle als
+  Überschrift); Zeilen aus dem RAHMEN, Menüwörter („Berufsträger", „Firmenphilosophie",
+  „Historie" …) und Institutionen („…kammer", „…gericht") sind nie Namen; „BD-Partner"
+  (Bindestrich davor) ist keine Funktion und kein Impressum-Schlüsselwort. Initialen („W. Drews") und Anrede
   („Frau …") sind erlaubt; `*kauffrau` in der Liste trifft auch Komposita
   („Einzelhandelskauffrau"). Zusätzlich Personen aus JSON-LD (schema.org `Person` mit `jobTitle`).
   Mitarbeiterzahl-Regel auf allen Seiten inkl. Startseite („28 Expert:innen", „Team von 28",

@@ -195,7 +195,8 @@ def personen_vereinigen(personen: list[LlmPerson]) -> list[LlmPerson]:
 _VERTRETUNG_STARK = re.compile(
     r"vertretungsberechtigt\w*|vertreten\s+durch|geschäftsführ\w*|geschaeftsfuehr\w*|inhaber\w*", re.I
 )
-_VERTRETUNG_SCHWACH = re.compile(r"gesellschafter\w*|partner(?:in|innen)?\b(?!schafts)|vorstand", re.I)
+# nicht in Domains und Firmennamen („bd-partner.de", „BD-Partner")
+_VERTRETUNG_SCHWACH = re.compile(r"(?<![\w-])(?:gesellschafter\w*|partner(?:in|innen)?\b(?![.-]\w)|vorstand)", re.I)
 # „Verantwortlich gemäß § 5 TMG: Olaf Müller-Madaus" – nachrangig nach den Vertretungsberechtigten
 _VERANTWORTLICH = re.compile(r"\bverantwortlich\w*", re.I)
 _LABEL = re.compile(r"^[^:]{2,60}:")  # „Registergericht: …" beendet einen Abschnitt

@@ -347,3 +347,24 @@ def test_vertretung_protokoll():
     assert v.namen == []
     assert v.protokoll == ["Zeile 1 „Partner Berufsträger Historie“ → keine Namen, keine Überschrift",
                            "Zeile 3 „Geschäftsführer: Anna Bock“ → übersprungen (Fremd-Abschnitt)"]
+
+
+def test_mehrere_funktionszeilen_untereinander():
+    """Kachel „Sven Drews" / „Gesellschafter" / „Steuerberater": beide Zeilen gehören zur Person."""
+    text = ("Yvonne Baur\nDiplom-Kauffrau, Steuerberaterin\nGesellschafterin\nSven Drews\nGesellschafter\n"
+            "Steuerberater\nM. Bittner\nFachassistentin Lohn u. Gehalt\nLars Behrens – Steuerberater")
+    gefunden = {p.name: p.funktion for p in erkenne_personen(text)}
+    assert gefunden == {"Yvonne Baur": "Diplom-Kauffrau, Steuerberaterin, Gesellschafterin",
+                        "Sven Drews": "Gesellschafter, Steuerberater",
+                        "M. Bittner": "Fachassistentin Lohn u. Gehalt", "Lars Behrens": "Steuerberater"}
+    assert ist_berufstraeger(LlmPerson(name="Sven Drews", funktion=gefunden["Sven Drews"]))
+    assert not ist_berufstraeger(LlmPerson(name="M. Bittner", funktion=gefunden["M. Bittner"]))
+
+
+def test_firmenname_und_kammer_sind_keine_personen():
+    from recherche.extract.merge import vertretung
+
+    assert name_zerlegen("Wirtschaftsprüferkammer Berlin") is None
+    assert erkenne_personen("Baur Drews\nBD-Partner") == []  # „BD-Partner" ist keine Funktion
+    v = vertretung("E-Mail: office@bd-partner.de\nBD-Partner\nPartner: Anna Bock")
+    assert v.namen == ["Anna Bock"] and len(v.protokoll) == 1

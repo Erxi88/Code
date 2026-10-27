@@ -53,6 +53,8 @@ _KEINE_NAMEN = frozenset(
     tätigkeitsschwerpunkte mitarbeiter mitarbeitende experten historie anfahrt chaussee straße strasse weg
     allee platz ring damm""".split()
 )
+# Institutionen, keine Personen: „Wirtschaftsprüferkammer Berlin", „Amtsgericht Kiel"
+_INSTITUTION = re.compile(r"(?:kammer|gericht|register|versicherung|verband|bank|gmbh|straße|strasse|chaussee)$", re.I)
 _TRENNER = re.compile(r"\s+[–—|·]\s+|\s+-\s+|\s*\|\s*|,\s+|\s*\(")
 
 
@@ -71,7 +73,8 @@ class Funktionen:
         # („Einzelhandelskauffrau", „Diplom-Kauffrau"), aber nicht allein (Nachname „Kaufmann")
         ganz = sorted((re.escape(w) for w in woerter if not w.startswith("*")), key=len, reverse=True)
         ende = sorted((re.escape(w[1:]) for w in woerter if w.startswith("*")), key=len, reverse=True)
-        alternativen = [r"(?<![a-zäöüß])(?:" + "|".join(ganz) + ")"] if ganz else []
+        # kein Bindestrich davor: „BD-Partner" ist ein Firmenname, keine Funktion
+        alternativen = [r"(?<![a-zäöüß-])(?:" + "|".join(ganz) + ")"] if ganz else []
         if ende:
             alternativen.append(r"(?<=[a-zäöüß-]{3})(?:" + "|".join(ende) + ")")
         # Gender-Formen: Steuerberater:in, Steuerberater/in, Steuerberater*in, Steuerberater_in
@@ -125,13 +128,18 @@ def name_zerlegen(text: str) -> tuple[str, str | None] | None:
     if not 2 <= len(gross) <= 4 or len(woerter) > 6:
         return None
     if not all(_NAME_WORT.match(w) or (k == 0 and _INITIALE.match(w)) for k, w in enumerate(gross)) \
-            or any(w.lower().strip(".") in _KEINE_NAMEN for w in woerter):
+            or any(w.lower().strip(".") in _KEINE_NAMEN or _INSTITUTION.search(w) for w in woerter):
         return None
     return text, " ".join(titel_teile) or None
 
 
 def _ist_funktion(zeile: str, f: Funktionen) -> bool:
     return len(zeile) <= 120 and len(zeile.split()) <= 12 and bool(f.muster_alle.search(zeile))
+
+
+def _beginnt_mit_name(zeile: str) -> bool:
+    """„Lars Behrens – Steuerberater", „Sabine Schulz (Steuerfachwirtin)": neue Person, keine Funktionszeile."""
+    return bool(name_zerlegen(zeile) or name_zerlegen(_TRENNER.split(zeile, maxsplit=1)[0]))
 
 
 def erkenne_personen(
@@ -169,12 +177,18 @@ def erkenne_personen(
         nt = name_zerlegen(z)
         if nt is None:
             continue
-        j = i + 1  # Funktion in der Folgezeile
-        if j < len(zeilen) and zeilen[j] and _ist_funktion(zeilen[j], f) and not name_zerlegen(zeilen[j]):
-            hinzu(nt, zeilen[j], i)
-            vergeben.update({i, j})
+        # Funktion in der Folgezeile – auch mehrere Funktionszeilen untereinander
+        # („Sven Drews" / „Gesellschafter" / „Steuerberater")
+        folge = []
+        for j in range(i + 1, min(len(zeilen), i + 4)):
+            if not (zeilen[j] and _ist_funktion(zeilen[j], f) and not _beginnt_mit_name(zeilen[j])):
+                break
+            folge.append(j)
+        if folge:
+            hinzu(nt, ", ".join(zeilen[j] for j in folge), i)
+            vergeben.update({i, *folge})
         elif i > 0 and zeilen[i - 1] and i - 1 not in vergeben and _ist_funktion(zeilen[i - 1], f) \
-                and not name_zerlegen(zeilen[i - 1]):
+                and not _beginnt_mit_name(zeilen[i - 1]):
             hinzu(nt, zeilen[i - 1], i)  # Funktion über dem Namen (Kachel mit Rolle als Überschrift)
             vergeben.update({i - 1, i})
     return gefunden
