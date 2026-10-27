@@ -331,6 +331,7 @@ def test_run_crawl_limit(storage):
 @pytest.mark.parametrize("playwright,renderer,erwartet", [
     (False, None, "nötig, aber crawl.playwright ist aus"),
     (True, "fehler", "fehlgeschlagen (RuntimeError: Chromium fehlt)"),
+    (True, "kein_browser", "fehlgeschlagen (RuntimeError: BrowserType.launch: Executable doesn't exist at /x) – Browser fehlt"),
     (True, "leer", "gerendert, aber nicht mehr Text"),
 ])  # fmt: skip
 def test_playwright_ergebnis_wird_gemeldet(storage, playwright, renderer, erwartet):
@@ -339,6 +340,8 @@ def test_playwright_ergebnis_wird_gemeldet(storage, playwright, renderer, erwart
     async def rendern(url):
         if renderer == "fehler":
             raise RuntimeError("Chromium fehlt")
+        if renderer == "kein_browser":
+            raise RuntimeError("BrowserType.launch: Executable doesn't exist at /x\n╔═══╗")
         return JS_SEITE
 
     web, clock, _ = _setup(storage, {"https://js.example/": (200, JS_SEITE)}, ("js.example", {}))

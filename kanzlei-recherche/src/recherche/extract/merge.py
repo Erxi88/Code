@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 
 from ..crawl import html_zu_text
@@ -35,6 +35,9 @@ from ..normalize import PlzPruefung, normalize_rechtsform, normalize_telefon
 from ..search.dedupe import adresse_key, name_tokens, telefon_key
 from ..textnorm import text_normalisieren
 from .base import LlmErgebnis, LlmPerson, RegelErgebnis
+from .personen import (
+    _KEINE_NAMEN as _MENUEWOERTER,
+)
 from .personen import (
     ErkanntePerson,
     Mitarbeiterzahl,
@@ -206,12 +209,21 @@ _BEZEICHNUNGEN = {
 ABSCHNITT_ZEILEN = 8
 
 
+_KLAMMER = re.compile(r"^(.*?)\s*\(([^)]+)\)\s*$")
+
+
+def _klammer_teilen(teil: str) -> list[str]:
+    return [m.group(1), m.group(2)] if (m := _KLAMMER.match(teil)) else [teil]
+
+
 def _namen_mit_funktion(text: str) -> list[tuple[str, str | None]]:
     """„die Partner: Dipl.-Kfm. Jens Hansen, Maren Petersen und Ole Brandt" → Namen;
     „Yvonne Baur, Steuerberaterin / Sven Drews, Steuerberater" → Namen mit Berufsbezeichnung."""
     text = text.rsplit(":", 1)[-1]
     gefunden: list[tuple[str, str | None]] = []
     teile = [x for x in re.split(r"\s*[,;]\s*|\s+/\s+|\s+und\s+|\s+sowie\s+|\s*&\s*", text) if x.strip()]
+    # „Yvonne Baur (Steuerberaterin)" → Name und Funktion als eigene Teile
+    teile = [x for teil in teile for x in _klammer_teilen(teil)]
     for k, teil in enumerate(teile):
         woerter = teil.split()
         for start in range(min(3, len(woerter))):  # einleitende Wörter („die Partner") überspringen
@@ -235,35 +247,59 @@ _ROLLENWORT = re.compile(
 )
 
 
-def _schluessel(z: str) -> re.Match | None:
+def _schluessel(z: str) -> tuple[re.Match, bool] | None:
+    """(Treffer, stark). Schwache Schlüsselwörter („Partner", „Gesellschafter") zählen ohne Doppelpunkt
+    nur mit Namen in derselben Zeile oder als reine Überschrift („Die Partner")."""
     if m := _VERTRETUNG_STARK.search(z):
-        return m
-    if (m := _VERTRETUNG_SCHWACH.search(z)) and ":" in z[m.end():]:
-        return m
+        return m, True
+    if m := _VERTRETUNG_SCHWACH.search(z):
+        return m, False
     return None
 
 
+def _nur_rollenwoerter(text: str) -> bool:
+    return all(_ROLLENWORT.match(w.strip(",.:()")) for w in text.split() if w.strip(",.:()"))
+
+
+def _wie_navigation(text: str) -> bool:
+    """Mehrere Menüwörter („Geschäftsführung Kontakt Impressum") – keine Überschrift eines Abschnitts."""
+    woerter = [w.strip(",.:") for w in text.lower().split()]
+    return sum(1 for w in woerter if w in _MENUEWOERTER and not _ROLLENWORT.match(w)
+               and not w.startswith("vertretungsberechtigt")) >= 2  # fmt: skip
+
+
 def _abschnitt_namen(
-    zeilen: list[str], i: int, ende: int, gesperrt: Callable[[int], bool]
-) -> list[tuple[str, str | None]]:
-    """Namen hinter dem Schlüsselwort in Zeile i – oder, wenn dort keine stehen, in den Folgezeilen
-    bis zur nächsten Label-Zeile, Leerzeile, Schlüsselwort-Zeile oder Zeile ohne Namen."""
+    zeilen: list[str], i: int, m: re.Match, stark: bool, gesperrt: Callable[[int], bool]
+) -> tuple[list[tuple[str, str | None]], str]:
+    """Namen hinter dem Schlüsselwort in Zeile i – oder, wenn dort keine stehen und die Zeile eine
+    Überschrift ist, in den Folgezeilen bis zur ersten Leerzeile oder Zeile ohne Namen.
+    Gibt (Namen, Begründung fürs Protokoll) zurück."""
     z = zeilen[i]
-    if namen := _namen_mit_funktion(z[ende:]):
-        return namen
-    rest = z[ende:].strip(" :.")
-    if rest and ":" not in z[ende:] and not all(_ROLLENWORT.match(w.strip(",.")) for w in rest.split()):
-        return []  # Text hinter dem Schlüsselwort, aber weder Name noch Überschrift: kein Abschnittsanfang
+    if namen := _namen_mit_funktion(z[m.end():]):
+        return namen, f"{len(namen)} Namen in der Zeile"
+    rest = z[m.end():].strip(" :.")
+    label = ":" in z[m.end():] or z.rstrip().endswith(":")
+    ueberschrift = _nur_rollenwoerter(rest) and _nur_rollenwoerter(z[: m.start()])
+    if stark:
+        ueberschrift = ueberschrift or (len(rest.split()) <= 8 and not re.search(r"\d", rest) and not _wie_navigation(z))
+    if not (label or ueberschrift):
+        return [], "keine Namen, keine Überschrift"
     namen = []
     for j in range(i + 1, min(len(zeilen), i + 9)):
         folge = zeilen[j].strip()
-        if not folge or gesperrt(j) or _LABEL.match(folge) or _schluessel(folge) or _BERUFSBEZEICHNUNG.search(folge):
+        if not folge or gesperrt(j):
+            break
+        # neue Schlüsselwort-Zeile („Geschäftsführer: …") beginnt einen eigenen Abschnitt –
+        # eine Namenszeile mit Funktion am Ende („Yvonne Baur, Geschäftsführerin") nicht
+        if (n := _schluessel(folge)) and _nur_rollenwoerter(folge[: n[0].start()]):
+            break
+        if (n := _VERANTWORTLICH.search(folge)) and _nur_rollenwoerter(folge[: n.start()]):
             break
         gefunden = _namen_mit_funktion(folge)
         if not gefunden:
             break
         namen += gefunden
-    return namen
+    return namen, (f"{len(namen)} Namen in den Folgezeilen" if namen else "Überschrift, aber keine Namen darunter")
 
 
 @dataclass
@@ -271,6 +307,7 @@ class Vertretung:
     namen: list[str]  # Vertretungsberechtigte in Impressum-Reihenfolge, danach Verantwortliche
     funktionen: dict[str, str]  # Berufsbezeichnung direkt am Namen („Yvonne Baur, Steuerberaterin")
     bezeichnung: str | None  # einzige Berufsbezeichnung des Abschnitts
+    protokoll: list[str] = field(default_factory=list)  # je Schlüsselwort-Zeile: Ergebnis (Diagnose)
 
 
 def vertretungsberechtigte(
@@ -295,16 +332,21 @@ def vertretung(impressum: str, fremd: set[int] | None = None, rahmen: set[str] |
     verantwortliche: list[str] = []
     funktionen: dict[str, str] = {}
     bezeichnung: str | None = None
+    protokoll: list[str] = []
     for i, z in enumerate(zeilen):
-        if gesperrt(i) or len(z) > 300:
+        if len(z) > 300:
             continue
-        if m := _schluessel(z):
-            ziel = namen
+        if treffer := _schluessel(z):
+            (m, stark), ziel = treffer, namen
         elif m := _VERANTWORTLICH.search(z):
-            ziel = verantwortliche
+            stark, ziel = True, verantwortliche
         else:
             continue
-        gefunden_namen = _abschnitt_namen(zeilen, i, m.end(), gesperrt)
+        if gesperrt(i):
+            protokoll.append(f"Zeile {i + 1} „{z[:70]}“ → übersprungen ({'Fremd-Abschnitt' if i in fremd else 'Navigation/Fußzeile'})")
+            continue
+        gefunden_namen, grund = _abschnitt_namen(zeilen, i, m, stark, gesperrt)
+        protokoll.append(f"Zeile {i + 1} „{z[:70]}“ → {grund}")
         for name, funktion in gefunden_namen:
             if not any(gleiche_person(name, n) for n in namen + verantwortliche):
                 ziel.append(name)
@@ -321,7 +363,7 @@ def vertretung(impressum: str, fremd: set[int] | None = None, rahmen: set[str] |
             gefunden |= {name for name, muster in _BEZEICHNUNGEN.items() if muster.search(text)}
         if len(gefunden) == 1 and bezeichnung is None:
             bezeichnung = gefunden.pop()
-    return Vertretung(namen + verantwortliche, funktionen, bezeichnung)
+    return Vertretung(namen + verantwortliche, funktionen, bezeichnung, protokoll)
 
 
 def ansprechpartner(

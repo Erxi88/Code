@@ -397,7 +397,8 @@ def fixture_add(
     meta_pfad = pfad / "meta.json"
     meta = json.loads(meta_pfad.read_text(encoding="utf-8-sig")) if meta_pfad.exists() else {}
     for typ, hinweis in (meta.get("playwright") or {}).items():
-        console.print(f"Playwright {typ}: {hinweis}")
+        farbe = "green" if hinweis.startswith("gerendert (") else "yellow"
+        console.print(f"[{farbe}]Playwright {typ}: {hinweis}[/{farbe}]")
     console.print("Jetzt erwartet.json von Hand ausfüllen und _status auf 'fertig' setzen.")
 
 
@@ -485,8 +486,10 @@ def fixture_prompt(
                        ", ".join(q.json_ld_typen) or "–", str(q.attribut_namen), str(q.skript_namen),
                        str(q.noscript_namen))  # fmt: skip
         console.print(vt)
+        for typ, hinweis in d.playwright.items():
+            console.print(f"  Playwright beim Abruf ({typ}): {hinweis}")
         if any(q.anteil < s.crawl.playwright_team_min_anteil and q.html_zeichen >= s.crawl.playwright_team_min_html
-               for q in d.versteckt.values()):  # fmt: skip
+               for q in d.versteckt.values()) and not d.playwright:  # fmt: skip
             console.print(f"  Teamseite mit Text unter {s.crawl.playwright_team_min_anteil:.0%} des HTML: der Crawler lädt sie "
                           f"mit Playwright nach{'' if s.crawl.playwright else ' – dafür crawl.playwright: true setzen'} "
                           f"(Fixture neu holen: fixture-add).")
@@ -501,6 +504,16 @@ def fixture_prompt(
         for name_, funktion, hs in d.berufstraeger:
             console.print(f"  {name_} | {funktion} | {hs}")
         console.print(f"Erster Ansprechpartner: {d.erster_ansprechpartner or '–'}")
+        console.print("Impressum-Schlüsselwörter:" if d.vertretung_protokoll else "Impressum: kein Schlüsselwort "
+                      "(vertretungsberechtigt, vertreten durch, Geschäftsführer, Inhaber, Partner, Gesellschafter, "
+                      "Verantwortlich) gefunden")
+        for zeile in d.vertretung_protokoll:
+            console.print(f"  {zeile}")
+        console.print(f"Alle Personen nach Zusammenführung ({len(d.personen)}): Name | Funktion | Herkunft | Berufsträger")
+        for name_, funktion, hs, bt in d.personen:
+            console.print(f"  {name_} | {funktion or '–'} | {hs} | {'ja' if bt else 'nein'}")
+        for zeile in d.nur_im_rahmen:
+            console.print(f"  [yellow]nur in Navigation/Fußzeile, nicht gezählt:[/yellow] {zeile}")
     console.print(f"Mitarbeiterzahl (Regel): {d.mitarbeiter_beleg or '–'}")
     console.print("Regeln gefunden: " + ", ".join(f"{k} {'✓' if v else '✗'}" for k, v in d.regel_felder.items()))
     from .extract.prompt import ZEICHEN_JE_TOKEN

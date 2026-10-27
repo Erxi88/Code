@@ -181,7 +181,11 @@ der nächsten Quelle füllen.**
   jede Stufe, versteckte Quellen der Teamseiten (noscript, Skripte, JSON-LD, Attribute),
   die gezählten Berufsträger mit Herkunft (LLM, Teamseite, Impressum-Berufsbezeichnung),
   belegte Felder und Abbruchgrund der Antwort und vergleicht geschätzte mit echten
-  Prompt-Token. Namen nur mit `--namen`.
+  Prompt-Token. Mit `--namen` zusätzlich: das Protokoll je Impressum-Schlüsselwort (warum
+  eine Zeile Namen lieferte oder verworfen wurde), alle Personen nach der Zusammenführung
+  mit Funktion, Herkunft und Berufsträger-Status, und Personen, die nur in Navigation/
+  Fußzeile stehen und deshalb nicht zählen. Das Playwright-Ergebnis aus `meta.json` steht
+  bei den Teamseiten.
 - Personen (`personen.py`, `config/personen_funktionen.yaml`): Kacheln/Listen auf beiden
   Teamseiten. Ein Name gilt nur mit einer Funktion aus der Liste **in derselben Zeile**
   („Name – Funktion", „Name (Funktion)"), **in der Folgezeile** oder direkt darüber
@@ -212,11 +216,13 @@ der nächsten Quelle füllen.**
     Berufsbezeichnung steht.
   - Vertretungsberechtigte im Impressum: „vertretungsberechtigt", „vertreten durch",
     „Geschäftsführer", „Inhaber" (Namen dürfen direkt folgen); „Partner", „Gesellschafter",
-    „Vorstand" nur als Label mit Doppelpunkt (sonst trifft die Navigation). Eine Überschrift
-    ohne Doppelpunkt („Vertretungsberechtigte Gesellschafter") leitet den Abschnitt ein, wenn
-    hinter dem Schlüsselwort nur Rollenwörter stehen. Namen in derselben Zeile (getrennt
-    durch Komma, „/", „und") oder in den Folgezeilen; sie enden an der nächsten Leerzeile,
-    Label-Zeile („Registergericht: …"), Schlüsselwort-Zeile oder Zeile ohne Namen. Eine
+    „Vorstand" mit Doppelpunkt, mit Namen in derselben Zeile („Die Gesellschafter Yvonne
+    Baur und …") oder als reine Überschrift („Die Partner"). Bei starken Schlüsselwörtern
+    gilt auch eine kurze Überschrift ohne Doppelpunkt als Abschnittsanfang („Vertretungs-
+    berechtigte Gesellschafter der … mbB"), außer sie sieht wie Navigation aus (mehrere
+    Menüwörter). Namen in derselben Zeile (getrennt durch Komma, „/", „und", auch „Name
+    (Funktion)") oder in den Folgezeilen; sie enden an der nächsten Leerzeile, einer Zeile
+    ohne Namen oder einer Zeile, die mit einem Schlüsselwort beginnt. Eine
     Berufsbezeichnung direkt am Namen („Yvonne Baur, Steuerberaterin") gilt für diese Person.
     „Verantwortlich gemäß § 5 TMG/§ 18 MStV" zählt nachrangig (nach den
     Vertretungsberechtigten). Rahmenzeilen zählen nie.

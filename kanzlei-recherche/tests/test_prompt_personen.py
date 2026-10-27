@@ -263,6 +263,14 @@ def test_personen_aus_json_ld_und_versteckte_quellen():
      "Registergericht: Amtsgericht Hamburg", ["Christian Wermke", "Anna Bock", "Carl Dau", "Dora Ems"]),
     ("Die Gesellschaft wird vertreten durch die Geschäftsführer\nChristian Wermke\nAnna Bock", ["Christian Wermke", "Anna Bock"]),
     ("Geschäftsführung Kontakt Impressum\nChristian Wermke", []),  # Navigation mit starkem Schlüsselwort
+    # schwaches Schlüsselwort ohne Doppelpunkt: Namen in derselben Zeile oder reine Überschrift
+    ("Die Gesellschafter Yvonne Baur, Steuerberaterin und Sven Drews, Steuerberater", ["Yvonne Baur", "Sven Drews"]),
+    ("Partner\nYvonne Baur, Steuerberaterin\nSven Drews, Steuerberater", ["Yvonne Baur", "Sven Drews"]),
+    ("Die Partner\nDipl.-Kffr. Yvonne Baur, Steuerberaterin, Geschäftsführerin\nSven Drews", ["Yvonne Baur", "Sven Drews"]),
+    ("Vertretungsberechtigte Gesellschafter der bd Partnerschaftsgesellschaft mbB\nYvonne Baur\nSven Drews",
+     ["Yvonne Baur", "Sven Drews"]),
+    ("Gesellschafter: Yvonne Baur (Steuerberaterin), Sven Drews (Steuerberater)", ["Yvonne Baur", "Sven Drews"]),
+    ("Partner Berufsträger Firmenphilosophie Historie\nYvonne Baur", []),
 ])  # fmt: skip
 def test_vertretung_ueberschrift_ohne_doppelpunkt(impressum, namen):
     assert vertretungsberechtigte(impressum)[0] == namen
@@ -329,3 +337,13 @@ def test_unsichtbare_zeichen():
             "<!-- ge&shy;heim --><a href='/i' title='Im&shy;pres&shy;sum'>Im&shy;pres&shy;sum</a>")
     assert html_zu_text(html) == "Steuerberatung GmbH\nLuruper Chaussee 125\nImpressum"
     assert links(html, "https://a.example/") == [("https://a.example/i", "Impressum")]
+
+
+def test_vertretung_protokoll():
+    from recherche.extract.merge import vertretung
+
+    v = vertretung("Partner Berufsträger Historie\nZuständige Kammer: Steuerberaterkammer\nGeschäftsführer: Anna Bock",
+                   fremd={1, 2})
+    assert v.namen == []
+    assert v.protokoll == ["Zeile 1 „Partner Berufsträger Historie“ → keine Namen, keine Überschrift",
+                           "Zeile 3 „Geschäftsführer: Anna Bock“ → übersprungen (Fremd-Abschnitt)"]

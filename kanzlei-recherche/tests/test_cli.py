@@ -264,6 +264,8 @@ def test_fixture_prompt_namen_und_versteckte_quellen():
     assert "9/12 Felder belegt, 7 Personen" in r.output
     r = runner.invoke(cli.app, ["fixture-prompt", "--domain", "nordlicht-steuerberatung.example", "--namen"])
     assert "(Anna Kruse, Lars Behrens)" in r.output and "Erster Ansprechpartner: Anna Kruse" in r.output
+    assert "„Vertretungsberechtigte Partner:“ → 2 Namen in den Folgezeilen" in r.output
+    assert "Alle Personen nach Zusammenführung (11)" in r.output and "| Teamseite, LLM | ja" in r.output and "Birte Claussen | Rechtsanwaltsfachangestellte | Teamseite | nein" in r.output
 
 
 def test_fixture_prompt_live_und_speichern(monkeypatch, tmp_path):

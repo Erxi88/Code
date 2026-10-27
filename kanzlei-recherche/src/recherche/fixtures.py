@@ -347,6 +347,11 @@ class PromptDiagnose:
     berufstraeger: list[tuple[str, str, str]] = field(default_factory=list)
     erster_ansprechpartner: str | None = None
     versteckt: dict = field(default_factory=dict)  # Seitentyp → personen.VersteckteQuellen (Teamseiten)
+    vertretung_protokoll: list[str] = field(default_factory=list)
+    # alle Personen nach der Zusammenführung: (Name, Funktion, Herkunft, Berufsträger?)
+    personen: list[tuple[str, str, str, bool]] = field(default_factory=list)
+    nur_im_rahmen: list[str] = field(default_factory=list)  # Personen, die nur in Navigation/Fußzeile stehen
+    playwright: dict = field(default_factory=dict)  # meta.json: Ergebnis des Playwright-Nachlaufs je Seite
 
     @property
     def prompt_zeichen(self) -> int:
@@ -370,7 +375,8 @@ def prompt_diagnose(fx: Fixture, llm_cfg, ausschluss: Ausschluss, modell: str | 
         gleiche_person,
         ist_berufstraeger,
         ist_leitung,
-        vertretungsberechtigte,
+        personen_vereinigen,
+        vertretung,
     )
     from .extract.ollama import SYSTEM_PROMPT
     from .extract.personen import (
@@ -397,7 +403,8 @@ def prompt_diagnose(fx: Fixture, llm_cfg, ausschluss: Ausschluss, modell: str | 
     impressum = _text(fx.seiten[Seitentyp.IMPRESSUM]) if Seitentyp.IMPRESSUM in fx.seiten else ""
     fremd = ausschluss.fremd_zeilen(impressum.splitlines())
     rahmen = seiten_rahmen(fx.seiten)
-    vertreter, bezeichnung = vertretungsberechtigte(impressum, fremd, rahmen)
+    v = vertretung(impressum, fremd, rahmen)
+    vertreter, bezeichnung = v.namen, v.bezeichnung
     angabe = mitarbeiterzahl([_text(s) for s in fx.seiten.values()])
     regel = regeln_fuer(fx.seiten, ausschluss, fx.domain)
     felder = {k: bool(getattr(regel, k)) for k in ("strasse", "adresszusatz", "plz", "ort", "telefon", "email")} if regel else {}
@@ -406,12 +413,16 @@ def prompt_diagnose(fx: Fixture, llm_cfg, ausschluss: Ausschluss, modell: str | 
     llm = aufzeichnung.ergebnis if aufzeichnung else None
     erkannte: list = []
     versteckt = {}
+    nur_im_rahmen: list[str] = []
     for typ in (Seitentyp.TEAM, Seitentyp.TEAM2):
         if (s := fx.seiten.get(typ)) is not None:
             versteckt[typ] = versteckte_quellen(s.html, _text(s))
             for q in erkenne_personen(_text(s), rahmen=rahmen) + personen_aus_json_ld(s.html):
                 if not any(gleiche_person(q.name, x.name) for x in erkannte):
                     erkannte.append(q)
+            for q in erkenne_personen(_text(s)):  # ohne Rahmen-Filter: was ginge nur dort verloren?
+                if not any(gleiche_person(q.name, x.name) for x in erkannte) and q.name not in nur_im_rahmen:
+                    nur_im_rahmen.append(f"{q.name} | {q.funktion}")
     aps = ansprechpartner(llm, erkannte, impressum or None, fremd, rahmen)
     berufstraeger = []
     for a in aps:
@@ -425,8 +436,21 @@ def prompt_diagnose(fx: Fixture, llm_cfg, ausschluss: Ausschluss, modell: str | 
             ("Impressum-Berufsbezeichnung", "(laut Impressum)" in (a.funktion or "")),
         ) if treffer]  # fmt: skip
         berufstraeger.append((a.name, a.funktion or "", ", ".join(herkunft) or "Titel"))
+    # alle Personen wie in ansprechpartner() zusammengeführt – auch die, die nicht als Ansprechpartner zählen
+    roh = [LlmPerson(name=q.name, titel=q.titel, funktion=q.funktion) for q in erkannte]
+    roh += [LlmPerson(name=n, funktion=v.funktionen.get(n) or "laut Impressum vertretungsberechtigt") for n in vertreter]
+    roh += list(llm.personen) if llm else []
+    personen = []
+    for q in personen_vereinigen(roh):
+        herkunft = [quelle for quelle, treffer in (
+            ("Teamseite", any(gleiche_person(q.name, x.name) for x in erkannte)),
+            ("Impressum", any(gleiche_person(q.name, n) for n in vertreter)),
+            ("LLM", llm and any(gleiche_person(q.name, x.name) for x in llm.personen)),
+        ) if treffer]  # fmt: skip
+        personen.append((q.name, q.funktion or "", ", ".join(herkunft), ist_berufstraeger(q)))
     return PromptDiagnose(
         fx.domain, prompt, len(SYSTEM_PROMPT), links, arten, len(vertreter), bezeichnung,
         angabe.beleg if angabe else None, felder, aufzeichnung, vertreter, berufstraeger,
-        aps[0].name if aps else None, versteckt,
+        aps[0].name if aps else None, versteckt, v.protokoll, personen, nur_im_rahmen,
+        fx.meta.get("playwright") or {},
     )  # fmt: skip

@@ -515,7 +515,10 @@ class Crawler:
             html = await renderer(abruf.final_url or abruf.url)
         except Exception as e:  # Playwright nicht installiert, Timeout …
             log.warning("Playwright-Rückfall für %s fehlgeschlagen: %s", abruf.url, e)
-            abruf.playwright = f"fehlgeschlagen ({type(e).__name__}: {str(e).splitlines()[0][:120] if str(e) else ''})"
+            text = str(e).splitlines()[0][:120] if str(e) else ""
+            tipp = " – Browser fehlt: setup.sh --mit-playwright bzw. playwright install chromium" if (
+                isinstance(e, ImportError) or "Executable doesn't exist" in str(e) or "playwright install" in str(e)) else ""
+            abruf.playwright = f"fehlgeschlagen ({type(e).__name__}: {text}){tipp}"
             return abruf
         vorher = len(abruf.text or "")
         if html and len(text := html_zu_text(html)) > vorher:
