@@ -130,11 +130,25 @@ der nächsten Quelle füllen.**
   Linktexte über fünf Wörter sind Fließtext und zählen nicht, nur der Pfad). Das Impressum wird auch
   über den Linktext erkannt, wenn der Pfad fremd ist (`/information/license`). Die zweitbeste
   Team-Kandidatin wird als `team2` gelesen (z. B. `/berufstraeger` und `/ueber-uns`) –
-  höchstens 6 Abrufe je Domain. Ohne Impressum-Link wird `/impressum` geraten (Soft-404 wird erkannt).
+  höchstens 6 Abrufe je Domain. Ohne Impressum-Link wird das Impressum **vor** Kontakt- und
+  Teamseite geraten (`/impressum`, `/impressum/`, `/impressum.html`; mit `crawl --wiederholen`
+  zusätzlich `/impressum.php`, `/imprint`, `/kontakt/impressum`, `/rechtliches/` …); als
+  Impressum gilt eine Seite mit „Impressum", „Imprint", „Anbieterkennzeichnung" oder „Angaben
+  gemäß § 5" (Soft-404 wird erkannt). Linktexte auch „Rechtliches", „Rechtliche Hinweise",
+  „Imprint". Der Grund im Blatt nennt die probierten Pfade.
 - Max. 1 Request/Sekunde je Domain – **auch Weiterleitungen und robots.txt** (Weiter-
   leitungen werden selbst verfolgt) –, viele Domains parallel (`crawl.parallel_domains`),
   Timeout 15 s, 2 Retries mit Backoff, User-Agent aus `settings.yaml`.
-- robots.txt nach RFC 9309: 4xx → alles erlaubt, 5xx/nicht erreichbar → alles verboten.
+- robots.txt nach RFC 9309 (`robots.py`, nicht `urllib.robotparser`): für uns gilt die Gruppe,
+  deren User-Agent unser Produkt-Token genau trifft, sonst `*`; längste Regel gewinnt, bei
+  Gleichstand Allow; `*`/`$`; leeres Disallow sperrt nichts; Weiterleitungen werden gefolgt.
+  Sperren nur für GPTBot/ClaudeBot/CCBot oder nur für Pfade (`/wp-admin/`) betreffen die
+  Startseite nicht. 4xx → alles erlaubt; 5xx/nicht erreichbar → alles verboten, im Blatt als
+  „robots.txt nicht erreichbar (HTTP 503 | Timeout | …)" statt „robots.txt verbietet".
+- `recherche blocklist-vorschlag [--mindestens N] [--out datei.csv]`: Domains aus „Nicht
+  gefunden" mit Grund robots.txt/HTTP 403, nach Stammdomain zusammengefasst und nach Zahl der
+  Suchorte sortiert (viele Suchorte = Portal), mit Treffern, Name und Snippet – Vorschläge
+  zum Prüfen; übernommen wird von Hand in `config/domain_blocklist.txt`.
 - Jede URL wird **einmal** geladen und als **HTML (gzip) + bereinigter Text** in SQLite
   gecacht (auch 404). Der Text entsteht aus dem ganzen `<body>` mit Zeilenumbrüchen –
   **Navigation und Fußzeile bleiben**, weil dort oft Adresse und Telefon stehen.
@@ -145,7 +159,8 @@ der nächsten Quelle füllen.**
   U+2060, U+FEFF); geschützte und schmale Leerzeichen → normales Leerzeichen; NFC. Gilt
   für Textknoten und Attribute nach dem Parsen (Linktexte, Seitentext, trafilatura), für
   Regel-Eingaben (auch gecachten Text) und beim Laden der Fixtures.
-- Playwright nur als Rückfall für fast leere Seiten (< `crawl.min_text_zeichen`) und für
+- Playwright nur als Rückfall für fast leere Seiten (< `crawl.min_text_zeichen`), für eine
+  Startseite mit HTTP 403 (Bot-Schutz) und für
   Teamseiten mit großem HTML, aber kaum Text (≥ `playwright_team_min_html`, Text unter
   `playwright_team_min_anteil` = 2 % des HTML; Namen per JavaScript) – nur mit
   `crawl.playwright: true` (`setup.sh --mit-playwright`). Das gerenderte HTML ersetzt das
@@ -339,7 +354,7 @@ der nächsten Quelle füllen.**
 ### CLI (`cli.py`)
 
 `recherche search | fill | coverage | crawl | extract | export | run | search-compare | orte |
-fixture-add | fixture-eval | fixture-prompt`,
+blocklist-vorschlag | fixture-add | fixture-eval | fixture-prompt`,
 jeweils mit `--bundesland` und `--db`. **Jeder Schritt muss nach Abbruch
 wiederaufnehmbar sein**: Fortschritt steht in SQLite (Status je Domain und
 Schritt, erledigte Queries im Lauf-Protokoll); ein erneuter Aufruf macht nur das,

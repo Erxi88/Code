@@ -19,7 +19,6 @@ import asyncio
 import logging
 import re
 import time
-import urllib.robotparser
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from urllib.parse import urljoin, urlsplit, urlunsplit
@@ -29,6 +28,7 @@ from bs4 import BeautifulSoup, Comment
 
 from .config import CrawlConfig
 from .models import Kandidat, NichtGefunden, SchrittStatus, Seite, Seitentyp
+from .robots import Robots
 from .search.pipeline import ist_blockiert, normalize_domain
 from .storage import Storage
 from .textnorm import braucht_normalisierung, text_normalisieren
@@ -185,9 +185,10 @@ _DATEI_ENDUNGEN = (".pdf", ".jpg", ".jpeg", ".png", ".gif", ".zip", ".doc", ".do
 # Schlüsselwort im Pfadsegment bzw. im Linktext → Punkte. "=wort" verlangt genau diesen Linktext.
 MUSTER: dict[Seitentyp, dict[str, list[tuple[str, int]]]] = {
     Seitentyp.IMPRESSUM: {
-        "pfad": [("impressum", 10), ("imprint", 8), ("anbieterkennzeichnung", 8), ("legal-notice", 6)],
+        "pfad": [("impressum", 10), ("imprint", 8), ("anbieterkennzeichnung", 8), ("legal-notice", 6),
+                 ("rechtliche-hinweise", 6), ("rechtliches", 5)],
         "text": [("impressum", 10), ("imprint", 8), ("anbieterkennzeichnung", 8), ("legal notice", 8),
-                 ("rechtliche hinweise", 6), ("=rechtliches", 6), ("pflichtangaben", 6)],
+                 ("rechtliche hinweise", 6), ("rechtliches", 6), ("pflichtangaben", 6)],
     },
     Seitentyp.KONTAKT: {
         "pfad": [("kontakt", 10), ("contact", 8), ("anfahrt", 5), ("standort", 4)],
@@ -300,7 +301,14 @@ def _ohne_fragment(url: str) -> str:
     return urlunsplit((teile.scheme, teile.netloc, teile.path or "/", teile.query, ""))
 
 
-IMPRESSUM_RATEN = ("/impressum", "/impressum.html", "/impressum/")
+IMPRESSUM_RATEN = ("/impressum", "/impressum/", "/impressum.html")
+# zusätzlich bei crawl --wiederholen
+IMPRESSUM_RATEN_GRUENDLICH = ("/impressum.php", "/imprint", "/kontakt/impressum", "/rechtliches/",
+                              "/impressum-datenschutz/", "/legal-notice")
+# Seite ist ein Impressum (Soft-404-Prüfung beim Raten)
+_IMPRESSUM_INHALT = re.compile(
+    r"impressum|imprint|anbieterkennzeichnung|legal notice|angaben gemäß\s*§\s*5|§\s*5\s*(?:tmg|ddg)|§\s*18\s*mstv", re.I
+)
 
 
 # ---------------------------------------------------------------------- Abruf
@@ -387,6 +395,7 @@ class Crawler:
         renderer: Renderer | None = None,
         clock: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+        gruendlich: bool = False,
     ):
         self.cfg = cfg
         self.storage = storage
@@ -395,7 +404,8 @@ class Crawler:
         self._renderer = renderer
         self._sleep = sleep
         self.drossel = DomainDrossel(1.0 / max(cfg.requests_per_second_per_domain, 0.01), clock, sleep)
-        self._robots: dict[str, urllib.robotparser.RobotFileParser | bool] = {}
+        self._robots: dict[str, Robots | bool | str] = {}  # str = robots.txt nicht erreichbar (Grund)
+        self.gruendlich = gruendlich  # crawl --wiederholen: mehr Impressum-Pfade raten
         self.anfragen = 0
 
     @property
@@ -418,37 +428,50 @@ class Crawler:
     async def erlaubt(self, url: str) -> bool:
         if not self.cfg.respect_robots:
             return True
+        regeln = await self._regeln(url)
+        if isinstance(regeln, Robots):
+            return regeln.erlaubt(self.cfg.user_agent, url)
+        return regeln is True
+
+    async def robots_meldung(self, url: str) -> str:
+        """Grund fürs Blatt „Nicht gefunden": echte Sperre oder nicht erreichbare robots.txt."""
+        regeln = await self._regeln(url)
+        if isinstance(regeln, str):
+            return f"robots.txt nicht erreichbar ({regeln}) – nach RFC 9309 gesperrt"
+        return "robots.txt verbietet den Zugriff"
+
+    async def _regeln(self, url: str) -> Robots | bool | str:
         teile = urlsplit(url)
         host = f"{teile.scheme}://{teile.netloc}"
         if host not in self._robots:
             self._robots[host] = await self._lade_robots(host)
-        regeln = self._robots[host]
-        if isinstance(regeln, bool):
-            return regeln
-        return regeln.can_fetch(self.cfg.user_agent, url)
+        return self._robots[host]
 
-    async def _lade_robots(self, host: str) -> urllib.robotparser.RobotFileParser | bool:
-        """RFC 9309: 4xx → alles erlaubt; 5xx oder nicht erreichbar → alles verboten."""
+    async def _lade_robots(self, host: str) -> Robots | bool | str:
+        """RFC 9309: 4xx → alles erlaubt; 5xx oder nicht erreichbar → alles verboten (als Grund-Text
+        zurückgegeben); Weiterleitungen bis zu fünf Mal folgen."""
         gecacht = self.storage.cache_get("robots", host)
         if gecacht is None:
             domain = normalize_domain(host) or host
             await self.drossel.warten(domain)
             self.anfragen += 1
             try:
-                resp = await self.client.get(f"{host}/robots.txt")
+                resp = await self.client.get(f"{host}/robots.txt", follow_redirects=True)
                 gecacht = {"status": resp.status_code, "text": resp.text if resp.status_code == 200 else ""}
-            except httpx.HTTPError:
-                gecacht = {"status": None, "text": ""}
+            except httpx.TimeoutException:
+                gecacht = {"status": None, "text": "", "fehler": "Timeout"}
+            except httpx.HTTPError as e:
+                gecacht = {"status": None, "text": "", "fehler": type(e).__name__}
             if gecacht["status"] is not None and gecacht["status"] < 500:
                 self.storage.cache_put("robots", host, gecacht)  # vorübergehende Fehler nicht dauerhaft merken
         status = gecacht["status"]
-        if status is None or status >= 500:
-            return False
+        if status is None:
+            return gecacht.get("fehler") or "nicht erreichbar"
+        if status >= 500:
+            return f"HTTP {status}"
         if status != 200:
             return True
-        rp = urllib.robotparser.RobotFileParser()
-        rp.parse(gecacht["text"].splitlines())
-        return rp
+        return Robots.parse(gecacht["text"])
 
     # -------------------------------------------------------------- Seiten
 
@@ -458,8 +481,10 @@ class Crawler:
             fehler = None if seite.html is not None else f"HTTP {seite.http_status}"
             return Abruf(url, seite.http_status, seite.html, seite.text, seite.final_url, fehler, aus_cache=True)
         if not await self.erlaubt(url):
-            return Abruf(url, fehler="robots.txt verbietet den Zugriff")
+            return Abruf(url, fehler=await self.robots_meldung(url))
         abruf = await self._mit_retries(url, domain)
+        if abruf.status == 403 and typ == Seitentyp.START and self.cfg.playwright:
+            abruf = await self._rendern_nach_403(abruf)
         wenig_text = abruf.ok and (len(abruf.text or "") < self.cfg.min_text_zeichen or self._team_ohne_text(abruf, typ))
         if wenig_text and self.cfg.playwright:
             abruf = await self._rendern(abruf)
@@ -519,6 +544,22 @@ class Crawler:
             return Abruf(url, resp.status_code, final_url=final, fehler=f"kein HTML ({art.split(';')[0]})")
         html = resp.text[: self.cfg.max_bytes]
         return Abruf(url, resp.status_code, html, html_zu_text(html), final)
+
+    async def _rendern_nach_403(self, abruf: Abruf) -> Abruf:
+        """Bot-Schutz: Startseite mit HTTP 403 im echten Browser versuchen."""
+        renderer = self._renderer or (
+            lambda u: playwright_render(u, self.cfg.playwright_timeout_s, self.cfg.user_agent)
+        )
+        try:
+            html = await renderer(abruf.url)
+        except Exception as e:  # Playwright nicht installiert, Timeout …
+            abruf.playwright = f"nach HTTP 403 fehlgeschlagen ({type(e).__name__})"
+            return abruf
+        text = html_zu_text(html) if html else ""
+        if len(text) >= self.cfg.min_text_zeichen:
+            return Abruf(abruf.url, 200, html, text, abruf.url, playwright="gerendert nach HTTP 403 (Bot-Schutz)")
+        abruf.playwright = "nach HTTP 403 gerendert, aber ohne Text"
+        return abruf
 
     def _team_ohne_text(self, abruf: Abruf, typ: Seitentyp) -> bool:
         """Teamseite mit großem HTML, aber kaum Text (Namen per JavaScript nachgeladen)."""
@@ -590,32 +631,40 @@ class Crawler:
         gefunden = finde_unterseiten(start.html, basis, site)
         geladen: dict[str, Abruf] = {start.url: start}
         budget = self.cfg.max_seiten_je_domain - 1
-        for typ in (Seitentyp.IMPRESSUM, Seitentyp.KONTAKT, Seitentyp.TEAM, Seitentyp.TEAM2):
-            url = gefunden.get(typ)
-            if url is None:
-                continue
+
+        async def laden(url: str, typ: Seitentyp) -> Abruf | None:
+            nonlocal budget
             if url not in geladen:
                 if budget <= 0:
-                    break
+                    return None
                 geladen[url] = await self.hole(url, site, typ)
                 budget -= 1
-            if geladen[url].ok:
-                erg.seiten[typ] = geladen[url]
+            return geladen[url]
+
+        # Impressum zuerst: über den Link, sonst geraten – vor Kontakt/Team, damit das Budget reicht
+        if (url := gefunden.get(Seitentyp.IMPRESSUM)) and (abruf := await laden(url, Seitentyp.IMPRESSUM)) and abruf.ok:
+            erg.seiten[Seitentyp.IMPRESSUM] = abruf
+        probiert: list[str] = []
         if Seitentyp.IMPRESSUM not in erg.seiten:
-            for pfad in IMPRESSUM_RATEN:
-                if budget <= 0:
-                    break
+            raten = IMPRESSUM_RATEN + (IMPRESSUM_RATEN_GRUENDLICH if self.gruendlich else ())
+            for pfad in raten:
                 url = urljoin(basis, pfad)
                 if url in geladen:
                     continue
-                geladen[url] = abruf = await self.hole(url, site, Seitentyp.IMPRESSUM)
-                budget -= 1
+                if (abruf := await laden(url, Seitentyp.IMPRESSUM)) is None:
+                    break
+                probiert.append(pfad)
                 # Soft-404: manche Server liefern für unbekannte Pfade die Startseite aus
-                if abruf.ok and "impressum" in _norm(abruf.text or "") and abruf.text != start.text:
+                if abruf.ok and _IMPRESSUM_INHALT.search(abruf.text or "") and abruf.text != start.text:
                     erg.seiten[Seitentyp.IMPRESSUM] = abruf
                     break
+        for typ in (Seitentyp.KONTAKT, Seitentyp.TEAM, Seitentyp.TEAM2):
+            if (url := gefunden.get(typ)) and (abruf := await laden(url, typ)) and abruf.ok:
+                erg.seiten[typ] = abruf
         if Seitentyp.IMPRESSUM not in erg.seiten:
-            erg.grund, erg.url = "Kein Impressum gefunden", basis
+            link = f"Link {urlsplit(gefunden[Seitentyp.IMPRESSUM]).path} ohne Erfolg, " if Seitentyp.IMPRESSUM in gefunden else ""
+            erg.grund = f"Kein Impressum gefunden ({link}probiert: {', '.join(probiert) or '–'})"
+            erg.url = basis
 
     # -------------------------------------------------------------- Lauf
 
@@ -691,14 +740,16 @@ def run_crawl(
     client: httpx.AsyncClient | None = None,
     renderer: Renderer | None = None,
     fortschritt: Callable[[str], None] | None = None,
+    gruendlich: bool = False,
 ) -> CrawlStatistik:
-    """Crawlt alle offenen Kandidaten mit Website (wiederaufnehmbar über crawl_status)."""
+    """Crawlt alle offenen Kandidaten mit Website (wiederaufnehmbar über crawl_status).
+    `gruendlich` (crawl --wiederholen): zusätzliche Impressum-Pfade raten."""
     kandidaten = storage.kandidaten(bundesland, crawl_status=SchrittStatus.OFFEN, nur_mit_website=True)
     if limit:
         kandidaten = kandidaten[:limit]
 
     async def lauf() -> CrawlStatistik:
-        crawler = Crawler(cfg, storage, blocklist, client=client, renderer=renderer)
+        crawler = Crawler(cfg, storage, blocklist, client=client, renderer=renderer, gruendlich=gruendlich)
         try:
             return await crawler.run(kandidaten, bundesland, fortschritt)
         finally:

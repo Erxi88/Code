@@ -187,7 +187,7 @@ def _crawl(ctx: Kontext, limit: int | None = None, wiederholen: bool = False) ->
         )
         start = time.monotonic()
         stat = run_crawl(st, cfg, ctx.bundesland, ctx.blocklist(), limit=limit,
-                         fortschritt=lambda m: console.print(f"  {m}"))  # fmt: skip
+                         fortschritt=lambda m: console.print(f"  {m}"), gruendlich=wiederholen)  # fmt: skip
         st.log_lauf(
             LaufEintrag(lauf_id=_lauf_id(), schritt="crawl", bundesland=ctx.bundesland,
                         suchbegriff=f"{stat.fertig} gelesen, {stat.nicht_gefunden} nicht gefunden",
@@ -400,6 +400,38 @@ def fixture_add(
         farbe = "green" if hinweis.startswith("gerendert (") else "yellow"
         console.print(f"[{farbe}]Playwright {typ}: {hinweis}[/{farbe}]")
     console.print("Jetzt erwartet.json von Hand ausfüllen und _status auf 'fertig' setzen.")
+
+
+@app.command("blocklist-vorschlag")
+def blocklist_vorschlag(
+    bundesland: BundeslandOpt = None,
+    db: DbOpt = None,
+    config: ConfigOpt = None,
+    mindestens: Annotated[int, typer.Option(help="nur Domains mit mindestens so vielen Suchorten")] = 1,
+    out: Annotated[Path | None, typer.Option("--out", "-o", help="Liste als CSV (Semikolon)")] = None,
+    anzahl: Annotated[int, typer.Option(help="höchstens so viele Zeilen anzeigen")] = 50,
+) -> None:
+    """Domains aus „Nicht gefunden" (robots.txt/HTTP 403) nach Suchorten – Kandidaten für die Blocklist."""
+    from .blocklist_vorschlag import als_csv, vorschlaege
+
+    ctx = _kontext(config, bundesland, db)
+    with ctx.storage() as st:
+        liste = [v for v in vorschlaege(st, ctx.bundesland, ctx.blocklist()) if len(v.suchorte) >= mindestens]
+    if not liste:
+        console.print("Keine Domains mit Grund robots.txt oder HTTP 403 in „Nicht gefunden\".")
+        return
+    t = Table(title=f"Blocklist-Vorschläge ({len(liste)} Domains, sortiert nach Suchorten)")
+    for col in ("Domain", "Suchorte", "Treffer", "Grund", "Name / Snippet"):
+        t.add_column(col, justify="right" if col in ("Suchorte", "Treffer") else "left")
+    for v in liste[:anzahl]:
+        text = " – ".join(x for x in (v.name, (v.snippet or "")[:80]) if x)
+        domain = v.domain + (f" (+{len(v.domains) - 1} Subdomains)" if len(v.domains) > 1 else "")
+        t.add_row(domain, str(len(v.suchorte)), str(v.treffer), v.grund_kurz, text)
+    console.print(t)
+    console.print("Prüfen und übernehmen: config/domain_blocklist.txt (eine Domain je Zeile). "
+                  "Ab etwa 3 Suchorten ist es fast immer ein Portal.")
+    if out:
+        console.print(f"CSV geschrieben: {als_csv(liste, out)}")
 
 
 @app.command("fixture-eval")

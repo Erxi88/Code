@@ -243,7 +243,7 @@ def test_impressum_wird_geraten(storage):
 def test_kein_impressum(storage):
     web, clock, ids = _setup(storage, {"https://a.example/": (200, START_OHNE_IMPRESSUM)}, ("a.example", {}))
     _crawl(storage, web, clock)
-    assert storage.nicht_gefunden("SH")[0].grund == "Kein Impressum gefunden"
+    assert storage.nicht_gefunden("SH")[0].grund.startswith("Kein Impressum gefunden (probiert: /impressum")
     # Rateversuche begrenzt (max_seiten_je_domain)
     assert len([u for u in web.urls() if "impressum" in u]) == 3
 
@@ -254,7 +254,7 @@ def test_soft_404_ist_kein_impressum(storage):
         seiten["https://a.example" + pfad] = seiten["https://a.example/"]
     web, clock, _ = _setup(storage, seiten, ("a.example", {}))
     _crawl(storage, web, clock)
-    assert storage.nicht_gefunden("SH")[0].grund == "Kein Impressum gefunden"
+    assert storage.nicht_gefunden("SH")[0].grund.startswith("Kein Impressum gefunden (")
 
 
 JS_SEITE = "<html><body><div id='app'></div><script src='/app.js'></script></body></html>"
@@ -352,3 +352,90 @@ def test_playwright_ergebnis_wird_gemeldet(storage, playwright, renderer, erwart
         return await c.hole("https://js.example/", "js.example", Seitentyp.START)
 
     assert asyncio.run(lauf()).playwright.startswith(erwartet)
+
+
+# ---- Pilot: robots.txt-Gründe, mehr Impressum-Pfade, Playwright nach 403
+
+@pytest.mark.parametrize(("robots", "grund"), [
+    ((200, "User-agent: *\nDisallow: /\n"), "robots.txt verbietet den Zugriff"),
+    ((503, ""), "robots.txt nicht erreichbar (HTTP 503) – nach RFC 9309 gesperrt"),
+    (httpx.ConnectTimeout("x"), "robots.txt nicht erreichbar (Timeout) – nach RFC 9309 gesperrt"),
+    (httpx.ConnectError("x"), "robots.txt nicht erreichbar (ConnectError) – nach RFC 9309 gesperrt"),
+])  # fmt: skip
+def test_robots_grund_unterscheidet_sperre_und_nicht_erreichbar(storage, robots, grund):
+    seiten = {**beispiel_seiten("foerde-steuer.example"), "https://foerde-steuer.example/robots.txt": robots,
+              "http://foerde-steuer.example/robots.txt": robots}
+    web, clock, _ = _setup(storage, seiten, ("foerde-steuer.example", {}))
+    _crawl(storage, web, clock)
+    assert storage.nicht_gefunden("SH")[0].grund == f"Startseite: {grund}"
+
+
+@pytest.mark.parametrize("robots", [
+    "User-agent: GPTBot\nDisallow: /\n\nUser-agent: ClaudeBot\nDisallow: /\n\nUser-agent: CCBot\nDisallow: /",
+    "User-agent: *\nDisallow: /wp-admin/\nAllow: /wp-admin/admin-ajax.php",
+    "User-agent: *\nDisallow:",
+    "User-agent: re\nDisallow: /",  # Teilstring von „kanzlei-recherche" – betrifft uns nicht
+])  # fmt: skip
+def test_ki_bot_und_pfad_sperren_lassen_die_startseite_zu(storage, robots):
+    seiten = {**beispiel_seiten("foerde-steuer.example"), "https://foerde-steuer.example/robots.txt": (200, robots)}
+    web, clock, _ = _setup(storage, seiten, ("foerde-steuer.example", {}))
+    assert _crawl(storage, web, clock).fertig == 1
+
+
+def test_robots_txt_weiterleitung_wird_gefolgt(storage):
+    seiten = {**beispiel_seiten("foerde-steuer.example"),
+              "https://foerde-steuer.example/robots.txt": (301, "", {"location": "https://cdn.example/robots.txt"}),
+              "https://cdn.example/robots.txt": (200, "User-agent: *\nDisallow: /\n")}
+    web, clock, _ = _setup(storage, seiten, ("foerde-steuer.example", {}))
+    _crawl(storage, web, clock)
+    assert storage.nicht_gefunden("SH")[0].grund == "Startseite: robots.txt verbietet den Zugriff"
+
+
+def test_impressum_wird_vor_kontakt_und_team_geraten(storage):
+    """Ohne Impressum-Link: erst raten, dann Kontakt/Team – sonst ist das Budget verbraucht."""
+    start = ("<body><h1>Kanzlei</h1><p>" + "Steuerberatung in Kiel. " * 30 + "</p><a href='/kontakt'>Kontakt</a>"
+             "<a href='/team'>Team</a><a href='/ueber-uns'>Über uns</a></body>")
+    seiten = {"https://a.example/": (200, start),
+              "https://a.example/impressum.html": (200, "<body><p>Angaben gemäß § 5 TMG</p><p>Wall 5, 24103 Kiel</p></body>")}
+    web, clock, ids = _setup(storage, seiten, ("a.example", {}))
+    assert _crawl(storage, web, clock, cfg=CFG.model_copy(update={"max_seiten_je_domain": 4})).fertig == 1
+    assert storage.kandidat_seiten(ids[0])[Seitentyp.IMPRESSUM].url == "https://a.example/impressum.html"
+
+
+def test_gruendlich_probiert_weitere_pfade(storage):
+    seiten = {"https://a.example/": (200, START_OHNE_IMPRESSUM),
+              "https://a.example/imprint": (200, "<body><h1>Imprint</h1><p>Wall 5, 24103 Kiel</p></body>")}
+    web, clock, ids = _setup(storage, seiten, ("a.example", {}))
+    _crawl(storage, web, clock)
+    assert "probiert: /impressum, /impressum/, /impressum.html" in storage.nicht_gefunden("SH")[0].grund
+    storage.fehler_zuruecksetzen("SH", "crawl")
+    import asyncio
+
+    async def lauf():
+        c = Crawler(CFG, storage, set(), client=web.client(), clock=clock, sleep=clock.sleep, gruendlich=True)
+        return await c.run(storage.kandidaten("SH", crawl_status=SchrittStatus.OFFEN, nur_mit_website=True), "SH")
+
+    assert asyncio.run(lauf()).fertig == 1
+    assert storage.kandidat_seiten(ids[0])[Seitentyp.IMPRESSUM].url == "https://a.example/imprint"
+
+
+@pytest.mark.parametrize("linktext", ["Anbieterkennzeichnung", "Rechtliche Hinweise", "Rechtliches", "Imprint"])
+def test_impressum_linktexte(linktext):
+    html = f"<a href='/seite-42'>{linktext}</a><a href='/team'>Team</a>"
+    assert finde_unterseiten(html, "https://a.example/", "a.example")[Seitentyp.IMPRESSUM] == "https://a.example/seite-42"
+
+
+def test_playwright_nach_403_auf_der_startseite(storage):
+    original = beispiel_seiten("foerde-steuer.example")
+    start = "https://foerde-steuer.example/"
+    seiten = {**original, start: (403, "Access denied")}
+    aufrufe = []
+
+    async def renderer(url):
+        aufrufe.append(url)
+        return original[start][1]
+
+    web, clock, ids = _setup(storage, seiten, ("foerde-steuer.example", {}))
+    assert _crawl(storage, web, clock, cfg=CFG.model_copy(update={"playwright": True}), renderer=renderer).fertig == 1
+    assert aufrufe == [start]
+    assert storage.kandidat_seiten(ids[0])[Seitentyp.START].http_status == 200
