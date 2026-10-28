@@ -227,7 +227,7 @@ def beste_email(kandidaten: list[str], domain: str | None, nachrangig: tuple[str
     return min(kandidaten, key=rang) if kandidaten else None
 
 
-_MOBIL = re.compile(r"^\+491[567]")
+_MOBIL = re.compile(r"^\+49 ?1[567]")
 # Nummer ohne Beschriftung in eigener Zeile („0431 38575740", „+49 (0)431 3857 5740")
 _NUMMER_ALLEIN = re.compile(r"^(?:\(?0|\+)[\d\s/()\-–.]{6,}\d$")  # mit Vorwahl – keine Steuer-/Registernummer
 

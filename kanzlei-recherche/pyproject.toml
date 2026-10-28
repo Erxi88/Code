@@ -18,6 +18,7 @@ dependencies = [
     "python-dotenv>=1.0",
     "openpyxl>=3.1",
     "ddgs>=9",
+    "phonenumbers>=8.13",
 ]
 
 [project.optional-dependencies]

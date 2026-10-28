@@ -93,7 +93,7 @@ def test_kein_fax_und_keine_jahreszahl():
 
 def test_telefon_aus_tel_link(ausschluss):
     r = extract_impressum("Impressum\nKanzlei Ohnetel", ausschluss, links=["tel:+494311234567"])
-    assert r.telefon == "+494311234567"
+    assert r.telefon == "+49 431 1234567"
 
 
 def test_emails_entschleiert_und_aus_mailto():
