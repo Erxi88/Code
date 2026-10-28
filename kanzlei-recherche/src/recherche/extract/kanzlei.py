@@ -6,10 +6,15 @@ und bekämen sonst Konfidenz „hoch". Eine Zeile gilt als Kanzlei, wenn mindest
 - das Impressum nennt eine Steuerberaterkammer (Aufsicht, § 5 DDG) – der wichtigste Anker,
 - mindestens ein Berufsträger erkannt (Impressum oder Teamseite),
 - Rechtsform aus der Kanzlei-Liste (`extract.kanzlei_rechtsformen`: PartG mbB, PartG, Einzelkanzlei),
-- Kanzleiname enthält Steuer…, StB, Kanzlei, Treuhand, Revision oder Wirtschaftsprüf…,
+- Kanzleiname enthält Steuer…, StB, Kanzlei, Treuhand, Revision oder Wirtschaftsprüf… (kein
+  Domain-Name wie „11880-steuerberater.com" und kein Portal-Titel wie „Steuerberater in Kiel"),
 - Titel oder Snippet eines Suchtreffers enthält „Steuerberat…", „Steuerkanzlei" oder „StB"
-  („Spieckermann | Goetz" mit knapper Website) – nur bei weniger als SNIPPET_BIS_ORTE Suchorten,
-  denn Branchenbücher („Die besten Steuerberater in Kiel") kommen in vielen Orten.
+  („Spieckermann | Goetz" mit knapper Website).
+
+Die letzten drei Merkmale zählen nicht,
+- wenn die Stammdomain (alle Subdomains und Unterseiten zusammen) in PORTAL_AB_ORTEN oder mehr
+  Suchorten gefunden wurde – Portale wie city-map.de kommen als viele Kandidaten mit je 1–2 Orten,
+- oder wenn der Kanzleiname leer ist (Portal-Seite ohne Kanzlei).
 
 Sonst: Status „keine Kanzlei", Grund vorn in „Abweichung", Konfidenz höchstens „mittel", eigenes
 Excel-Blatt mit allen Feldern (nichts wird gelöscht). Nur aktiv mit `extract.kanzlei_pruefung: true`; `recherche kanzlei-pruefung` wendet
@@ -32,7 +37,13 @@ GRUND_PRAEFIX = "Keine Kanzlei: "
 
 _KANZLEI_WORT = re.compile(r"steuer|\bstb\b|kanzlei|treuhand|revision|wirtschaftspr[üu]f", re.IGNORECASE)
 _SUCHTREFFER_WORT = re.compile(r"steuerberat|steuerkanzlei|\bstb\b", re.IGNORECASE)
-SNIPPET_BIS_ORTE = 5  # ab so vielen Suchorten zählt das Snippet nicht (Portal)
+PORTAL_AB_ORTEN = 5  # ab so vielen Suchorten der Stammdomain zählen Name, Rechtsform und Snippet nicht
+# kein Kanzleiname: Domain („11880-steuerberater.com") oder Portal-Seitentitel
+_SCHEIN_NAME = re.compile(
+    r"\b[\w-]+\.(?:de|com|net|org|info|eu|biz|online|tax)\b|\bsteuerberater(?:in|innen)?\s+(?:in|im|für|aus|bei|nahe)\b|"
+    r"\b(?:finden|suche|vergleich|verzeichnis|branchenbuch|bewertung|die\s+besten|top\s*\d+|in\s+der\s+nähe)\b",
+    re.IGNORECASE,
+)
 _KAMMER = re.compile(r"steuerberaterkammer|kammer\s+der\s+steuerberater", re.IGNORECASE)
 # ein Grund-Eintrag in „Abweichung" (bis zum nächsten „; " oder Ende)
 _GRUND_EINTRAG = re.compile(re.escape(GRUND_PRAEFIX) + r"[^;]*(?:;\s*|$)")
@@ -40,25 +51,30 @@ _GRUND_EINTRAG = re.compile(re.escape(GRUND_PRAEFIX) + r"[^;]*(?:;\s*|$)")
 
 def kein_kanzlei_grund(k: Kanzlei, impressum_text: str | None,
                        rechtsformen: tuple[str, ...] | list[str] = STANDARD_RECHTSFORMEN,
-                       funde: Sequence[Fund] = ()) -> str | None:
-    """None, wenn ein Kanzlei-Merkmal zutrifft; sonst der Grund (welche Merkmale fehlen)."""
+                       funde: Sequence[Fund] = (), suchorte: int | None = None) -> str | None:
+    """None, wenn ein Kanzlei-Merkmal zutrifft; sonst der Grund.
+
+    `suchorte`: Zahl der Suchorte der Stammdomain über alle Kandidaten (Standard: nur diese Funde)."""
     if impressum_text and _KAMMER.search(impressum_text):
         return None
     if k.berufstraeger_anzahl:
         return None
+    basis = "keine Steuerberaterkammer im Impressum, kein Berufsträger"
+    if suchorte is None:
+        suchorte = len({f.suchort for f in funde if f.suchort})
+    if suchorte >= PORTAL_AB_ORTEN:
+        return f"{basis}, Domain in {suchorte} Suchorten (Portal)"
+    name = k.kanzleiname if k.kanzleiname and not _SCHEIN_NAME.search(k.kanzleiname) else None
+    if not name:
+        return f"{basis}, kein Kanzleiname" + (f" („{k.kanzleiname}“ ist Domain oder Portal-Titel)" if k.kanzleiname else "")
     if k.rechtsform and k.rechtsform in rechtsformen:
         return None
-    if k.kanzleiname and _KANZLEI_WORT.search(k.kanzleiname):
+    if _KANZLEI_WORT.search(name):
         return None
-    orte = {f.suchort for f in funde if f.suchort}
-    suchtreffer = len(orte) < SNIPPET_BIS_ORTE and any(
-        _SUCHTREFFER_WORT.search(f"{f.name or ''} {f.snippet or ''}") for f in funde)
-    if suchtreffer:
+    if any(_SUCHTREFFER_WORT.search(f"{f.name or ''} {f.snippet or ''}") for f in funde):
         return None
     form = f" ({k.rechtsform})" if k.rechtsform else ""
-    treffer = f"Suchtreffer in {len(orte)} Orten (Portal?)" if len(orte) >= SNIPPET_BIS_ORTE else "kein Steuerberater im Suchtreffer"
-    return (f"keine Steuerberaterkammer im Impressum, kein Berufsträger, keine Kanzlei-Rechtsform{form}, "
-            f"kein Kanzleiwort im Namen, {treffer}")
+    return f"{basis}, keine Kanzlei-Rechtsform{form}, kein Kanzleiwort im Namen, kein Steuerberater im Suchtreffer"
 
 
 def grund_aus_abweichung(abweichung: str | None) -> str | None:
@@ -83,10 +99,40 @@ def anwenden(k: Kanzlei, grund: str | None, impressum_gelesen: bool) -> Kanzlei:
     return k
 
 
-def pruefen(k: Kanzlei, seiten: dict, rechtsformen=STANDARD_RECHTSFORMEN, funde: Sequence[Fund] = ()) -> Kanzlei:
+def pruefen(k: Kanzlei, seiten: dict, rechtsformen=STANDARD_RECHTSFORMEN, funde: Sequence[Fund] = (),
+            suchorte: int | None = None) -> Kanzlei:
     impressum = seiten.get(Seitentyp.IMPRESSUM)
     text = text_normalisieren(impressum.text) if impressum else None
-    return anwenden(k, kein_kanzlei_grund(k, text, rechtsformen, funde), impressum is not None)
+    return anwenden(k, kein_kanzlei_grund(k, text, rechtsformen, funde, suchorte), impressum is not None)
+
+
+# Baukasten-Hoster: jede Subdomain ist eine eigene Website (oft eine kleine Kanzlei)
+_HOSTER = frozenset({
+    "wixsite.com", "jimdosite.com", "jimdo.com", "jimdofree.com", "webnode.page", "webnode.com", "weebly.com",
+    "wordpress.com", "blogspot.com", "business.site", "site123.me", "strato-hosting.eu", "ionos.de", "one.com",
+    "homepage.t-online.de", "beepworld.de", "npage.de", "co.uk", "com.de",
+})  # fmt: skip
+
+
+def stammdomain(domain: str) -> str:
+    """„kiel.portal.example" → „portal.example" (Subdomains je Ort zusammenfassen); bei Baukasten-
+    Hostern bleibt die Subdomain („kanzlei.wixsite.com")."""
+    teile = domain.lower().removeprefix("www.").split(".")
+    for n in (3, 2):
+        if len(teile) > n and ".".join(teile[-n:]) in _HOSTER:
+            return ".".join(teile[-n - 1:])
+    return ".".join(teile[-2:]) if len(teile) > 2 else ".".join(teile)
+
+
+def suchorte_je_stammdomain(storage: Storage, bundesland: str) -> dict[str, int]:
+    """Zahl der Suchorte je Stammdomain über alle Kandidaten und Funde des Bundeslandes."""
+    orte: dict[str, set[str]] = {}
+    for domain, suchort in storage.conn.execute(
+        "SELECT k.domain, f.suchort FROM funde f JOIN kandidaten k ON k.id = f.kandidat_id "
+        "WHERE k.bundesland = ? AND k.domain IS NOT NULL AND f.suchort IS NOT NULL", (bundesland,)
+    ):
+        orte.setdefault(stammdomain(domain), set()).add(suchort)
+    return {d: len(o) for d, o in orte.items()}
 
 
 @dataclass
@@ -101,11 +147,13 @@ def run_pruefung(storage: Storage, bundesland: str, rechtsformen=STANDARD_RECHTS
                  fortschritt: Callable[[str], None] | None = None) -> PruefStatistik:
     """Kanzlei-Erkennung auf alle extrahierten Kanzleien mit Website anwenden (ohne LLM)."""
     stat = PruefStatistik()
+    orte = suchorte_je_stammdomain(storage, bundesland)
     for k in storage.kanzleien(bundesland):
         if not k.domain or k.kandidat_id is None:
             continue  # ohne Website: Discovery aus Verzeichnissen, keine Seiten zum Prüfen
         vorher_status, vorher_konf = k.status, k.konfidenz
-        pruefen(k, storage.kandidat_seiten(k.kandidat_id), rechtsformen, storage.funde_kandidat(k.kandidat_id))
+        pruefen(k, storage.kandidat_seiten(k.kandidat_id), rechtsformen, storage.funde_kandidat(k.kandidat_id),
+                orte.get(stammdomain(k.domain), 0))
         stat.geprueft += 1
         if k.status == Status.KEINE_KANZLEI or grund_aus_abweichung(k.abweichung):
             stat.keine_kanzlei += 1

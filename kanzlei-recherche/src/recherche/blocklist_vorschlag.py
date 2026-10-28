@@ -12,19 +12,13 @@ import csv
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .extract.kanzlei import PORTAL_AB_ORTEN, stammdomain
 from .models import Status
 from .search.pipeline import ist_blockiert
 from .storage import Storage
 
 GRUENDE = ("robots.txt", "HTTP 403")
 KEINE_KANZLEI = "keine Kanzlei"
-PORTAL_AB_ORTEN = 5
-
-
-def stammdomain(domain: str) -> str:
-    """„kiel.portal.example" → „portal.example" (Subdomains je Ort zusammenfassen)."""
-    teile = domain.lower().split(".")
-    return ".".join(teile[-2:]) if len(teile) > 2 else domain.lower()
 
 
 @dataclass

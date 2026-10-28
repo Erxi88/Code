@@ -20,7 +20,7 @@ from ..normalize import PlzPruefer
 from ..storage import Storage
 from ..textnorm import text_normalisieren
 from .base import AnbieterNichtErreichbar, Extractor, ExtraktionFehler
-from .kanzlei import pruefen
+from .kanzlei import pruefen, stammdomain, suchorte_je_stammdomain
 from .merge import zusammenfuehren
 from .prompt import seiten_rahmen
 from .rules import Ausschluss, extract_impressum, festnetz_aus_html, ist_mobil
@@ -93,11 +93,13 @@ def run_extract(
     ]  # fmt: skip
     if limit:
         offen = offen[:limit]
+    suchorte = suchorte_je_stammdomain(storage, bundesland) if kanzlei_rechtsformen is not None else {}
     for k in offen:
         try:
             kanzlei = _eine(storage, k, extractor, pruefer, ausschluss, stat)
             if kanzlei_rechtsformen is not None and k.domain:
-                pruefen(kanzlei, storage.kandidat_seiten(k.id), tuple(kanzlei_rechtsformen), storage.funde_kandidat(k.id))
+                pruefen(kanzlei, storage.kandidat_seiten(k.id), tuple(kanzlei_rechtsformen), storage.funde_kandidat(k.id),
+                        suchorte.get(stammdomain(k.domain), 0))
         except AnbieterNichtErreichbar as e:
             stat.abbruch = str(e)
             break

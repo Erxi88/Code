@@ -72,7 +72,7 @@ def test_magazin_mit_sauberem_verlagsimpressum_ist_keine_kanzlei():
     pruefen(k, seiten, funde=viele)
     assert k.status == Status.KEINE_KANZLEI and k.konfidenz == Konfidenz.MITTEL
     grund = grund_aus_abweichung(k.abweichung)
-    assert "keine Steuerberaterkammer" in grund and "Rechtsform (GmbH)" in grund and "5 Orten" in grund
+    assert grund.startswith("keine Steuerberaterkammer") and "5 Suchorten (Portal)" in grund
     # ohne Suchtreffer genauso
     pruefen(k, seiten)
     assert k.status == Status.KEINE_KANZLEI and grund_aus_abweichung(k.abweichung).endswith("kein Steuerberater im Suchtreffer")
@@ -184,3 +184,46 @@ def test_cli(tmp_path):
     r = CliRunner().invoke(cli.app, ["kanzlei-pruefung", "--db", str(db), "-b", "SH"])
     assert r.exit_code == 0, r.output
     assert "1 keine Kanzlei" in r.output and "kiel-magazin.example" in r.output
+
+
+def test_portal_mit_vielen_subdomains_zaehlt_je_stammdomain(storage):
+    """city-map.de: viele Kandidaten (Subdomains je Ort) mit je einem Suchort und Steuerberater-Titel."""
+    for i in range(6):
+        domain = f"ort{i}.city-map.example"
+        _speichern(storage, domain, None, ["Impressum", "City Map GmbH", "Geschäftsführer: Max Muster"],
+                   funde=[_fund(domain, ort=f"Ort {i}", name=f"Steuerberater in Ort {i} – City Map")])
+    _speichern(storage, "kanzlei-am-wall.example", "Kanzlei am Wall", ["Impressum"],
+               funde=[_fund("kanzlei-am-wall.example", ort="Kiel")])
+    stat = run_pruefung(storage, "SH")
+    assert stat.keine_kanzlei == 6
+    k = next(k for k in storage.kanzleien("SH") if k.domain == "ort0.city-map.example")
+    assert "Domain in 6 Suchorten (Portal)" in grund_aus_abweichung(k.abweichung)
+
+
+def test_ab_fuenf_suchorten_zaehlen_nur_kammer_und_berufstraeger():
+    k = Kanzlei(lauf_bundesland="SH", kanzleiname="Steuerberatung Nord GmbH", rechtsform="PartG mbB")
+    assert kein_kanzlei_grund(k, None, suchorte=4) is None
+    assert "Portal" in kein_kanzlei_grund(k, None, suchorte=5)
+    assert kein_kanzlei_grund(k, "Steuerberaterkammer Schleswig-Holstein", suchorte=78) is None
+    assert kein_kanzlei_grund(k.model_copy(update={"berufstraeger_anzahl": 2}), None, suchorte=78) is None
+
+
+@pytest.mark.parametrize("name, rechtsform", [
+    (None, "Einzelkanzlei"),  # Portal-Impressum mit einem Vertreter → Einzelkanzlei
+    ("11880-steuerberater.com", None),
+    ("Steuerberater in Kiel – jetzt vergleichen", None),
+    ("Die besten Steuerberater in Husum", "GmbH"),
+])  # fmt: skip
+def test_ohne_echten_kanzleinamen_keine_kanzlei(name, rechtsform):
+    k = Kanzlei(lauf_bundesland="SH", kanzleiname=name, rechtsform=rechtsform)
+    funde = [_fund("x.example", name="Steuerberater in Kiel")]
+    assert "kein Kanzleiname" in kein_kanzlei_grund(k, None, funde=funde)
+
+
+def test_stammdomain_baukasten_hoster_bleiben_getrennt():
+    from recherche.extract.kanzlei import stammdomain
+
+    assert stammdomain("kiel.city-map.de") == "city-map.de"
+    assert stammdomain("www.kanzlei.example") == "kanzlei.example"
+    assert stammdomain("holgerherholz.wixsite.com") == "holgerherholz.wixsite.com"
+    assert stammdomain("steuer-nord.jimdofree.com") == "steuer-nord.jimdofree.com"

@@ -331,9 +331,11 @@ der nächsten Quelle füllen.**
   Kanzlei ist, wer **mindestens eins** erfüllt (ODER): Steuerberaterkammer im Impressum (§ 5 DDG,
   wichtigster Anker); Berufsträger erkannt (Impressum oder Teamseite); Rechtsform aus
   `extract.kanzlei_rechtsformen` (PartG mbB, PartG, Einzelkanzlei); Kanzleiname mit Steuer…, StB,
-  Kanzlei, Treuhand, Revision, Wirtschaftsprüf…; Titel/Snippet eines Suchtreffers mit
-  „Steuerberat…", „Steuerkanzlei", „StB" – nur bei weniger als 5 Suchorten (Branchenbücher
-  kommen in vielen Orten). Sonst Status `keine Kanzlei`, Grund vorn in „Abweichung"
+  Kanzlei, Treuhand, Revision, Wirtschaftsprüf… (kein Domain-Name wie „11880-steuerberater.com",
+  kein Portal-Titel wie „Steuerberater in Kiel"); Titel/Snippet eines Suchtreffers mit
+  „Steuerberat…", „Steuerkanzlei", „StB". Name, Rechtsform und Snippet zählen **nicht**, wenn die
+  Stammdomain (alle Subdomains und Unterseiten aller Kandidaten zusammen; Baukasten-Hoster wie
+  wixsite.com je Subdomain) in ≥ 5 Suchorten vorkommt, und nicht ohne echten Kanzleinamen. Sonst Status `keine Kanzlei`, Grund vorn in „Abweichung"
   („Keine Kanzlei: …"), Konfidenz höchstens `mittel`. Nichts wird gelöscht. Nur Kandidaten mit
   Website; ein von Hand gepflegter Status bleibt. `recherche kanzlei-pruefung` wendet die
   Prüfung ohne LLM auf bereits extrahierte Kanzleien an (auch zurück zu `neu`). Big-Four-
