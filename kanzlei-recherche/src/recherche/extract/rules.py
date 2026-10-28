@@ -259,6 +259,27 @@ def telefon_kandidaten(text: str, ausschluss: Ausschluss | None = None, impressu
     return [(n, art + (", mobil" if ist_mobil(n) else "")) for n, art in ergebnis]
 
 
+_NUMMER_IM_HTML = re.compile(r"(?:\+49|(?<![\d.])0)[\d\s()/\-–.]{7,22}\d")
+
+
+def telefon_im_html(html: str | None) -> list[tuple[str, str]]:
+    """(Nummer, Fundstelle) aller telefonartigen Zahlen im rohen HTML – auch in Attributen, Skripten,
+    <template>/<svg> und tel:-Links. Zeigt, ob eine Nummer vor der Textumwandlung verloren geht."""
+    gefunden: list[tuple[str, str]] = []
+    for m in _NUMMER_IM_HTML.finditer(html or ""):
+        if not (n := normalize_telefon(m.group(0))):
+            continue
+        davor = html[max(0, m.start() - 60): m.start()]
+        stelle = ("tel:-Link" if davor.rstrip().endswith("tel:") else
+                  "Skript" if davor.rfind("<script") > davor.rfind("</script") else
+                  "Attribut" if re.search(r"=\s*[\"'][^\"'<>]*$", davor) else "Text")
+        tag = re.findall(r"<(\w+)", davor)
+        eintrag = (n, f"{stelle}{', in <' + tag[-1] + '>' if tag else ''}")
+        if eintrag not in gefunden:
+            gefunden.append(eintrag)
+    return gefunden
+
+
 def extract_impressum(
     text: str,
     ausschluss: Ausschluss | None = None,

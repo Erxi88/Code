@@ -239,6 +239,11 @@ def erkenne_personen(
             k += 1
         return k < len(zeilen) and name_in(k) is not None
 
+    def namensliste_danach(j: int) -> bool:
+        """Folgen auf Zeile j zwei Namen direkt hintereinander? Dann ist j die Überschrift eines Abschnitts."""
+        naechste = [k for k in range(j + 1, min(len(zeilen), j + 6)) if zeilen[k]][:2]
+        return len(naechste) == 2 and all(name_in(k) is not None for k in naechste)
+
     for i, z in enumerate(zeilen):
         if not z or i in vergeben:
             continue
@@ -265,6 +270,8 @@ def erkenne_personen(
             if j in im_rahmen and len(zj.split()) > 3:
                 break  # Fußzeile („Hansen & Petersen Steuerberater PartG mbB · …") gehört nicht zur Kachel
             if _ist_funktion(zj, f) and not _beginnt_mit_name(zj):
+                if folge and len(zj.split()) <= 4 and namensliste_danach(j):
+                    break  # „BSHK Partner" ⏎ Name ⏎ Name: Überschrift des nächsten Abschnitts
                 folge.append(j)
             elif _nur_titel(zj):
                 titel_zusatz.append(j)  # „Dipl.-Volkswirt" zwischen Funktion und Berufsbezeichnung

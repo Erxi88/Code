@@ -211,7 +211,7 @@ ABZUEGE: dict[Seitentyp, list[tuple[str, int]]] = {
     Seitentyp.KONTAKT: [("datenschutz", -15), ("impressum", -6)],
     Seitentyp.TEAM: [("karriere", -8), ("jobs", -8), ("stellen", -8), ("ausbildung", -6), ("datenschutz", -15),
                      ("kooperationspartner", -8), ("netzwerk", -4), ("honorar", -8), ("preise", -6),
-                     ("gebuehren", -6), ("empfehlungen", -8), ("digitale", -5)],
+                     ("gebuehren", -6), ("empfehlungen", -8), ("digitale", -5), ("leistungen", -8)],
 }
 TYP_WORT = {Seitentyp.IMPRESSUM: "impressum", Seitentyp.KONTAKT: "kontakt", Seitentyp.TEAM: "team"}
 MINDESTPUNKTE = 5
@@ -247,7 +247,8 @@ def punkte(typ: Seitentyp, url: str, text: str) -> int:
         return linktext == wort[1:] if wort.startswith("=") else _wort_in(wort, linktext)
 
     pfad_p = max((w for wort, w in MUSTER[typ]["pfad"] if im_pfad(wort)), default=0)
-    text_p = max((w for wort, w in MUSTER[typ]["text"] if im_text(wort)), default=0)
+    # langer Linktext ist Fließtext („07 Lohnbuchhaltung Unsere Experten übernehmen …"): nur der Pfad zählt
+    text_p = 0 if len(linktext.split()) > 5 else max((w for wort, w in MUSTER[typ]["text"] if im_text(wort)), default=0)
     p = max(pfad_p, text_p) + (2 if pfad_p and text_p else 0)
     typ_wort = TYP_WORT[typ]
     if not (im_pfad(typ_wort) or im_text(typ_wort)) or typ != Seitentyp.IMPRESSUM:

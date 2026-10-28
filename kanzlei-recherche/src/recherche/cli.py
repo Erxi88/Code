@@ -517,6 +517,10 @@ def fixture_prompt(
         console.print(f"Telefon (Regel): {d.regel_telefon or '–'}; Kandidaten:")
         for seite, nummer, art in d.telefone:
             console.print(f"  {seite}: {nummer} ({art})")
+        if d.telefon_html:
+            console.print("Telefonnummern im rohen HTML (Impressum, Startseite):")
+            for seite, nummer, stelle in d.telefon_html:
+                console.print(f"  {seite}: {nummer} ({stelle})")
         console.print("Impressum-Kopf (ohne Navigation/Fremd-Abschnitte):")
         for zeile in d.impressum_kopf:
             console.print(f"  {zeile[:100]}")

@@ -724,3 +724,49 @@ def test_einzelkanzlei_mit_ueber_mich_seite():
                         ausschluss=Ausschluss.laden(STANDARD_AUSSCHLUSS))
     assert (k.kanzleiname, k.rechtsform, k.berufstraeger_anzahl, k.teamgroesse) == (
         "Steuerberater Andreas Schreiner", "Einzelkanzlei", 1, 1)
+
+
+def test_langer_linktext_unter_leistungen_ist_keine_teamseite():
+    from recherche.crawl import punkte
+
+    assert punkte(Seitentyp.TEAM, "https://g.example/leistungen/lohnbuchhaltung",
+                  "07 Lohnbuchhaltung Unsere Experten übernehmen die Lohnabrechnung") < 3
+    assert punkte(Seitentyp.TEAM, "https://g.example/experten/", "Unsere Experten") >= 6
+
+
+def test_partmbb_und_name_unten_im_impressum():
+    from recherche.extract.merge import name_aus_impressum, rechtsform_aus_seiten
+
+    impressum = ("Impressum\n900 GRAD STEUERBERATUNG\nHolstenstraße 1\nPartnerschaftsregister Kiel PR 123\n"
+                 "Berufshaftpflicht der\nFirma: 900 GRAD Steuerberatungsgesellschaft PartmbB")
+    assert rechtsform_aus_seiten("900 GRAD STEUERBERATUNG", impressum) == "PartG mbB"
+    assert name_aus_impressum("900 GRAD STEUERBERATUNG", impressum) == "900 GRAD Steuerberatungsgesellschaft PartmbB"
+    assert name_aus_impressum("Kanzlei Nord", "Kanzlei Nord\nVersicherer: Nord Versicherung AG") == "Kanzlei Nord"
+
+
+def test_ueberschrift_vor_namensliste_gehoert_nicht_zur_letzten_person():
+    text = ("Justyna Slama\nSteuerberaterin\nBSHK Partner\nNiels Benthin\nDirk-Henning Schwark\n"
+            "Sven Hansen\nPartner bis 01.01.2025\nSteuerberater")
+    p = {x.name: x.funktion for x in erkenne_personen(text)}
+    assert p["Justyna Slama"] == "Steuerberaterin"
+    from recherche.extract.merge import ist_leitung
+
+    assert not ist_leitung(LlmPerson(name="Sven Hansen", funktion="Partner bis 01.01.2025, Steuerberater"))
+    assert ist_leitung(LlmPerson(name="Niels Benthin", funktion="Partner, Steuerberater"))
+
+
+def test_ohne_impressum_zaehlt_die_reihenfolge_der_teamseite():
+    """stb-kiel: kein Vertretungsabschnitt – erster Ansprechpartner ist der erste Berufsträger der Teamseite,
+    auch wenn eine spätere Person „Partner" in der Funktion trägt."""
+    erkannt = erkenne_personen("Niels Benthin\nSteuerberater\nSven Hansen\nPartner, Steuerberater\n"
+                               "Justyna Slama\nSteuerberaterin")
+    assert [a.name for a in ansprechpartner(None, erkannt)] == ["Niels Benthin", "Sven Hansen", "Justyna Slama"]
+
+
+def test_telefon_im_rohen_html():
+    from recherche.extract.rules import telefon_im_html
+
+    html = ('<footer><a href="tel:+4943138575740"><svg></svg></a><template><p>Telefon +49 (0)431 38 57 57 40</p>'
+            '</template><p data-tel="0176 41466224">x</p></footer>')
+    stellen = {stelle.split(",")[0] for _, stelle in telefon_im_html(html)}
+    assert stellen == {"tel:-Link", "Text", "Attribut"}

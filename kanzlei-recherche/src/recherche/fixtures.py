@@ -28,7 +28,7 @@ from .crawl import Crawler, html_zu_text
 from .extract.base import Extractor, ExtraktionsAntwort, LlmPerson
 from .extract.lauf import regeln_fuer
 from .extract.merge import gleiche_person, zusammenfuehren
-from .extract.rules import Ausschluss, telefon_kandidaten
+from .extract.rules import Ausschluss, telefon_im_html, telefon_kandidaten
 from .models import Kandidat, Kanzlei, Seite, Seitentyp
 from .normalize import _ortsname, normalize_rechtsform
 from .search.dedupe import adresse_key, telefon_key
@@ -359,6 +359,7 @@ class PromptDiagnose:
     rechtsform_llm: str | None = None
     telefone: list[tuple[str, str, str]] = field(default_factory=list)  # (Seite, Nummer, Art)
     regel_telefon: str | None = None
+    telefon_html: list[tuple[str, str, str]] = field(default_factory=list)  # (Seite, Nummer, Fundstelle) im rohen HTML
     playwright: dict = field(default_factory=dict)  # meta.json: Ergebnis des Playwright-Nachlaufs je Seite
 
     @property
@@ -479,4 +480,6 @@ def prompt_diagnose(fx: Fixture, llm_cfg, ausschluss: Ausschluss, modell: str | 
         telefone=[(s.seitentyp.value, n, art) for s in (fx.seiten.get(typ) for typ in
                   (Seitentyp.IMPRESSUM, Seitentyp.KONTAKT, Seitentyp.START)) if s is not None
                   for n, art in telefon_kandidaten(_text(s), ausschluss, s.seitentyp == Seitentyp.IMPRESSUM)],
+        telefon_html=[(s.seitentyp.value, n, stelle) for s in (fx.seiten.get(typ) for typ in
+                      (Seitentyp.IMPRESSUM, Seitentyp.START)) if s is not None for n, stelle in telefon_im_html(s.html)],
     )  # fmt: skip

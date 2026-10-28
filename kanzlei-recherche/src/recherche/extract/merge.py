@@ -103,8 +103,12 @@ def ist_berufstraeger(p: Ansprechpartner | LlmPerson) -> bool:
     return ist_berufstraeger_funktion(text)
 
 
+_EHEMALIG = re.compile(r"[^,;]*(?:\bbis\s+(?:\d|zum|ende)|ehemalig|a\.\s?D\.|i\.\s?R\.)[^,;]*", re.I)
+
+
 def ist_leitung(p: Ansprechpartner | LlmPerson) -> bool:
-    return ist_leitung_funktion(p.funktion)
+    """Partner, Geschäftsführer … – nicht „Partner bis 01.01.2025" oder „ehemaliger Partner"."""
+    return ist_leitung_funktion(_EHEMALIG.sub(" ", p.funktion or ""))
 
 
 def _namens_tokens(name: str) -> set[str]:
@@ -460,16 +464,16 @@ def ansprechpartner(
     team_reihenfolge = [p.name for p in erkannte or []]
 
     def rang(p: LlmPerson) -> tuple[int, int]:
-        """Vertretungsberechtigte in Impressum-Reihenfolge, dann Leitung, dann übrige Berufsträger –
-        jeweils in der Reihenfolge der Teamseite (sonst der LLM-Liste)."""
+        """Vertretungsberechtigte in Impressum-Reihenfolge, dann alle übrigen in der Reihenfolge der
+        Teamseite (erste Nennung), zuletzt Personen nur aus der LLM-Liste."""
         for i, v in enumerate(vertreter):
             if gleiche_person(p.name, v):
                 return (0, i)
         if not vertreter and gleiche_person(p.name, verantwortlich):
             return (0, 0)
+        # danach die Reihenfolge der Teamseite (Leitung und Berufsträger gleichrangig), sonst der LLM-Liste
         pos = next((i for i, n in enumerate(team_reihenfolge) if gleiche_person(p.name, n)), None)
-        pos = pos if pos is not None else 1000 + auswahl.index(p)
-        return (1 if ist_leitung(p) else 2, pos)
+        return (1, pos) if pos is not None else (2, auswahl.index(p))
 
     return [Ansprechpartner(name=p.name, titel=p.titel, funktion=p.funktion) for p in sorted(auswahl, key=rang)]
 
@@ -593,7 +597,7 @@ def rechtsform_aus_seiten(name: str | None, impressum: str | None, fremd: set[in
     # Impressum (oft im Haftpflicht-Abschnitt) → PartG mbB
     voll = text_normalisieren(impressum) or ""
     if re.search(r"partnerschaftsregister|\bPR\s?\d", voll, re.I):
-        return "PartG mbB" if re.search(r"\bmbb\b|beschränkter?\s+berufshaftung", voll, re.I) else "PartG"
+        return "PartG mbB" if re.search(r"(?:\b|part)mbb\b|beschränkter?\s+berufshaftung", voll, re.I) else "PartG"
     return None
 
 
@@ -629,14 +633,54 @@ def ist_einzelkanzlei(name: str | None, impressum: str | None, vertreter: list[s
     return len(vertreter) == 1 and bool(impressum) and not _REGISTER.search(impressum or "")
 
 
+def _namens_zusatz(soll: list[str], z: str) -> list[str] | None:
+    """Wörter von z, die über den Namen hinausgehen – None, wenn z nicht alle Namenswörter enthält
+    (auch als Wortanfang: „STEUERBERATUNG" ⊂ „Steuerberatungsgesellschaft") oder mehr als 3 dazukommen."""
+    ist = [w for w in _woerter(z) if w not in "&+|-–"]
+    if len(ist) <= len(soll) or len(ist) > len(soll) + 3:
+        return None
+    rest = list(ist)
+    for w in soll:
+        treffer = next((x for x in rest if x == w or (len(w) >= 5 and x.startswith(w))), None)
+        if treffer is None:
+            return None
+        rest.remove(treffer)
+    return rest
+
+
 def name_aus_impressum(name: str | None, impressum: str | None, fremd: set[int] | None = None,
                        rahmen: set[str] | None = None) -> str | None:
     """Der Name im Impressum hat Vorrang vor Logo/Startseite: „900 GRAD STEUERBERATUNG" →
     „900 GRAD Steuerberatungsgesellschaft PartmbB", „Steuerberater Schreiner" → „Steuerberater
-    Andreas Schreiner". Übernommen wird eine Zeile aus dem Impressum-Kopf, die alle Wörter des Namens
-    enthält (auch als Wortanfang) und höchstens 3 weitere – Rechtsform, Berufswörter oder Namen."""
+    Andreas Schreiner".
+
+    1. Eine Zeile irgendwo im Impressum (auch im Kammer-/Haftpflicht-Abschnitt, auch hinter „Firma:"),
+       die alle Wörter des Namens enthält und als Zusatz eine Rechtsform.
+    2. Steht der Name genau so im Impressum-Kopf: unverändert.
+    3. Eine Zeile (oder zwei kurze) im Kopf mit allen Namenswörtern und höchstens 3 weiteren –
+       Rechtsform, Berufswörter oder Namen, nie Menüwörter."""
     if not name or not impressum:
         return name
+    soll = [w for w in _woerter(name) if w not in "&+|-–"]
+    if not soll:
+        return name
+    alle = [z.strip().rsplit(":", 1)[-1].strip() for z in (text_normalisieren(impressum) or "").splitlines() if z.strip()]
+    for z in alle:
+        if len(z) <= 120 and (rest := _namens_zusatz(soll, z)) and any(rechtsform_aus_text(w) for w in rest):
+            return z.rstrip(" ,;.")
+    kopf = _impressum_kopf(impressum, fremd, rahmen, 25)
+    if any([w for w in _woerter(z) if w not in "&+|-–"] == soll for z in kopf):
+        return name  # steht genau so im Impressum
+    # auch zwei kurze Zeilen hintereinander („Steuerberater" / „Andreas Schreiner")
+    paare = [f"{a} {b}" for a, b in zip(kopf, kopf[1:], strict=False) if len(a) <= 40 and len(b) <= 40 and ":" not in a + b]
+    for z in kopf + paare:
+        if ":" in z or len(z) > 90 or (rest := _namens_zusatz(soll, z)) is None:
+            continue
+        original = {w.lower(): w for w in re.split(r"[\s,;·|]+", z) if w}
+        if all((rechtsform_aus_text(w) or _NAMENS_BERUF.match(w) or original.get(w, w)[:1].isupper())
+               and w not in _MENUEWOERTER for w in rest):
+            return z.rstrip(" ,;")
+    return name
     soll = [w for w in _woerter(name) if w not in "&+|-–"]
     kopf = _impressum_kopf(impressum, fremd, rahmen, 25)
     # auch zwei kurze Zeilen hintereinander („Steuerberater" / „Andreas Schreiner")

@@ -126,7 +126,8 @@ der nächsten Quelle füllen.**
   „Berater", „Unsere Steuerberater", „Steuerberater" (nur als ganzer Linktext), „Beraterinnen",
   „Köpfe", „Menschen", „Wir über uns" („berater" nur im Linktext – im Pfad träfe es
   `/steuerberater-kiel/`); Abzüge für
-  Datenschutz, Karriere, Jobs, Kooperationspartner, Honorar, Preise, Empfehlungen). Das Impressum wird auch
+  Datenschutz, Karriere, Jobs, Kooperationspartner, Honorar, Preise, Empfehlungen, Leistungen;
+  Linktexte über fünf Wörter sind Fließtext und zählen nicht, nur der Pfad). Das Impressum wird auch
   über den Linktext erkannt, wenn der Pfad fremd ist (`/information/license`). Die zweitbeste
   Team-Kandidatin wird als `team2` gelesen (z. B. `/berufstraeger` und `/ueber-uns`) –
   höchstens 6 Abrufe je Domain. Ohne Impressum-Link wird `/impressum` geraten (Soft-404 wird erkannt).
@@ -196,7 +197,9 @@ der nächsten Quelle füllen.**
   eine Zeile Namen lieferte oder verworfen wurde), alle Personen nach der Zusammenführung
   mit Funktion, Herkunft und Berufsträger-Status, und Personen, die nur in Navigation/
   Fußzeile stehen und deshalb nicht zählen. Das Playwright-Ergebnis aus `meta.json` steht
-  bei den Teamseiten.
+  bei den Teamseiten. Außerdem: Kanzleiname LLM → Ergebnis, Rechtsform Regel/LLM,
+  Telefonkandidaten je Seite und alle Telefonnummern im rohen HTML (tel:-Link, Attribut,
+  Skript, Text), der Impressum-Kopf und die Zeilen ab jedem Namen der Teamseite.
 - Personen (`personen.py`, `config/personen_funktionen.yaml`): Kacheln/Listen auf beiden
   Teamseiten. Ein Name gilt nur mit einer Funktion aus der Liste **in derselben Zeile**
   („Name – Funktion", „Name (Funktion)"), **in der Folgezeile** (auch mehrere
@@ -241,8 +244,10 @@ der nächsten Quelle füllen.**
     in einer Funktion bleiben nur, wenn der lokale Teil zum Namen passt.
   - Ansprechpartner = nur **Berufsträger und Leitung**; Mehrfachnennungen werden
     vereinigt (Funktionen und Titel). Reihenfolge: Vertretungsberechtigte in der
-    Reihenfolge des Impressum-Abschnitts „vertretungsberechtigt/vertreten durch", dann
-    Leitung, dann Berufsträger – jeweils in der Reihenfolge der Teamseite.
+    Reihenfolge des Impressum-Abschnitts „vertretungsberechtigt/vertreten durch", dann alle
+    übrigen in der Reihenfolge der Teamseite (erste Nennung; Leitung und Berufsträger
+    gleichrangig), zuletzt Personen nur aus der LLM-Liste. Ehemalige („Partner bis 01.01.2025",
+    „ehemaliger Partner") zählen nicht als Leitung.
   - „Berufsträger (Anzahl)" zählt StB/WP/RA/vBP, Berufstitel nur mit Wortgrenze;
     Fach­angestellte, Fachwirt, Fachassistent, Fachgehilfe und Anwärter nie.
     Vertretungsberechtigte zählen, wenn im selben Impressum-Abschnitt genau **eine**
@@ -269,6 +274,8 @@ der nächsten Quelle füllen.**
     höchstens drei weiteren (Rechtsform, Berufswörter, Namen), hat sie Vorrang vor Logo und
     Startseite („900 GRAD STEUERBERATUNG" → „900 GRAD Steuerberatungsgesellschaft PartmbB");
     auch über zwei kurze Zeilen („Steuerberater" / „Andreas Schreiner"), nie mit Menüwörtern.
+    Vorrang hat eine Zeile irgendwo im Impressum (auch im Kammer-/Haftpflicht-Abschnitt,
+    auch hinter „Firma:"), die den Namen enthält und als Zusatz eine Rechtsform.
   - Rechtsform per Regel **vor dem LLM**: aus dem Kanzleinamen, dann aus dem Impressum-Kopf
     (ohne Fremd-Abschnitte). „mbB", „PartmbB", „und Partner mbB" → PartG mbB. Ohne
     Gesellschaftsform: Einzelperson mit Berufstitel im Namen („Steuerberater Andreas
