@@ -133,7 +133,35 @@ def _name_teile(name: str) -> tuple[list[str], str] | None:
     return [w if w.endswith(".") and len(w) == 2 else w.rstrip(".") for w in woerter[:-1]], woerter[-1].rstrip(".")
 
 
+_TITEL_VORN = re.compile(r"^(?:(?:prof|dr|dipl|mag|rer|pol|oec|kfm|kffr|ing|jur|stb|wp|ra)\b\.?[-\w.]*\s*)+", re.I)
+
+
+def name_reihenfolge(name: str) -> str:
+    """„Schreiner, Andreas" / „Dipl.-Kfm. Schreiner, Andreas" → „Andreas Schreiner" (Titel bleiben vorn)."""
+    if name.count(",") != 1:
+        return name
+    m = _TITEL_VORN.match(name)
+    titel, rest = (m.group(0), name[m.end():]) if m else ("", name)
+    nach, vor = (x.strip() for x in rest.split(","))
+    if not nach or not vor or len(vor.split()) > 3 or len(nach.split()) > 2:
+        return name
+    return f"{titel}{vor} {nach}".strip()
+
+
 def gleiche_person(a: str | None, b: str | None) -> bool:
+    """Wie `_gleiche_person`, auch bei vertauschter Reihenfolge: „Schreiner, Andreas" und
+    „Schreiner Andreas" = „Andreas Schreiner"."""
+    if not a or not b:
+        return False
+    a, b = name_reihenfolge(a), name_reihenfolge(b)
+    if _gleiche_person(a, b):
+        return True
+    # „Schreiner Andreas" ohne Komma: zwei Wörter vertauscht
+    ta = _TITEL_VORN.sub("", a).split()
+    return len(ta) == 2 and _gleiche_person(f"{ta[1]} {ta[0]}", b)
+
+
+def _gleiche_person(a: str | None, b: str | None) -> bool:
     """Gleicher Nachname UND gleicher Vorname (oder passende Initiale: „W. Drews" = „Wiebke Drews").
     Nie nur über den Nachnamen: „W. Drews" ≠ „Sven Drews", „Drews" ≠ „Sven Drews"."""
     if not a or not b:
@@ -199,7 +227,7 @@ def personen_vereinigen(personen: list[LlmPerson]) -> list[LlmPerson]:
     for p in personen:
         if ist_externe_funktion(p.funktion):
             continue  # Kundenstimme / Referenz („Geschäftsführer der Muster GmbH")
-        p = LlmPerson(name=p.name, titel=p.titel, funktion=_ohne_fremde_email(p.name, p.funktion))
+        p = LlmPerson(name=name_reihenfolge(p.name), titel=p.titel, funktion=_ohne_fremde_email(p.name, p.funktion))
         for i, q in enumerate(ergebnis):
             if gleiche_person(p.name, q.name):
                 name = q.name if len(q.name) >= len(p.name) else p.name

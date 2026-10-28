@@ -798,3 +798,26 @@ def test_festnetz_aus_rohem_html_naechste_zur_kanzlei_plz():
     stellen = dict(telefon_im_html(start))
     assert "<template> wird entfernt" in stellen["+49 431 38575740"]
     assert all(not n.startswith("+49 14") and not n.startswith("+49140") for n in stellen)
+
+
+@pytest.mark.parametrize("a,b,gleich", [
+    ("Schreiner, Andreas", "Andreas Schreiner", True),
+    ("Schreiner Andreas", "Andreas Schreiner", True),
+    ("Dipl.-Kfm. Schreiner, Andreas", "Andreas Schreiner", True),
+    ("Schreiner, Anna", "Andreas Schreiner", False),
+])  # fmt: skip
+def test_nachname_vorname_reihenfolge(a, b, gleich):
+    from recherche.extract.merge import gleiche_person
+
+    assert gleiche_person(a, b) is gleich
+
+
+def test_llm_nachname_komma_vorname_wird_zusammengefuehrt():
+    """steuerberaterschreiner: Teamseite „Andreas Schreiner", LLM „Schreiner, Andreas" → eine Person, Teamgröße 1."""
+    p = personen_vereinigen([LlmPerson(name="Andreas Schreiner", funktion="Steuerberater"),
+                             LlmPerson(name="Schreiner, Andreas", titel="M. Sc. agr.", funktion="Inhaber")])
+    assert [(x.name, x.funktion) for x in p] == [("Andreas Schreiner", "Steuerberater, Inhaber")]
+    from recherche.extract.merge import name_reihenfolge
+
+    assert name_reihenfolge("Dr. Kruse, Anna") == "Dr. Anna Kruse"
+    assert name_reihenfolge("Kruse, Anna, Lars Behrens") == "Kruse, Anna, Lars Behrens"  # keine Namensliste drehen

@@ -244,7 +244,9 @@ der nächsten Quelle füllen.**
     Impressum); das LLM ergänzt Titel, Funktionen und weitere Personen. Zusammengeführt
     wird nur bei gleichem Nachnamen **und** gleichem Vornamen bzw. passender Initiale
     („W. Drews" = „Wiebke Drews", aber ≠ „Sven Drews"; „Drews" allein nie) oder wenn ein
-    Vorname Teil des anderen ist („Alexander Hamdorf" = „Johann-Alexander Hamdorf"). E-Mail-Adressen
+    Vorname Teil des anderen ist („Alexander Hamdorf" = „Johann-Alexander Hamdorf"); beide
+    Reihenfolgen gelten („Schreiner, Andreas", „Schreiner Andreas" = „Andreas Schreiner"),
+    ausgegeben wird „Vorname Nachname". E-Mail-Adressen
     in einer Funktion bleiben nur, wenn der lokale Teil zum Namen passt.
   - Ansprechpartner = nur **Berufsträger und Leitung**; Mehrfachnennungen werden
     vereinigt (Funktionen und Titel). Reihenfolge: Vertretungsberechtigte in der
@@ -380,6 +382,15 @@ Schemaversion über `PRAGMA user_version` (aktuell 4, `adresszusatz`); ältere D
 - Nach dem ersten echten Fixture-Lauf: Prompt-Aufbau ohne Abschneiden, `fixture-prompt`,
   Personen- und Mitarbeiterzahl-Regeln, Adresszusatz (Schema v4), kanonische
   Rechtsform und Ort, Berufsträger- und Ansprechpartner-Reihenfolge.
+- Fixture-Runde mit 12 echten Kanzleien (lokal, `echt/`): Kernfelder Name, Adresse, Telefon,
+  erster Ansprechpartner 12/12; Rechtsform 12/12; rund 15 s je Kanzlei mit qwen3.5:9b.
+  Modellvergleich auf RTX 5060: qwen3.5:9b am schnellsten und genauesten (gemma4:26b 43 s,
+  qwen3.6:27b 126 s, beide nicht genauer) – **qwen3.5:9b bleibt Standard**. Die harten Fehler
+  waren Regelfehler, keine Modellfehler; Regeln haben bei Name, Personen, Rechtsform und
+  Telefon Vorrang vor dem LLM.
+- **Pilot läuft**: `recherche run --bundesland SH` über die 80 Startorte. **Bis zum Ende des
+  Pilots keine strukturellen Änderungen an Datenbank (Schema v4) oder Excel-Format**
+  (Spalten, Blätter); Regelverbesserungen in Extraktion und Zusammenführung sind erlaubt.
 - `orte`: vollständige Gemeindeliste (OpenPLZ + GV-ISys), Einwohnerregel mit
   Seitenbegrenzung, Zusatz-Suchorte für Kiel/Lübeck. Die erzeugte Liste ersetzt die
   Startliste erst nach `recherche orte --force`.
