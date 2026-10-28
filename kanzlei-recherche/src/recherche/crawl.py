@@ -466,7 +466,7 @@ class Crawler:
 
     async def robots_meldung(self, url: str) -> str:
         """Grund fürs Blatt „Nicht gefunden": echte Sperre oder tote Domain."""
-        if (regeln := await self._regeln(url)) == DNS_GRUND:
+        if await self._regeln(url) == DNS_GRUND:
             return DNS_GRUND
         return "robots.txt verbietet den Zugriff"
 
