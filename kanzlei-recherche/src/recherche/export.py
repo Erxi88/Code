@@ -1,4 +1,5 @@
-"""Excel-Export mit den Blättern Kanzleien, Nicht gefunden, Dubletten, Lauf-Protokoll."""
+"""Excel-Export mit den Blättern Kanzleien, Nicht gefunden, Dubletten, Lauf-Protokoll und – nur wenn
+die Kanzlei-Erkennung welche gefunden hat – Keine Kanzlei."""
 
 from __future__ import annotations
 
@@ -12,11 +13,13 @@ from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.worksheet.worksheet import Worksheet
 
+from .extract.kanzlei import grund_aus_abweichung
 from .models import Dublette, Kanzlei, LaufEintrag, NichtGefunden, Status
 from .storage import Storage
 
 BLATT_KANZLEIEN = "Kanzleien"
 BLATT_NICHT_GEFUNDEN = "Nicht gefunden"
+BLATT_KEINE_KANZLEI = "Keine Kanzlei"
 BLATT_DUBLETTEN = "Dubletten"
 BLATT_PROTOKOLL = "Lauf-Protokoll"
 
@@ -71,6 +74,12 @@ NICHT_GEFUNDEN_SPALTEN: list[Spalte] = [
     ("Website", 30, lambda n: n.website),
     ("URL", 40, lambda n: n.url),
     ("Zeitpunkt", 19, lambda n: n.zeitpunkt.replace(microsecond=0)),
+]
+
+# alle Felder wie im Blatt „Kanzleien", Grund vorn – zum Zurückholen von Hand
+KEINE_KANZLEI_SPALTEN: list[Spalte] = [
+    ("Grund", 50, lambda k: grund_aus_abweichung(k.abweichung)),
+    *KANZLEI_SPALTEN,
 ]
 
 DUBLETTEN_SPALTEN: list[Spalte] = [
@@ -129,7 +138,7 @@ def _blatt(ws: Worksheet, spalten: Sequence[Spalte], zeilen: Sequence[Any]) -> N
 def _status_dropdown(ws: Worksheet, spalten: Sequence[Spalte], anzahl: int) -> DataValidation:
     index = [s[0] for s in spalten].index("Status") + 1
     buchstabe = get_column_letter(index)
-    werte = ",".join(s.value for s in Status)
+    werte = ",".join(s.value for s in Status if s != Status.KEINE_KANZLEI)  # automatisch, nicht von Hand
     dv = DataValidation(
         type="list",
         formula1=f'"{werte}"',
@@ -149,12 +158,16 @@ def build_workbook(
     dubletten: Sequence[Dublette],
     protokoll: Sequence[LaufEintrag],
 ) -> Workbook:
+    keine = [k for k in kanzleien if k.status == Status.KEINE_KANZLEI]
+    kanzleien = [k for k in kanzleien if k.status != Status.KEINE_KANZLEI]
     wb = Workbook()
     ws = wb.active
     ws.title = BLATT_KANZLEIEN
     _blatt(ws, KANZLEI_SPALTEN, kanzleien)
     _status_dropdown(ws, KANZLEI_SPALTEN, len(kanzleien))
     _blatt(wb.create_sheet(BLATT_NICHT_GEFUNDEN), NICHT_GEFUNDEN_SPALTEN, nicht_gefunden)
+    if keine:
+        _blatt(wb.create_sheet(BLATT_KEINE_KANZLEI), KEINE_KANZLEI_SPALTEN, keine)
     _blatt(wb.create_sheet(BLATT_DUBLETTEN), DUBLETTEN_SPALTEN, dubletten)
     _blatt(wb.create_sheet(BLATT_PROTOKOLL), PROTOKOLL_SPALTEN, protokoll)
     return wb

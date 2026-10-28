@@ -114,6 +114,14 @@ crawl:
   playwright_team_min_html: 20000
   playwright_team_min_anteil: 0.02
 
+extract:
+  # Kanzlei-Erkennung: Zeile gilt nur als Kanzlei mit Berufsträger, Kanzlei-Rechtsform,
+  # Kanzleiwort im Namen (Steuer…, StB, Kanzlei, Treuhand, Revision, Wirtschaftsprüf…) oder
+  # Steuerberaterkammer im Impressum; sonst Status „keine Kanzlei" (eigenes Excel-Blatt).
+  # Nach dem Pilot einschalten; bestehende Daten: recherche kanzlei-pruefung
+  kanzlei_pruefung: false
+  kanzlei_rechtsformen: [PartG mbB, PartG, Einzelkanzlei]
+
 llm:
   provider: ollama
   url: http://localhost:11434

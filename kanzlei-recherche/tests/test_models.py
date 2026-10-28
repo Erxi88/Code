@@ -67,4 +67,4 @@ def test_ansprechpartner_anzeige():
 
 
 def test_status_werte():
-    assert [s.value for s in Status] == ["neu", "geprüft", "kontaktiert", "kein Interesse", "ungültig"]
+    assert [s.value for s in Status] == ["neu", "geprüft", "kontaktiert", "kein Interesse", "ungültig", "keine Kanzlei"]

@@ -123,3 +123,12 @@ def test_fehler_eines_kandidaten(storage, ausschluss):
     assert storage.get_kandidat(kid).extract_status == SchrittStatus.FEHLER
     assert storage.fehler_zuruecksetzen("SH", "extract") == 1
     assert run_extract(storage, "SH", AufzeichnungsExtractor(), None, ausschluss, "l2").fertig == 1
+
+
+def test_kanzlei_pruefung_laesst_alle_beispielkanzleien_stehen(storage, ausschluss):
+    domains = sorted(p.name for p in BSP.iterdir() if (p / "meta.json").exists())
+    for d in domains:
+        _kandidat_mit_seiten(storage, d)
+    run_extract(storage, "SH", AufzeichnungsExtractor(), _pruefer(), ausschluss, "l1",
+                kanzlei_rechtsformen=["PartG mbB", "PartG", "Einzelkanzlei"])
+    assert {k.domain: k.status for k in storage.kanzleien("SH")} == dict.fromkeys(domains, Status.NEU)

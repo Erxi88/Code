@@ -15,11 +15,12 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from ..crawl import links, meta_texte
-from ..models import Kandidat, LaufEintrag, SchrittStatus, Seitentyp
+from ..models import Kandidat, LaufEintrag, SchrittStatus, Seitentyp, Status
 from ..normalize import PlzPruefer
 from ..storage import Storage
 from ..textnorm import text_normalisieren
 from .base import AnbieterNichtErreichbar, Extractor, ExtraktionFehler
+from .kanzlei import pruefen
 from .merge import zusammenfuehren
 from .prompt import seiten_rahmen
 from .rules import Ausschluss, extract_impressum, festnetz_aus_html, ist_mobil
@@ -81,7 +82,9 @@ def run_extract(
     lauf_id: str,
     limit: int | None = None,
     fortschritt: Callable[[str], None] | None = None,
+    kanzlei_rechtsformen: list[str] | None = None,
 ) -> ExtractStatistik:
+    """kanzlei_rechtsformen gesetzt → Kanzlei-Erkennung aktiv (extract.kanzlei_pruefung)."""
     stat = ExtractStatistik()
     start = time.monotonic()
     offen = [
@@ -93,6 +96,8 @@ def run_extract(
     for k in offen:
         try:
             kanzlei = _eine(storage, k, extractor, pruefer, ausschluss, stat)
+            if kanzlei_rechtsformen is not None and k.domain:
+                pruefen(kanzlei, storage.kandidat_seiten(k.id), tuple(kanzlei_rechtsformen), storage.funde_kandidat(k.id))
         except AnbieterNichtErreichbar as e:
             stat.abbruch = str(e)
             break
@@ -110,7 +115,8 @@ def run_extract(
         storage.set_extract_status(k.id, SchrittStatus.FERTIG)
         stat.fertig += 1
         if fortschritt:
-            fortschritt(f"{k.domain or kanzlei.kanzleiname}: {kanzlei.kanzleiname or '–'} ({kanzlei.konfidenz.value})")
+            zusatz = ", keine Kanzlei" if kanzlei.status == Status.KEINE_KANZLEI else ""
+            fortschritt(f"{k.domain or kanzlei.kanzleiname}: {kanzlei.kanzleiname or '–'} ({kanzlei.konfidenz.value}{zusatz})")
     storage.log_lauf(
         LaufEintrag(
             lauf_id=lauf_id, schritt="extract", bundesland=bundesland,

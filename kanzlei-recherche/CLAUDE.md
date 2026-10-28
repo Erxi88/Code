@@ -16,11 +16,13 @@ Hauptansprechpartner), Teamgröße (Zahl, wenn ablesbar; sonst Klasse
 Konfidenz (`hoch` / `mittel` / `niedrig`), Quell-URLs, Abrufdatum, Status.
 
 Status-Werte (Excel-Dropdown): `neu` / `geprüft` / `kontaktiert` / `kein Interesse` / `ungültig`.
+Automatisch dazu `keine Kanzlei` (Kanzlei-Erkennung, nicht im Dropdown).
 
 **Konfidenz-Regel (vorläufig, wird nach dem Pilot überprüft):**
 - `hoch`: Impressum gelesen und PLZ/Ort gegen OpenPLZ verifiziert
 - `mittel`: Kernfelder (Name, Straße, PLZ, Ort, Telefon oder E-Mail) vollständig, aber nicht verifiziert
 - `niedrig`: Kernfelder fehlen
+- mit Kanzlei-Erkennung (`extract.kanzlei_pruefung`): `hoch` nur, wenn als Kanzlei erkannt
 
 ## Technische Regeln
 
@@ -146,8 +148,9 @@ der nächsten Quelle füllen.**
   Startseite nicht. 4xx → alles erlaubt; 5xx/nicht erreichbar → alles verboten, im Blatt als
   „robots.txt nicht erreichbar (HTTP 503 | Timeout | …)" statt „robots.txt verbietet".
 - `recherche blocklist-vorschlag [--mindestens N] [--out datei.csv]`: Domains aus „Nicht
-  gefunden" mit Grund robots.txt/HTTP 403, nach Stammdomain zusammengefasst und nach Zahl der
-  Suchorte sortiert (viele Suchorte = Portal), mit Treffern, Name und Snippet – Vorschläge
+  gefunden" mit Grund robots.txt/HTTP 403 und gelesene Domains mit Status „keine Kanzlei", nach
+  Stammdomain zusammengefasst und nach Zahl der Suchorte sortiert (ab 5 Suchorten als „Portal"
+  markiert), mit Treffern, Name und Snippet – Vorschläge
   zum Prüfen; übernommen wird von Hand in `config/domain_blocklist.txt`.
 - Jede URL wird **einmal** geladen und als **HTML (gzip) + bereinigter Text** in SQLite
   gecacht (auch 404). Der Text entsteht aus dem ganzen `<body>` mit Zeilenumbrüchen –
@@ -316,6 +319,19 @@ der nächsten Quelle füllen.**
     (ebenfalls in Straße und Zusatz zerlegt).
   - Teamgröße: genannte Zahl (LLM, dann Regel) > **alle** Personen der Teamseiten (≥ 2; Untergrenze, eine
     größere Klasse aus dem Text geht vor) > Klasse aus dem Text.
+- **Kanzlei-Erkennung** (`extract/kanzlei.py`, `extract.kanzlei_pruefung`, **bis Pilot-Ende aus**):
+  Magazine, Jobbörsen, Branchenbücher, Hochschulen haben oft ein sauberes Verlags-Impressum.
+  Kanzlei ist, wer **mindestens eins** erfüllt (ODER): Steuerberaterkammer im Impressum (§ 5 DDG,
+  wichtigster Anker); Berufsträger erkannt (Impressum oder Teamseite); Rechtsform aus
+  `extract.kanzlei_rechtsformen` (PartG mbB, PartG, Einzelkanzlei); Kanzleiname mit Steuer…, StB,
+  Kanzlei, Treuhand, Revision, Wirtschaftsprüf…; Titel/Snippet eines Suchtreffers mit
+  „Steuerberat…", „Steuerkanzlei", „StB" – nur bei weniger als 5 Suchorten (Branchenbücher
+  kommen in vielen Orten). Sonst Status `keine Kanzlei`, Grund vorn in „Abweichung"
+  („Keine Kanzlei: …"), Konfidenz höchstens `mittel`. Nichts wird gelöscht. Nur Kandidaten mit
+  Website; ein von Hand gepflegter Status bleibt. `recherche kanzlei-pruefung` wendet die
+  Prüfung ohne LLM auf bereits extrahierte Kanzleien an (auch zurück zu `neu`). Big-Four-
+  Gesellschaften („… Wirtschaftsprüfungsgesellschaft", Berufsträger) gelten als Kanzlei – die
+  gehören auf die Blocklist.
 - Kandidaten **ohne Website** kommen mit ihren Discovery-Daten ins Blatt „Kanzleien"
   („Website vorhanden" = nein).
 
@@ -348,13 +364,15 @@ der nächsten Quelle füllen.**
   setzt einen gepflegten Status nicht zurück.
 - Blatt „Nicht gefunden": Domains ohne lesbares Impressum oder mit Fehler, mit Grund und
   Discovery-Daten.
+- Blatt „Keine Kanzlei" (nur wenn es solche Zeilen gibt): alle Spalten wie „Kanzleien", Grund
+  vorn – zum Zurückholen von Hand. Diese Zeilen fehlen im Blatt „Kanzleien".
 - Blatt „Dubletten".
 - Blatt „Lauf-Protokoll": Suchbegriff, Trefferzahl, neue Kandidaten, Anfragen, Kosten, Laufzeit.
 
 ### CLI (`cli.py`)
 
 `recherche search | fill | coverage | crawl | extract | export | run | search-compare | orte |
-blocklist-vorschlag | fixture-add | fixture-eval | fixture-prompt`,
+blocklist-vorschlag | kanzlei-pruefung | fixture-add | fixture-eval | fixture-prompt`,
 jeweils mit `--bundesland` und `--db`. **Jeder Schritt muss nach Abbruch
 wiederaufnehmbar sein**: Fortschritt steht in SQLite (Status je Domain und
 Schritt, erledigte Queries im Lauf-Protokoll); ein erneuter Aufruf macht nur das,

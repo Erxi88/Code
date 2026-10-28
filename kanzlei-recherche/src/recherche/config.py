@@ -214,6 +214,13 @@ class LlmConfig(BaseModel):
     max_text_chars: int | Literal["auto"] = "auto"
 
 
+class ExtractConfig(BaseModel):
+    # Kanzlei-Erkennung (Berufsträger, Kanzlei-Rechtsform, Kanzleiwort im Namen, Steuerberaterkammer):
+    # sonst Status „keine Kanzlei", Konfidenz höchstens „mittel", eigenes Excel-Blatt
+    kanzlei_pruefung: bool = False
+    kanzlei_rechtsformen: list[str] = Field(default_factory=lambda: ["PartG mbB", "PartG", "Einzelkanzlei"])
+
+
 class OpenPlzConfig(BaseModel):
     url: str = "https://openplzapi.org"
     page_size: int = 50
@@ -262,6 +269,7 @@ class Settings(BaseModel):
     discovery: DiscoveryConfig = Field(default_factory=DiscoveryConfig)
     crawl: CrawlConfig = Field(default_factory=CrawlConfig)
     llm: LlmConfig = Field(default_factory=LlmConfig)
+    extract: ExtractConfig = Field(default_factory=ExtractConfig)
     openplz: OpenPlzConfig = Field(default_factory=OpenPlzConfig)
     orte: OrteConfig = Field(default_factory=OrteConfig)
 

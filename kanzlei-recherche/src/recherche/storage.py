@@ -557,9 +557,9 @@ class Storage:
     def upsert_kanzlei(self, k: Kanzlei) -> int:
         """Legt eine Kanzlei an oder aktualisiert sie (Schlüssel: Kandidat, sonst Domain).
 
-        Der Status (Excel-Dropdown) einer bestehenden Kanzlei bleibt erhalten, wenn die neue
-        Fassung nur den Standardwert „neu" trägt – eine erneute Extraktion setzt also keine
-        bereits gepflegten Status zurück.
+        Der Status (Excel-Dropdown) einer bestehenden Kanzlei bleibt erhalten, wenn er von Hand
+        gepflegt ist – eine erneute Extraktion setzt also keine gepflegten Status zurück. Nur die
+        automatischen Werte „neu" und „keine Kanzlei" (Kanzlei-Erkennung) werden ersetzt.
         """
         if k.kandidat_id is not None:
             row = self.conn.execute("SELECT id, status FROM kanzleien WHERE kandidat_id = ?", (k.kandidat_id,)).fetchone()
@@ -576,7 +576,7 @@ class Storage:
                     list(werte.values()),
                 )
                 return cur.lastrowid
-            if k.status == Status.NEU:
+            if row["status"] not in (Status.NEU, Status.KEINE_KANZLEI) and k.status in (Status.NEU, Status.KEINE_KANZLEI):
                 werte["status"] = row["status"]
             self.conn.execute(
                 f"UPDATE kanzleien SET {', '.join(f'{f} = ?' for f in werte)} WHERE id = ?",

@@ -216,7 +216,8 @@ def _extract(
         ausschluss = Ausschluss.laden(s.pfad(s.pfade.impressum_ausschluss))
         console.print(f"Extraktion mit {'nur Regeln' if ohne_llm else 'Regeln + ' + extractor.modell} …")
         stat = run_extract(st, ctx.bundesland, extractor, pruefer, ausschluss, _lauf_id(), limit=limit,
-                           fortschritt=lambda m: console.print(f"  {m}"))  # fmt: skip
+                           fortschritt=lambda m: console.print(f"  {m}"),
+                           kanzlei_rechtsformen=s.extract.kanzlei_rechtsformen if s.extract.kanzlei_pruefung else None)  # fmt: skip
     console.print(
         f"Fertig: {stat.fertig} Kanzleien ({stat.ohne_website} ohne Website), {stat.fehler} Fehler, "
         f"{stat.llm_aufrufe} LLM-Aufrufe, {pruefer.anfragen} OpenPLZ-Anfragen."
@@ -411,14 +412,15 @@ def blocklist_vorschlag(
     out: Annotated[Path | None, typer.Option("--out", "-o", help="Liste als CSV (Semikolon)")] = None,
     anzahl: Annotated[int, typer.Option(help="höchstens so viele Zeilen anzeigen")] = 50,
 ) -> None:
-    """Domains aus „Nicht gefunden" (robots.txt/HTTP 403) nach Suchorten – Kandidaten für die Blocklist."""
-    from .blocklist_vorschlag import als_csv, vorschlaege
+    """Domains aus „Nicht gefunden" (robots.txt/HTTP 403) und mit Status „keine Kanzlei" nach Suchorten –
+    Kandidaten für die Blocklist."""
+    from .blocklist_vorschlag import PORTAL_AB_ORTEN, als_csv, vorschlaege
 
     ctx = _kontext(config, bundesland, db)
     with ctx.storage() as st:
         liste = [v for v in vorschlaege(st, ctx.bundesland, ctx.blocklist()) if len(v.suchorte) >= mindestens]
     if not liste:
-        console.print("Keine Domains mit Grund robots.txt oder HTTP 403 in „Nicht gefunden\".")
+        console.print("Keine Domains mit Grund robots.txt, HTTP 403 oder „keine Kanzlei\".")
         return
     t = Table(title=f"Blocklist-Vorschläge ({len(liste)} Domains, sortiert nach Suchorten)")
     for col in ("Domain", "Suchorte", "Treffer", "Grund", "Name / Snippet"):
@@ -426,12 +428,36 @@ def blocklist_vorschlag(
     for v in liste[:anzahl]:
         text = " – ".join(x for x in (v.name, (v.snippet or "")[:80]) if x)
         domain = v.domain + (f" (+{len(v.domains) - 1} Subdomains)" if len(v.domains) > 1 else "")
-        t.add_row(domain, str(len(v.suchorte)), str(v.treffer), v.grund_kurz, text)
+        orte = f"[bold]{len(v.suchorte)}[/bold] Portal" if v.portal else str(len(v.suchorte))
+        t.add_row(domain, orte, str(v.treffer), v.grund_kurz, text)
     console.print(t)
-    console.print("Prüfen und übernehmen: config/domain_blocklist.txt (eine Domain je Zeile). "
-                  "Ab etwa 3 Suchorten ist es fast immer ein Portal.")
+    console.print(f"Prüfen und übernehmen: config/domain_blocklist.txt (eine Domain je Zeile). "
+                  f"Ab {PORTAL_AB_ORTEN} Suchorten ist es fast sicher ein Portal.")
     if out:
         console.print(f"CSV geschrieben: {als_csv(liste, out)}")
+
+
+@app.command("kanzlei-pruefung")
+def kanzlei_pruefung(
+    bundesland: BundeslandOpt = None,
+    db: DbOpt = None,
+    config: ConfigOpt = None,
+) -> None:
+    """Kanzlei-Erkennung auf bereits extrahierte Kanzleien anwenden (ohne LLM, ohne Netz).
+
+    Ohne Berufsträger, Kanzlei-Rechtsform, Kanzleiwort im Namen und Steuerberaterkammer im
+    Impressum → Status „keine Kanzlei" (eigenes Excel-Blatt), Konfidenz höchstens „mittel".
+    Von Hand gepflegte Status bleiben."""
+    from .extract.kanzlei import run_pruefung
+
+    ctx = _kontext(config, bundesland, db)
+    with ctx.storage() as st:
+        stat = run_pruefung(st, ctx.bundesland, tuple(ctx.settings.extract.kanzlei_rechtsformen),
+                            fortschritt=lambda m: console.print(f"  {m}"))
+    console.print(f"Geprüft: {stat.geprueft} Kanzleien mit Website – {stat.keine_kanzlei} keine Kanzlei, "
+                  f"{stat.wieder_kanzlei} wieder Kanzlei, {stat.herabgestuft} von Konfidenz „hoch\" herabgestuft.")
+    if not ctx.settings.extract.kanzlei_pruefung:
+        console.print("[yellow]Für neue Extraktionen extract.kanzlei_pruefung: true in settings.yaml setzen.[/yellow]")
 
 
 @app.command("fixture-eval")

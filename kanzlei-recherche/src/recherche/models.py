@@ -40,6 +40,7 @@ class Status(StrEnum):
     KONTAKTIERT = "kontaktiert"
     KEIN_INTERESSE = "kein Interesse"
     UNGUELTIG = "ungültig"
+    KEINE_KANZLEI = "keine Kanzlei"  # automatisch (Kanzlei-Erkennung), eigenes Excel-Blatt
 
 
 class Konfidenz(StrEnum):

@@ -38,7 +38,7 @@ def test_csv(storage, tmp_path):
              ["Kiel", "Husum"], snippet="Portal")
     pfad = als_csv(vorschlaege(storage, "SH"), tmp_path / "v.csv")
     zeilen = pfad.read_text(encoding="utf-8-sig").splitlines()
-    assert zeilen[0].startswith("domain;suchorte;treffer;grund") and zeilen[1].startswith("steuerportal.example;2;2;robots.txt")
+    assert zeilen[0].startswith("domain;suchorte;treffer;portal;grund") and zeilen[1].startswith("steuerportal.example;2;2;;robots.txt")
 
 
 def test_cli(monkeypatch, tmp_path):

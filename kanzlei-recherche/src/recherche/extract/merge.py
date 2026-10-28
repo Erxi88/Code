@@ -755,10 +755,10 @@ def _adresse_text(strasse: str | None, plz: str | None, ort: str | None) -> str:
     return ", ".join(x for x in (strasse, " ".join(y for y in (plz, ort) if y)) if x)
 
 
-def konfidenz(k: Kanzlei, impressum_gelesen: bool) -> Konfidenz:
-    """Vorläufige Regel (CLAUDE.md): hoch = Impressum gelesen und PLZ/Ort verifiziert;
-    mittel = Kernfelder vollständig; niedrig = Kernfelder fehlen."""
-    if impressum_gelesen and k.plz_verifiziert:
+def konfidenz(k: Kanzlei, impressum_gelesen: bool, kanzlei: bool = True) -> Konfidenz:
+    """Vorläufige Regel (CLAUDE.md): hoch = Impressum gelesen und PLZ/Ort verifiziert (und, mit
+    Kanzlei-Erkennung, als Kanzlei erkannt); mittel = Kernfelder vollständig; niedrig = Kernfelder fehlen."""
+    if impressum_gelesen and k.plz_verifiziert and kanzlei:
         return Konfidenz.HOCH
     kern = all((k.kanzleiname, k.strasse, k.plz, k.ort)) and bool(k.telefon or k.email)
     return Konfidenz.MITTEL if kern else Konfidenz.NIEDRIG
