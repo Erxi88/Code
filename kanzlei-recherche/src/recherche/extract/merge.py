@@ -48,6 +48,7 @@ from .personen import (
     ErkanntePerson,
     Mitarbeiterzahl,
     erkenne_personen,
+    funktion_aus_namen,
     ist_berufstraeger_funktion,
     ist_externe_funktion,
     ist_leitung_funktion,
@@ -227,7 +228,11 @@ def personen_vereinigen(personen: list[LlmPerson]) -> list[LlmPerson]:
     for p in personen:
         if ist_externe_funktion(p.funktion):
             continue  # Kundenstimme / Referenz („Geschäftsführer der Muster GmbH")
-        p = LlmPerson(name=name_reihenfolge(p.name), titel=p.titel, funktion=_ohne_fremde_email(p.name, p.funktion))
+        # Funktionswörter und Titel vor dem Namen gehören nicht ins Namensfeld („Geschäftsführer Andreas Schröder")
+        name, f_wort, t_wort = funktion_aus_namen(name_reihenfolge(p.name))
+        funktion = _ohne_fremde_email(p.name, p.funktion)
+        p = LlmPerson(name=name, titel=_funktion_vereinigen(t_wort, p.titel) if t_wort else p.titel,
+                      funktion=_funktion_vereinigen(funktion, f_wort) if f_wort else funktion)
         for i, q in enumerate(ergebnis):
             if gleiche_person(p.name, q.name):
                 name = q.name if len(q.name) >= len(p.name) else p.name
@@ -243,7 +248,9 @@ def personen_vereinigen(personen: list[LlmPerson]) -> list[LlmPerson]:
 
     ergebnis = [q for q in ergebnis if not (ohne_vorname(q) and any(
         not ohne_vorname(x) and (_name_teile(x.name) or ([], ""))[1] == _name_teile(q.name)[1] for x in ergebnis))]
-    return ergebnis
+    # „Forderungsmanagement Flensburg (Rechtsanwältin Ina Reese)": Themenseite, deren Funktion eine andere
+    # Person nennt – kein eigener Mensch
+    return [q for q in ergebnis if not any(x is not q and len(x.name) > 5 and x.name in (q.funktion or "") for x in ergebnis)]
 
 
 # Starke Schlüsselwörter: Namen dürfen direkt folgen („vertreten durch Christian Wermke").
@@ -467,9 +474,17 @@ def ansprechpartner(
     # Grundlage: strukturell erkannte Personen (Teamseiten) und Impressum; das LLM ergänzt nur
     roh: list[LlmPerson] = [LlmPerson(name=p.name, titel=p.titel, funktion=p.funktion) for p in erkannte or []]
     v = vertretung(impressum, fremd, rahmen) if impressum else Vertretung([], {}, None)
+    # Funktionswörter im Namen („Geschäftsführer Andreas Schröder") in die Funktion verschieben
+    for alt in list(v.namen):
+        neu, f_wort, _ = funktion_aus_namen(alt)
+        if neu != alt:
+            v.namen[v.namen.index(alt)] = neu
+            if f_wort or alt in v.funktionen:
+                v.funktionen[neu] = _funktion_vereinigen(v.funktionen.pop(alt, None), f_wort)
     vertreter, bezeichnung = v.namen, v.bezeichnung
     # Hauptansprechpartner: erste/r Vertretungsberechtigte laut Impressum, sonst die vom LLM genannte Person
-    verantwortlich = vertreter[0] if vertreter else (llm.verantwortliche_person if llm else None)
+    verantwortlich = vertreter[0] if vertreter else (
+        funktion_aus_namen(llm.verantwortliche_person)[0] if llm and llm.verantwortliche_person else None)
     for name in vertreter:
         if funktion := v.funktionen.get(name):
             roh.append(LlmPerson(name=name, funktion=f"{funktion} (laut Impressum)"))
@@ -839,6 +854,12 @@ def zusammenfuehren(
     angabe = mitarbeiterzahl([_text(s) for s in seiten.values()])
     zahl, klasse, basis = teamgroesse(llm, team_seiten, erkannte, angabe)
     berufstraeger = sum(1 for p in personen if ist_berufstraeger(p))
+    if zahl is not None and berufstraeger > zahl:
+        # danrevision: 2 Personen auf der Teamseite eines Standorts, aber 7 Berufsträger – Zahl unplausibel,
+        # Untergrenze als Klasse
+        klasse = _groesser(klasse, TeamKlasse.aus_zahl(berufstraeger))
+        basis = f"mindestens {berufstraeger} Berufsträger (statt {basis or zahl})"
+        zahl = None
     if zahl is None and klasse is None and rechtsform == "Einzelkanzlei" and berufstraeger == 1 and len(erkannte) <= 1:
         zahl, basis = 1, "Einzelkanzlei: ein Berufsträger, keine weiteren Personen"
     if rechtsform == "Einzelkanzlei":

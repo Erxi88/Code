@@ -821,3 +821,36 @@ def test_llm_nachname_komma_vorname_wird_zusammengefuehrt():
 
     assert name_reihenfolge("Dr. Kruse, Anna") == "Dr. Anna Kruse"
     assert name_reihenfolge("Kruse, Anna, Lars Behrens") == "Kruse, Anna, Lars Behrens"  # keine Namensliste drehen
+
+
+def test_funktionswort_im_namen_wandert_in_die_funktion():
+    """hsp-steuer.de: „Geschäftsführer Andreas Schröder" als Hauptansprechpartner."""
+    from recherche.extract.merge import ansprechpartner, personen_vereinigen
+
+    impressum = ("Impressum\nHSP GmbH\nVertretungsberechtigte Geschäftsführer: Geschäftsführer Andreas Schröder, "
+                 "Steuerberater Carsten Schulz\nRegistergericht: Amtsgericht Celle")
+    llm = LlmErgebnis(personen=[LlmPerson(name="den Geschäftsführer Diplom-Kaufmann Andreas Paasch", funktion="Steuerberater"),
+                                LlmPerson(name="Steuerberater Carsten Schulz", funktion="Geschäftsführer")])
+    personen = ansprechpartner(llm, [], impressum)
+    assert [p.name for p in personen][:2] == ["Andreas Schröder", "Carsten Schulz"]
+    assert "Geschäftsführer" in personen[0].funktion and "Steuerberater" in personen[1].funktion
+    paasch = next(p for p in personen if p.name == "Andreas Paasch")
+    assert (paasch.titel, paasch.funktion) == ("Diplom-Kaufmann", "Steuerberater, Geschäftsführer")
+    # Themenseite mit Personenname in der Funktion ist keine eigene Person (kanzlei-reese.de)
+    assert [p.name for p in personen_vereinigen([
+        LlmPerson(name="Ina Reese", funktion="Rechtsanwältin, Inhaberin"),
+        LlmPerson(name="Forderungsmanagement Flensburg", funktion="Rechtsanwältin Ina Reese")])] == ["Ina Reese"]
+
+
+def test_teamgroesse_nie_kleiner_als_berufstraeger():
+    """danrevision.tax: Teamseite eines Standorts mit 2 Personen, aber 7 Berufsträger → Klasse statt Zahl."""
+    from recherche.extract.merge import zusammenfuehren
+    from recherche.models import Kandidat
+
+    team = "<p>Unser Team Husum</p><p>Kent Schwirz</p><p>Steuerberater</p><p>Roswitha Kayser</p><p>Steuerberaterin</p>"
+    seiten = {Seitentyp.TEAM: _seite(Seitentyp.TEAM, "https://d.example/team", team)}
+    llm = LlmErgebnis(personen=[LlmPerson(name=n, funktion="Steuerberater") for n in
+                                ("Andreas Lier", "Nils Johannsen", "Andreas Paasch", "Kyrill Seitz", "Jens Siegel")])
+    k = zusammenfuehren(Kandidat(id=1, bundesland="SH", domain="d.example"), [], seiten, None, llm)
+    assert (k.berufstraeger_anzahl, k.teamgroesse, k.teamgroesse_klasse) == (7, None, "6-10")
+    assert k.teamgroesse_basis.startswith("mindestens 7 Berufsträger")

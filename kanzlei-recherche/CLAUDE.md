@@ -272,7 +272,10 @@ der nächsten Quelle füllen.**
     („W. Drews" = „Wiebke Drews", aber ≠ „Sven Drews"; „Drews" allein nie) oder wenn ein
     Vorname Teil des anderen ist („Alexander Hamdorf" = „Johann-Alexander Hamdorf"); beide
     Reihenfolgen gelten („Schreiner, Andreas", „Schreiner Andreas" = „Andreas Schreiner"),
-    ausgegeben wird „Vorname Nachname". E-Mail-Adressen
+    ausgegeben wird „Vorname Nachname". Funktionswörter, Artikel und Titel vor dem Namen wandern in
+    Funktion bzw. Titel („Geschäftsführer Andreas Schröder", „den Geschäftsführer Diplom-Kaufmann Andreas
+    Paasch"). Ein Eintrag, dessen Funktion eine andere Person nennt („Forderungsmanagement Flensburg
+    (Rechtsanwältin Ina Reese)"), ist eine Themenseite, keine Person. E-Mail-Adressen
     in einer Funktion bleiben nur, wenn der lokale Teil zum Namen passt.
   - Ansprechpartner = nur **Berufsträger und Leitung**; Mehrfachnennungen werden
     vereinigt (Funktionen und Titel). Reihenfolge: Vertretungsberechtigte in der
@@ -327,6 +330,8 @@ der nächsten Quelle füllen.**
     (ebenfalls in Straße und Zusatz zerlegt).
   - Teamgröße: genannte Zahl (LLM, dann Regel) > **alle** Personen der Teamseiten (≥ 2; Untergrenze, eine
     größere Klasse aus dem Text geht vor) > Klasse aus dem Text.
+    Die Zahl ist nie kleiner als die Berufsträger: sonst Klasse ab der Berufsträgerzahl („mindestens 7
+    Berufsträger", danrevision: Teamseite nur eines Standorts).
   - Größenklassen (`groesse.py`): Obergrenzen in `extract.groessenklassen` (Standard 1, 5, 10, 20, 50,
     100). Das LLM-Schema erzwingt die aktuellen Klassen. Gespeicherte Zeilen werden beim Laden neu
     eingeordnet: aus der Zahl; ohne Zahl aus der Text-Basis („über 35" → 21-50) oder, wenn der alte

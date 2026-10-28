@@ -141,6 +141,32 @@ def name_zerlegen(text: str) -> tuple[str, str | None] | None:
     return text, " ".join(titel_teile) or None
 
 
+_ARTIKEL = frozenset({"den", "der", "die", "dem", "des"})
+
+
+def funktion_aus_namen(name: str, f: Funktionen | None = None) -> tuple[str, str | None, str | None]:
+    """„Geschäftsführer Andreas Schröder" → („Andreas Schröder", „Geschäftsführer", None);
+    „den Geschäftsführer Diplom-Kaufmann Andreas Paasch" → („Andreas Paasch", „Geschäftsführer",
+    „Diplom-Kaufmann"). Nur wenn danach ein Name übrig bleibt; sonst unverändert."""
+    f = f or lade_funktionen()
+    woerter, funktionen = name.split(), []
+    while len(woerter) > 2:
+        w = woerter[0].strip(",:;")
+        if w.lower() in _ARTIKEL or w in ("Frau", "Herr", "Herrn"):
+            woerter.pop(0)
+        elif f.muster_alle.fullmatch(w):
+            funktionen.append(woerter.pop(0).strip(",:;"))
+        else:
+            break
+    rest = " ".join(woerter)
+    if not funktionen and rest == name:
+        return name, None, None
+    zerlegt = name_zerlegen(rest)
+    if zerlegt is None:
+        return name, None, None
+    return zerlegt[0], ", ".join(funktionen) or None, zerlegt[1]
+
+
 # Kundenstimme / Referenz: „Geschäftsführer der Muster GmbH", „Mandant seit 2010"
 _FREMDE_FIRMA = re.compile(r"\b(?:gmbh|ag|kg|ohg|gbr|e\.\s?k\.|e\.\s?v\.|ug|se|mandant\w*|kunde\w*)\b", re.I)
 
