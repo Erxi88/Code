@@ -582,14 +582,12 @@ def rechtsform_aus_seiten(name: str | None, impressum: str | None, fremd: set[in
         return form
     namens_woerter = {w for w in _woerter(name or "") if len(w) >= 4}
     kopf = _impressum_kopf(impressum, fremd, rahmen)
-    for k, z in enumerate(kopf):
+    for z in kopf:
         if len(z) > 160 or _REGISTERGERICHT.search(z) or not (form := rechtsform_aus_text(z)) or form == "Einzelkanzlei":
             continue
-        # Kurzformen („AG", „KG" …) nur in der Namenszeile oder direkt darunter – „AG" ist oft das Amtsgericht
-        if form in _KURZFORMEN:
-            nachbarn = " ".join(kopf[max(0, k - 1): k + 1]).lower()
-            if not (namens_woerter and any(w in nachbarn for w in namens_woerter)):
-                continue
+        # Kurzformen („AG", „KG" …) nur in der Namenszeile selbst – „AG" ist oft das Amtsgericht
+        if form in _KURZFORMEN and not (namens_woerter and any(w in z.lower() for w in namens_woerter)):
+            continue
         return form
     return None
 
