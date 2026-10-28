@@ -232,8 +232,11 @@ Rechtsanwaltsfachangestellte"""
 
 def test_name_nur_mit_funktion_daneben_und_ohne_rahmen():
     assert erkenne_personen("Anna Bock\nLeistungen\nSteuerberaterin") == []  # Funktion nicht direkt darunter
+    # Rahmenzeile als Name nur mit eigener (nicht im Rahmen stehender) Funktion darunter –
+    # „Andreas Schreiner" steht auch in der Fußzeile, auf der Über-mich-Seite aber mit „Steuerberater"
     text = "Anna Bock\nSteuerberaterin\nMax Muster\nSteuerberater"
-    assert [p.name for p in erkenne_personen(text, rahmen={"max muster"})] == ["Anna Bock"]
+    assert [p.name for p in erkenne_personen(text, rahmen={"max muster", "steuerberater"})] == ["Anna Bock"]
+    assert [p.name for p in erkenne_personen(text, rahmen={"max muster"})] == ["Anna Bock", "Max Muster"]
 
 
 def test_initiale_und_fachangestellte():
@@ -679,3 +682,45 @@ def test_llm_rechtsform_nur_wenn_belegt():
 
     assert not rechtsform_belegt("AG", "Die Steuerfüchse", "Die Steuerfüchse\nRegistergericht: AG Kiel")
     assert rechtsform_belegt("GmbH", "Kanzlei Nord", "Kanzlei Nord Steuerberatungsgesellschaft mbH")
+
+
+def test_namensliste_vor_detailbloecken():
+    """stb-kiel: „Partner" ⏎ fünf Namen, danach je Person ein Block – der Block gilt, nicht die Überschrift."""
+    text = ("Partner\nNiels Benthin\nDirk-Henning Schwark\nSven Hansen\nBert Kühl\nJustyna Slama\n"
+            "Niels Benthin\nDipl.-Betriebswirt\nSteuerberater\nFachberater für Heilberufe\n"
+            "Dirk-Henning Schwark\nDipl.-Kaufmann\nSteuerberater\nSven Hansen\nPartner bis 01.01.2025\nSteuerberater\n"
+            "Bert Kühl\nWirtschaftsprüfer\nSteuerberater\nJustyna Slama\nSteuerberaterin")
+    p = {x.name: x.funktion for x in erkenne_personen(text, rahmen={"steuerberater"})}
+    assert p == {"Niels Benthin": "Steuerberater, Fachberater für Heilberufe", "Dirk-Henning Schwark": "Steuerberater",
+                 "Sven Hansen": "Partner bis 01.01.2025, Steuerberater", "Bert Kühl": "Wirtschaftsprüfer, Steuerberater",
+                 "Justyna Slama": "Steuerberaterin"}
+    assert erkenne_personen("Partner\nAnna Bock\nOle Neu")[0].funktion == "Partner"  # ohne Block bleibt die Überschrift
+
+
+@pytest.mark.parametrize("impressum,form", [
+    ("Benthin | Schwark | Hansen | Kühl\nPartnerschaftsregister\nAmtsgericht Kiel\nPR 427 KI", "PartG"),
+    ("Benthin | Schwark | Hansen | Kühl\nPR 427 KI\nBerufshaftpflicht: … gemäß § 8 Abs. 4 PartGG (mbB)", "PartG mbB"),
+    ("Kanzlei Nord\nEine Eintragung im Handelsregister besteht nicht.", None),
+])  # fmt: skip
+def test_rechtsform_aus_partnerschaftsregister(impressum, form):
+    from recherche.extract.merge import rechtsform_aus_seiten
+
+    assert rechtsform_aus_seiten("Benthin | Schwark | Hansen | Kühl", impressum) == form
+
+
+def test_einzelkanzlei_mit_ueber_mich_seite():
+    """steuerberaterschreiner: „Steuerberater Schreiner" + Andreas Schreiner, eine Über-mich-Seite."""
+    from recherche.extract.merge import zusammenfuehren
+    from recherche.extract.rules import Ausschluss
+    from recherche.models import Kandidat
+
+    imp = ("<p>Angaben gemäß § 5 TMG</p><p>Andreas Schreiner</p><p>Steuerberater Schreiner</p><p>Reventlouallee 17</p>"
+           "<p>24105 Kiel</p><p>Telefon: 0431/99019663</p><p>Berufsbezeichnung: Steuerberater</p>")
+    team = "<p>M. Sc. agr.</p><p>Andreas Schreiner</p><p>Steuerberater</p><p>Reventlouallee 17</p><p>24105 Kiel</p>"
+    seiten = {Seitentyp.IMPRESSUM: _seite(Seitentyp.IMPRESSUM, "https://s.example/impressum", imp),
+              Seitentyp.TEAM: _seite(Seitentyp.TEAM, "https://s.example/ueber-mich", team)}
+    k = zusammenfuehren(Kandidat(id=1, bundesland="SH", domain="s.example"), [], seiten, None,
+                        LlmErgebnis(kanzleiname="Steuerberater Schreiner", rechtsform="Steuerberater"),
+                        ausschluss=Ausschluss.laden(STANDARD_AUSSCHLUSS))
+    assert (k.kanzleiname, k.rechtsform, k.berufstraeger_anzahl, k.teamgroesse) == (
+        "Steuerberater Andreas Schreiner", "Einzelkanzlei", 1, 1)

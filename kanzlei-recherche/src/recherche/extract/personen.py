@@ -208,13 +208,27 @@ def erkenne_personen(
     gefunden: list[ErkanntePerson] = []
     vergeben: set[int] = set()
     abschnitt: str | None = None  # Überschrift über mehreren Kacheln („Partner")
+    schwach: set[str] = set()  # nur über eine Überschrift zugeordnet (Namensliste vor den Detailblöcken)
 
-    def hinzu(name_titel, funktion: str, i: int) -> None:
+    def hinzu(name_titel, funktion: str, i: int, nur_ueberschrift: bool = False) -> None:
         name, titel = name_titel
         schluessel = frozenset(name.lower().split())
-        if any(frozenset(p.name.lower().split()) == schluessel for p in gefunden):
+        funktion = _funktion_saeubern(funktion)
+        for k, p in enumerate(gefunden):
+            if frozenset(p.name.lower().split()) != schluessel:
+                continue
+            if nur_ueberschrift:
+                return
+            # dieselbe Person noch einmal mit eigenem Block: der Block gilt (statt der Überschrift),
+            # sonst Funktionen vereinigen
+            alt = "" if p.name in schwach else p.funktion
+            neu = ", ".join(x for x in dict.fromkeys(s.strip() for s in f"{alt}, {funktion}".split(",")) if x)
+            gefunden[k] = ErkanntePerson(p.name, p.titel or titel or None, neu, p.zeile)
+            schwach.discard(p.name)
             return
-        gefunden.append(ErkanntePerson(name, titel or None, _funktion_saeubern(funktion), i))
+        gefunden.append(ErkanntePerson(name, titel or None, funktion, i))
+        if nur_ueberschrift:
+            schwach.add(name)
 
     def name_in(j: int):
         return None if j in im_rahmen or not zeilen[j] else name_zerlegen(zeilen[j])
@@ -234,7 +248,7 @@ def erkenne_personen(
             hinzu(nt, teile[1], i)
             vergeben.add(i)
             continue
-        nt = name_in(i)
+        nt = name_in(i) or (name_zerlegen(z) if i in im_rahmen else None)
         if nt is None:
             # Abschnittsüberschrift: kurze Funktionszeile direkt über einem Namen
             if _ist_funktion(z, f) and len(z.split()) <= 4 and not _beginnt_mit_name(z) and naechster_name(i):
@@ -258,15 +272,19 @@ def erkenne_personen(
                 kontakt += 1  # Kontaktzeile innerhalb der Kachel überspringen
             else:
                 break
+        if i in im_rahmen and not any(j not in im_rahmen for j in folge):
+            continue  # Name aus Navigation/Fußzeile nur mit eigener Funktion darunter („Andreas Schreiner" in der Fußzeile)
         titel = " ".join(x for x in [nt[1], *(zeilen[j] for j in titel_zusatz)] if x) or None
         funktion = ", ".join(zeilen[j].strip(" ,;") for j in folge)
         if folge:
-            if abschnitt and abschnitt.lower() not in funktion.lower():
+            # Überschrift nur, wenn die Person nicht schon aus der Namensliste darunter stammt (dann gilt ihr Block)
+            if abschnitt and abschnitt.lower() not in funktion.lower() and nt[0] not in schwach:
                 funktion = f"{abschnitt}, {funktion}"
             hinzu((nt[0], titel), funktion, i)
             vergeben.update({i, *folge, *titel_zusatz})
         elif abschnitt:
-            hinzu((nt[0], titel), abschnitt, i)  # Kachel unter der Überschrift („Partner"), ohne eigene Funktion
+            # Kachel unter der Überschrift („Partner"), ohne eigene Funktion
+            hinzu((nt[0], titel), abschnitt, i, nur_ueberschrift=True)
             vergeben.update({i, *titel_zusatz})
         elif i > 0 and zeilen[i - 1] and i - 1 not in vergeben and _ist_funktion(zeilen[i - 1], f) \
                 and not _beginnt_mit_name(zeilen[i - 1]):

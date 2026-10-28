@@ -589,7 +589,21 @@ def rechtsform_aus_seiten(name: str | None, impressum: str | None, fremd: set[in
         if form in _KURZFORMEN and not (namens_woerter and any(w in z.lower() for w in namens_woerter)):
             continue
         return form
+    # Registereintrag im Partnerschaftsregister → PartG; „mbB"/„beschränkte Berufshaftung" irgendwo im
+    # Impressum (oft im Haftpflicht-Abschnitt) → PartG mbB
+    voll = text_normalisieren(impressum) or ""
+    if re.search(r"partnerschaftsregister|\bPR\s?\d", voll, re.I):
+        return "PartG mbB" if re.search(r"\bmbb\b|beschränkter?\s+berufshaftung", voll, re.I) else "PartG"
     return None
+
+
+def name_mit_vorname(name: str | None, personen: list) -> str | None:
+    """„Steuerberater Schreiner" + Person „Andreas Schreiner" → „Steuerberater Andreas Schreiner"."""
+    woerter = (name or "").split()
+    if len(woerter) != 2 or not _BERUFSWORT.match(woerter[0].lower()):
+        return name
+    treffer = [p for p in personen if (teile := _name_teile(p.name)) and teile[1] == woerter[1].lower() and teile[0]]
+    return f"{woerter[0]} {treffer[0].name}" if len(treffer) == 1 else name
 
 
 def rechtsform_belegt(form: str | None, name: str | None, impressum: str | None, fremd: set[int] | None = None,
@@ -752,8 +766,10 @@ def zusammenfuehren(
     angabe = mitarbeiterzahl([_text(s) for s in seiten.values()])
     zahl, klasse, basis = teamgroesse(llm, team_seiten, erkannte, angabe)
     berufstraeger = sum(1 for p in personen if ist_berufstraeger(p))
-    if zahl is None and klasse is None and rechtsform == "Einzelkanzlei" and not team_seiten and berufstraeger == 1:
-        zahl, basis = 1, "Einzelkanzlei ohne Teamseite: ein Berufsträger"
+    if zahl is None and klasse is None and rechtsform == "Einzelkanzlei" and berufstraeger == 1 and len(erkannte) <= 1:
+        zahl, basis = 1, "Einzelkanzlei: ein Berufsträger, keine weiteren Personen"
+    if rechtsform == "Einzelkanzlei":
+        name = name_mit_vorname(name, personen)
     hat_personeninfo = llm is not None or bool(erkannte) or bool(personen)
 
     # ---- Website, Quellen, Datum

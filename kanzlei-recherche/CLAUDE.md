@@ -206,8 +206,11 @@ der nächsten Quelle füllen.**
   die mit einem Namen beginnt, ist die nächste Person; Firmen-/Adresszeilen mit PLZ oder
   PartG/mbB sind nie Funktion), als **Abschnittsüberschrift** („Partner" über mehreren
   Kacheln, gilt bis zur nächsten Überschrift oder zu anderem Text) oder direkt darüber (Kachel mit Rolle als
-  Überschrift); Zeilen aus dem RAHMEN sind nie Namen, kurze Rahmenzeilen („Steuerberater" im
-  Logo) zählen aber als Funktion unter einem Namen; Menüwörter („Berufsträger", „Firmenphilosophie",
+  Überschrift); Zeilen aus dem RAHMEN sind nur Namen, wenn darunter eine eigene Funktion
+  steht, die nicht selbst im Rahmen steht („Andreas Schreiner" auch in der Fußzeile); kurze
+  Rahmenzeilen („Steuerberater" im Logo) zählen als Funktion unter einem Namen. Eine reine
+  Namensliste unter einer Überschrift wird durch spätere Detailblöcke derselben Personen
+  ersetzt; Menüwörter („Berufsträger", „Firmenphilosophie",
   „Historie" …) und Institutionen („…kammer", „…gericht") sind nie Namen; „BD-Partner"
   (Bindestrich davor) ist keine Funktion und kein Impressum-Schlüsselwort. Initialen („W. Drews") und Anrede
   („Frau …") sind erlaubt; `*kauffrau` in der Liste trifft auch Komposita
@@ -271,7 +274,12 @@ der nächsten Quelle füllen.**
     Gesellschaftsform: Einzelperson mit Berufstitel im Namen („Steuerberater Andreas
     Schreiner", „Steuerbüro Thomas Schütt", auch „Steuerberater Schreiner") oder genau ein
     Vertreter ohne Registernummer (HRB/PR …; „keine Eintragung im Handelsregister" zählt nicht)
-    → Einzelkanzlei. Einzelkanzlei mit einem Berufsträger und ohne Teamseite: Teamgröße 1. Kanonisch nach `config/rechtsformen.yaml`; Ort laut OpenPLZ
+    → Einzelkanzlei. Einzelkanzlei mit einem Berufsträger und höchstens einer Person
+    auf den Teamseiten: Teamgröße 1; „Steuerberater Schreiner" + Person „Andreas Schreiner" →
+    „Steuerberater Andreas Schreiner". Partnerschaftsregister/„PR 427" → PartG, mit „mbB" oder
+    „beschränkter Berufshaftung" irgendwo im Impressum → PartG mbB. Kurzformen (AG, KG, UG,
+    OHG, GbR) nur in der Namenszeile („AG Kiel" ist das Amtsgericht); eine LLM-Rechtsform nur
+    mit Beleg in Name oder Impressum. Kanonisch nach `config/rechtsformen.yaml`; Ort laut OpenPLZ
     („Hamburg-Rissen" → „Hamburg").
   - Adresszusatz („/ Haus 8 Süd", eigene Zeile mit Haus, Gebäude, Eingang, Etage, OG,
     Hinterhof, c/o; auch in Klammern, mehrteilig oder nach einem Zeilenumbruch hinter
