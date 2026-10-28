@@ -288,7 +288,7 @@ def test_fixture_prompt_unbekannt():
     assert r.exit_code == 2 and "nicht gefunden" in r.output
 
 
-def test_fixture_eval_ohne_aufzeichnung():
+def test_fixture_eval_ohne_aufzeichnung(fake_openplz_pruefer):
     r = runner.invoke(cli.app, ["fixture-eval", "--nur", "beispiele", "--modell", "gemma4:26b"])
     assert r.exit_code == 0
     assert "ohne LLM-Aufzeichnung" in r.output and "--live" in r.output

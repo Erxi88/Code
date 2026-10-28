@@ -227,3 +227,35 @@ def test_stammdomain_baukasten_hoster_bleiben_getrennt():
     assert stammdomain("www.kanzlei.example") == "kanzlei.example"
     assert stammdomain("holgerherholz.wixsite.com") == "holgerherholz.wixsite.com"
     assert stammdomain("steuer-nord.jimdofree.com") == "steuer-nord.jimdofree.com"
+
+
+def test_ausserhalb_bundesland_eigenes_blatt_und_vorrang(storage, tmp_path):
+    from recherche.export import BLATT_AUSSERHALB
+
+    for domain, land, name in [("kanzlei-dresden.example", "Sachsen", "Steuerkanzlei Dresden"),
+                               ("kanzlei-kiel.example", "Schleswig-Holstein", "Steuerkanzlei Kiel"),
+                               ("magazin-leipzig.example", "Sachsen", None)]:
+        kid = _speichern(storage, domain, name, ["Impressum", name or "Verlag GmbH"])
+        k = storage.kanzlei_fuer_kandidat(kid)
+        storage.upsert_kanzlei(k.model_copy(update={"bundesland": land}))
+    # ohne Website (Verzeichnis): nur Bundesland-Filter
+    storage.upsert_kanzlei(Kanzlei(lauf_bundesland="SH", kanzleiname="Steuerbüro Hamburg", bundesland="Hamburg",
+                                   website_vorhanden=False))
+    stat = run_pruefung(storage, "SH", ziel_land="Schleswig-Holstein")
+    status = {k.kanzleiname or k.domain: k.status for k in storage.kanzleien("SH")}
+    assert status == {"Steuerkanzlei Dresden": Status.AUSSERHALB, "Steuerkanzlei Kiel": Status.NEU,
+                      "magazin-leipzig.example": Status.KEINE_KANZLEI,  # keine Kanzlei geht vor
+                      "Steuerbüro Hamburg": Status.AUSSERHALB}
+    assert stat.ausserhalb == 2
+    wb = load_workbook(export_excel(storage, "SH", tmp_path / "x.xlsx"))
+    aussen = list(wb[BLATT_AUSSERHALB].iter_rows(min_row=2, values_only=True))
+    kanzleien = [r[0] for r in wb[BLATT_KANZLEIEN].iter_rows(min_row=2, values_only=True)]
+    assert len(aussen) == 2 and kanzleien == ["Steuerkanzlei Kiel"], kanzleien
+    # Zurück, wenn die PLZ korrigiert wird; von Hand gepflegter Status bleibt
+    k = next(k for k in storage.kanzleien("SH") if k.kanzleiname == "Steuerkanzlei Dresden")
+    storage.upsert_kanzlei(k.model_copy(update={"bundesland": "Schleswig-Holstein"}))
+    k = next(k for k in storage.kanzleien("SH") if k.kanzleiname == "Steuerbüro Hamburg")
+    storage.upsert_kanzlei(k.model_copy(update={"status": Status.GEPRUEFT}))
+    run_pruefung(storage, "SH", ziel_land="Schleswig-Holstein")
+    status = {k.kanzleiname or k.domain: k.status for k in storage.kanzleien("SH")}
+    assert status["Steuerkanzlei Dresden"] == Status.NEU and status["Steuerbüro Hamburg"] == Status.GEPRUEFT

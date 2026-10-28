@@ -15,6 +15,7 @@ from pathlib import Path
 
 from .groesse import neu_einordnen
 from .models import (
+    AUTO_STATUS,
     Ansprechpartner,
     Dublette,
     Fund,
@@ -25,7 +26,6 @@ from .models import (
     SchrittStatus,
     Seite,
     Seitentyp,
-    Status,
 )
 
 SCHEMA_VERSION = 4
@@ -564,12 +564,13 @@ class Storage:
 
         Der Status (Excel-Dropdown) einer bestehenden Kanzlei bleibt erhalten, wenn er von Hand
         gepflegt ist – eine erneute Extraktion setzt also keine gepflegten Status zurück. Nur die
-        automatischen Werte „neu" und „keine Kanzlei" (Kanzlei-Erkennung) werden ersetzt.
+        automatischen Werte „neu", „keine Kanzlei" und „außerhalb Bundesland" werden ersetzt.
         """
-        if k.kandidat_id is not None:
+        row = None
+        if k.id is not None:  # geladene Zeile (z. B. kanzlei-pruefung) – auch ohne Kandidat und Domain
+            row = self.conn.execute("SELECT id, status FROM kanzleien WHERE id = ?", (k.id,)).fetchone()
+        if row is None and k.kandidat_id is not None:
             row = self.conn.execute("SELECT id, status FROM kanzleien WHERE kandidat_id = ?", (k.kandidat_id,)).fetchone()
-        else:
-            row = None
         if row is None and k.domain:
             row = self.conn.execute("SELECT id, status FROM kanzleien WHERE domain = ?", (k.domain,)).fetchone()
         werte = dict(zip(_KANZLEI_FELDER, self._kanzlei_werte(k), strict=True))
@@ -581,7 +582,7 @@ class Storage:
                     list(werte.values()),
                 )
                 return cur.lastrowid
-            if row["status"] not in (Status.NEU, Status.KEINE_KANZLEI) and k.status in (Status.NEU, Status.KEINE_KANZLEI):
+            if row["status"] not in AUTO_STATUS and k.status in AUTO_STATUS:
                 werte["status"] = row["status"]
             self.conn.execute(
                 f"UPDATE kanzleien SET {', '.join(f'{f} = ?' for f in werte)} WHERE id = ?",

@@ -510,3 +510,37 @@ def test_robots_entscheidung_nennt_regel():
     r = Robots.parse("User-agent: *\nDisallow: /\nAllow: /impressum\n")
     assert r.entscheidung("kanzlei-recherche/0.1", "https://x/") == (False, "Disallow: /")
     assert r.entscheidung("kanzlei-recherche/0.1", "https://x/impressum") == (True, "Allow: /impressum")
+
+
+LAENDER = {"01067": "Sachsen", "04109": "Sachsen", "24103": "Schleswig-Holstein", "20095": "Hamburg"}
+
+
+@pytest.mark.parametrize("name, snippet, plz, erwartet", [
+    ("Steuerberater Dresden – Kanzlei Muster", "Wilsdruffer Str. 1, 01067 Dresden", None, "01067 Dresden – Sachsen"),
+    ("Kanzlei Muster", "Büros in 01067 Dresden und 24103 Kiel", None, None),  # eine PLZ im Land genügt
+    ("Kanzlei Muster", "Ihr Steuerberater im Norden", None, None),  # keine PLZ erkennbar → crawlen
+    ("Kanzlei Muster", None, "20095", "20095"),  # PLZ aus der Discovery (Verzeichnis)
+    ("Kanzlei Muster", "Kundennummer 12345 Muster", None, None),  # unbekannte Zahl, kein Land
+])  # fmt: skip
+def test_ausserhalb_laut_suchtreffer(name, snippet, plz, erwartet):
+    from recherche.crawl import ausserhalb_laut_suchtreffer
+
+    k = Kandidat(bundesland="SH", domain="m.example", plz=plz)
+    funde = [Fund(kandidat_id=1, bundesland="SH", quelle="brave", quell_id="1", name=name, snippet=snippet)]
+    grund = ausserhalb_laut_suchtreffer(k, funde, LAENDER.get, "Schleswig-Holstein")
+    assert (grund is None) if erwartet is None else (erwartet in grund and grund.startswith("außerhalb Schleswig-Holstein"))
+
+
+def test_crawl_ueberspringt_kandidaten_ausserhalb(storage):
+    from recherche.crawl import ausserhalb_laut_suchtreffer
+
+    seiten = beispiel_seiten("foerde-steuer.example")
+    web, clock, ids = _setup(storage, seiten, ("foerde-steuer.example", {}), ("dresden-steuer.example", {}))
+    storage.add_fund(Fund(kandidat_id=ids[1], bundesland="SH", quelle="brave", quell_id="d",
+                          name="Steuerberater Dresden", snippet="Prager Str. 2, 01067 Dresden"))
+    stat = run_crawl(storage, CFG, "SH", set(), client=web.client(),
+                     land_filter=lambda k, f: ausserhalb_laut_suchtreffer(k, f, LAENDER.get, "Schleswig-Holstein"))
+    assert (stat.fertig, stat.ausserhalb) == (1, 1)
+    (ng,) = storage.nicht_gefunden("SH")
+    assert ng.domain == "dresden-steuer.example" and ng.grund.startswith("außerhalb Schleswig-Holstein laut Suchtreffer")
+    assert not any("dresden" in u for u in web.urls())

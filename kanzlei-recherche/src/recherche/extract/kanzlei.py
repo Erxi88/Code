@@ -27,7 +27,7 @@ import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
-from ..models import Fund, Kanzlei, Konfidenz, Seitentyp, Status
+from ..models import AUTO_STATUS, Fund, Kanzlei, Konfidenz, Seitentyp, Status
 from ..storage import Storage
 from ..textnorm import text_normalisieren
 from .merge import konfidenz
@@ -83,27 +83,34 @@ def grund_aus_abweichung(abweichung: str | None) -> str | None:
     return None
 
 
-def anwenden(k: Kanzlei, grund: str | None, impressum_gelesen: bool) -> Kanzlei:
-    """Status, Grund und Konfidenz setzen. Ein von Hand gepflegter Status bleibt beim Speichern
-    erhalten (Storage.upsert_kanzlei); hier wechselt nur „neu" ↔ „keine Kanzlei"."""
-    rest = _GRUND_EINTRAG.sub("", k.abweichung or "").strip().rstrip(";").strip()
-    if grund:
-        k.abweichung = GRUND_PRAEFIX + grund + (f"; {rest}" if rest else "")
-        if k.status == Status.NEU:
-            k.status = Status.KEINE_KANZLEI
-    else:
-        k.abweichung = rest or None
-        if k.status == Status.KEINE_KANZLEI:
-            k.status = Status.NEU
-    k.konfidenz = konfidenz(k, impressum_gelesen, kanzlei=grund is None)
+def ausserhalb(k: Kanzlei, ziel_land: str | None) -> bool:
+    """PLZ laut OpenPLZ in einem anderen Bundesland als dem des Laufs (unbekannt → nein)."""
+    return bool(ziel_land and k.bundesland and k.bundesland != ziel_land)
+
+
+def status_setzen(k: Kanzlei, ziel_land: str | None = None) -> Kanzlei:
+    """Automatischer Status: „keine Kanzlei" vor „außerhalb Bundesland" vor „neu" – nur wenn der
+    bisherige Status automatisch ist (von Hand gepflegte bleiben)."""
+    if k.status in AUTO_STATUS:
+        k.status = (Status.KEINE_KANZLEI if grund_aus_abweichung(k.abweichung)
+                    else Status.AUSSERHALB if ausserhalb(k, ziel_land) else Status.NEU)
     return k
 
 
+def anwenden(k: Kanzlei, grund: str | None, impressum_gelesen: bool, ziel_land: str | None = None) -> Kanzlei:
+    """Grund, Konfidenz und Status setzen. Ein von Hand gepflegter Status bleibt (auch beim Speichern,
+    Storage.upsert_kanzlei)."""
+    rest = _GRUND_EINTRAG.sub("", k.abweichung or "").strip().rstrip(";").strip()
+    k.abweichung = (GRUND_PRAEFIX + grund + (f"; {rest}" if rest else "")) if grund else (rest or None)
+    k.konfidenz = konfidenz(k, impressum_gelesen, kanzlei=grund is None)
+    return status_setzen(k, ziel_land)
+
+
 def pruefen(k: Kanzlei, seiten: dict, rechtsformen=STANDARD_RECHTSFORMEN, funde: Sequence[Fund] = (),
-            suchorte: int | None = None) -> Kanzlei:
+            suchorte: int | None = None, ziel_land: str | None = None) -> Kanzlei:
     impressum = seiten.get(Seitentyp.IMPRESSUM)
     text = text_normalisieren(impressum.text) if impressum else None
-    return anwenden(k, kein_kanzlei_grund(k, text, rechtsformen, funde, suchorte), impressum is not None)
+    return anwenden(k, kein_kanzlei_grund(k, text, rechtsformen, funde, suchorte), impressum is not None, ziel_land)
 
 
 # Baukasten-Hoster: jede Subdomain ist eine eigene Website (oft eine kleine Kanzlei)
@@ -139,22 +146,27 @@ def suchorte_je_stammdomain(storage: Storage, bundesland: str) -> dict[str, int]
 class PruefStatistik:
     geprueft: int = 0
     keine_kanzlei: int = 0
+    ausserhalb: int = 0
     wieder_kanzlei: int = 0
     herabgestuft: int = 0  # Konfidenz hoch → mittel/niedrig
 
 
 def run_pruefung(storage: Storage, bundesland: str, rechtsformen=STANDARD_RECHTSFORMEN,
-                 fortschritt: Callable[[str], None] | None = None) -> PruefStatistik:
-    """Kanzlei-Erkennung auf alle extrahierten Kanzleien mit Website anwenden (ohne LLM)."""
+                 fortschritt: Callable[[str], None] | None = None, ziel_land: str | None = None,
+                 kanzlei_erkennung: bool = True) -> PruefStatistik:
+    """Kanzlei-Erkennung und Bundesland-Filter auf alle extrahierten Kanzleien anwenden (ohne LLM).
+    Ohne Website nur der Bundesland-Filter (Discovery aus Verzeichnissen, keine Seiten zum Prüfen)."""
     stat = PruefStatistik()
     orte = suchorte_je_stammdomain(storage, bundesland)
     for k in storage.kanzleien(bundesland):
-        if not k.domain or k.kandidat_id is None:
-            continue  # ohne Website: Discovery aus Verzeichnissen, keine Seiten zum Prüfen
         vorher_status, vorher_konf = k.status, k.konfidenz
-        pruefen(k, storage.kandidat_seiten(k.kandidat_id), rechtsformen, storage.funde_kandidat(k.kandidat_id),
-                orte.get(stammdomain(k.domain), 0))
+        if kanzlei_erkennung and k.domain and k.kandidat_id is not None:
+            pruefen(k, storage.kandidat_seiten(k.kandidat_id), rechtsformen, storage.funde_kandidat(k.kandidat_id),
+                    orte.get(stammdomain(k.domain), 0), ziel_land)
+        else:
+            status_setzen(k, ziel_land)
         stat.geprueft += 1
+        stat.ausserhalb += k.status == Status.AUSSERHALB
         if k.status == Status.KEINE_KANZLEI or grund_aus_abweichung(k.abweichung):
             stat.keine_kanzlei += 1
             if fortschritt and vorher_status != Status.KEINE_KANZLEI:

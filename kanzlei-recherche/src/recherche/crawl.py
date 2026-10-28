@@ -27,7 +27,7 @@ import httpx
 from bs4 import BeautifulSoup, Comment
 
 from .config import CrawlConfig
-from .models import Kandidat, NichtGefunden, SchrittStatus, Seite, Seitentyp
+from .models import Fund, Kandidat, NichtGefunden, SchrittStatus, Seite, Seitentyp
 from .robots import Robots, produkt_token
 from .search.pipeline import ist_blockiert, normalize_domain
 from .storage import Storage
@@ -775,6 +775,7 @@ class CrawlStatistik:
     anfragen: int = 0
     trotz_robots: int = 0  # gelesen, obwohl robots.txt nicht abrufbar war
     dns: int = 0  # tote Domains
+    ausserhalb: int = 0  # nicht gecrawlt: Suchtreffer nur mit PLZ außerhalb des Bundeslandes
 
     def zaehlen(self, erg: CrawlErgebnis) -> None:
         if erg.ok:
@@ -787,6 +788,28 @@ class CrawlStatistik:
         self.gruende[kurz] = self.gruende.get(kurz, 0) + 1
 
 
+_PLZ_IM_TEXT = re.compile(r"(?<![\d-])(\d{5})\s+([A-ZÄÖÜ][\wäöüß.-]+(?:\s(?:an|am|im|bei|in|ob|vor)\s[A-ZÄÖÜ][\wäöüß.-]+)?)")
+
+
+def ausserhalb_laut_suchtreffer(k: Kandidat, funde: list[Fund], plz_land: Callable[[str], str | None],
+                                ziel_land: str) -> str | None:
+    """Grund, wenn alle erkennbaren PLZ (Kandidat, Fund-Adressen, „01067 Dresden" in Titel/Snippet) laut
+    OpenPLZ außerhalb des Ziel-Bundeslandes liegen; sonst None (auch ohne erkennbare PLZ)."""
+    plz: dict[str, str] = {}
+    for p, ort in [(k.plz, k.ort), *((f.plz, f.ort) for f in funde)]:
+        if p:
+            plz.setdefault(p, ort or "")
+    for f in funde:
+        for m in _PLZ_IM_TEXT.finditer(f"{f.name or ''} \n {f.snippet or ''}"):
+            plz.setdefault(m.group(1), m.group(2))
+    laender = {p: plz_land(p) for p in plz}
+    bekannt = {p: land for p, land in laender.items() if land}
+    if not bekannt or ziel_land in bekannt.values():
+        return None
+    p, land = next(iter(bekannt.items()))
+    return f"außerhalb {ziel_land} laut Suchtreffer ({p} {plz[p]} – {land})".replace("  ", " ")
+
+
 def run_crawl(
     storage: Storage,
     cfg: CrawlConfig,
@@ -797,19 +820,34 @@ def run_crawl(
     renderer: Renderer | None = None,
     fortschritt: Callable[[str], None] | None = None,
     gruendlich: bool = False,
+    land_filter: Callable[[Kandidat, list[Fund]], str | None] | None = None,
 ) -> CrawlStatistik:
     """Crawlt alle offenen Kandidaten mit Website (wiederaufnehmbar über crawl_status).
-    `gruendlich` (crawl --wiederholen): zusätzliche Impressum-Pfade raten."""
+    `gruendlich` (crawl --wiederholen): zusätzliche Impressum-Pfade raten. `land_filter`: Kandidaten,
+    deren Suchtreffer nur PLZ außerhalb des Bundeslandes nennen, gar nicht erst crawlen."""
     kandidaten = storage.kandidaten(bundesland, crawl_status=SchrittStatus.OFFEN, nur_mit_website=True)
     if limit:
         kandidaten = kandidaten[:limit]
+    aussen: list[tuple[Kandidat, str]] = []
+    if land_filter:
+        gruende = {k.id: land_filter(k, storage.funde_kandidat(k.id)) for k in kandidaten}
+        aussen = [(k, g) for k in kandidaten if (g := gruende[k.id])]
+        kandidaten = [k for k in kandidaten if not gruende[k.id]]
 
     async def lauf() -> CrawlStatistik:
         crawler = Crawler(cfg, storage, blocklist, client=client, renderer=renderer, gruendlich=gruendlich)
         try:
-            return await crawler.run(kandidaten, bundesland, fortschritt)
+            stat = await crawler.run(kandidaten, bundesland, fortschritt)
         finally:
             await crawler.schliessen()
+        for k, grund in aussen:
+            erg = CrawlErgebnis(k.id, k.domain or "", grund=grund, url=k.website)
+            crawler.speichern(k, erg, bundesland)
+            stat.zaehlen(erg)
+            stat.ausserhalb += 1
+            if fortschritt:
+                fortschritt(f"{erg.domain}: nicht gecrawlt – {grund}")
+        return stat
 
     return asyncio.run(lauf())
 

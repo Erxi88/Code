@@ -21,7 +21,7 @@ from ..normalize import PlzPruefer
 from ..storage import Storage
 from ..textnorm import text_normalisieren
 from .base import AnbieterNichtErreichbar, Extractor, ExtraktionFehler
-from .kanzlei import pruefen, stammdomain, suchorte_je_stammdomain
+from .kanzlei import pruefen, stammdomain, status_setzen, suchorte_je_stammdomain
 from .merge import zusammenfuehren
 from .prompt import seiten_rahmen
 from .rules import Ausschluss, extract_impressum, festnetz_aus_html, ist_mobil
@@ -84,8 +84,10 @@ def run_extract(
     limit: int | None = None,
     fortschritt: Callable[[str], None] | None = None,
     kanzlei_rechtsformen: list[str] | None = None,
+    ziel_land: str | None = None,
 ) -> ExtractStatistik:
-    """kanzlei_rechtsformen gesetzt → Kanzlei-Erkennung aktiv (extract.kanzlei_pruefung)."""
+    """kanzlei_rechtsformen gesetzt → Kanzlei-Erkennung aktiv (extract.kanzlei_pruefung).
+    ziel_land („Schleswig-Holstein") → PLZ in anderem Land: Status „außerhalb Bundesland"."""
     stat = ExtractStatistik()
     start = time.monotonic()
     offen = [
@@ -100,7 +102,9 @@ def run_extract(
             kanzlei = _eine(storage, k, extractor, pruefer, ausschluss, stat)
             if kanzlei_rechtsformen is not None and k.domain:
                 pruefen(kanzlei, storage.kandidat_seiten(k.id), tuple(kanzlei_rechtsformen), storage.funde_kandidat(k.id),
-                        suchorte.get(stammdomain(k.domain), 0))
+                        suchorte.get(stammdomain(k.domain), 0), ziel_land)
+            else:
+                status_setzen(kanzlei, ziel_land)
         except AnbieterNichtErreichbar as e:
             stat.abbruch = str(e)
             break
@@ -118,7 +122,7 @@ def run_extract(
         storage.set_extract_status(k.id, SchrittStatus.FERTIG)
         stat.fertig += 1
         if fortschritt:
-            zusatz = ", keine Kanzlei" if kanzlei.status == Status.KEINE_KANZLEI else ""
+            zusatz = f", {kanzlei.status.value}" if kanzlei.status in (Status.KEINE_KANZLEI, Status.AUSSERHALB) else ""
             fortschritt(f"{k.domain or kanzlei.kanzleiname}: {kanzlei.kanzleiname or '–'} ({kanzlei.konfidenz.value}{zusatz})")
     storage.log_lauf(
         LaufEintrag(

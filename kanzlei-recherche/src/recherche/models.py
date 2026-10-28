@@ -41,6 +41,11 @@ class Status(StrEnum):
     KEIN_INTERESSE = "kein Interesse"
     UNGUELTIG = "ungültig"
     KEINE_KANZLEI = "keine Kanzlei"  # automatisch (Kanzlei-Erkennung), eigenes Excel-Blatt
+    AUSSERHALB = "außerhalb Bundesland"  # automatisch (PLZ laut OpenPLZ in anderem Land), eigenes Blatt
+
+
+# automatisch gesetzte Status: werden bei erneuter Extraktion/Prüfung ersetzt, von Hand gepflegte nie
+AUTO_STATUS = frozenset({Status.NEU, Status.KEINE_KANZLEI, Status.AUSSERHALB})
 
 
 class Konfidenz(StrEnum):

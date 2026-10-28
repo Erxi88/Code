@@ -20,6 +20,7 @@ from .storage import Storage
 BLATT_KANZLEIEN = "Kanzleien"
 BLATT_NICHT_GEFUNDEN = "Nicht gefunden"
 BLATT_KEINE_KANZLEI = "Keine Kanzlei"
+BLATT_AUSSERHALB = "Außerhalb Bundesland"
 BLATT_DUBLETTEN = "Dubletten"
 BLATT_PROTOKOLL = "Lauf-Protokoll"
 
@@ -138,7 +139,7 @@ def _blatt(ws: Worksheet, spalten: Sequence[Spalte], zeilen: Sequence[Any]) -> N
 def _status_dropdown(ws: Worksheet, spalten: Sequence[Spalte], anzahl: int) -> DataValidation:
     index = [s[0] for s in spalten].index("Status") + 1
     buchstabe = get_column_letter(index)
-    werte = ",".join(s.value for s in Status if s != Status.KEINE_KANZLEI)  # automatisch, nicht von Hand
+    werte = ",".join(s.value for s in Status if s not in (Status.KEINE_KANZLEI, Status.AUSSERHALB))  # automatisch
     dv = DataValidation(
         type="list",
         formula1=f'"{werte}"',
@@ -159,7 +160,8 @@ def build_workbook(
     protokoll: Sequence[LaufEintrag],
 ) -> Workbook:
     keine = [k for k in kanzleien if k.status == Status.KEINE_KANZLEI]
-    kanzleien = [k for k in kanzleien if k.status != Status.KEINE_KANZLEI]
+    aussen = [k for k in kanzleien if k.status == Status.AUSSERHALB]
+    kanzleien = [k for k in kanzleien if k.status not in (Status.KEINE_KANZLEI, Status.AUSSERHALB)]
     wb = Workbook()
     ws = wb.active
     ws.title = BLATT_KANZLEIEN
@@ -168,6 +170,8 @@ def build_workbook(
     _blatt(wb.create_sheet(BLATT_NICHT_GEFUNDEN), NICHT_GEFUNDEN_SPALTEN, nicht_gefunden)
     if keine:
         _blatt(wb.create_sheet(BLATT_KEINE_KANZLEI), KEINE_KANZLEI_SPALTEN, keine)
+    if aussen:  # bei bundesweitem Lauf später für ihr eigenes Bundesland richtig – nichts wird gelöscht
+        _blatt(wb.create_sheet(BLATT_AUSSERHALB), KANZLEI_SPALTEN, aussen)
     _blatt(wb.create_sheet(BLATT_DUBLETTEN), DUBLETTEN_SPALTEN, dubletten)
     _blatt(wb.create_sheet(BLATT_PROTOKOLL), PROTOKOLL_SPALTEN, protokoll)
     return wb

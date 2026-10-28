@@ -17,7 +17,8 @@ Hauptansprechpartner), Teamgröße (Zahl, wenn ablesbar; sonst Klasse
 Konfidenz (`hoch` / `mittel` / `niedrig`), Quell-URLs, Abrufdatum, Status.
 
 Status-Werte (Excel-Dropdown): `neu` / `geprüft` / `kontaktiert` / `kein Interesse` / `ungültig`.
-Automatisch dazu `keine Kanzlei` (Kanzlei-Erkennung, nicht im Dropdown).
+Automatisch dazu `keine Kanzlei` (Kanzlei-Erkennung) und `außerhalb Bundesland` (PLZ laut OpenPLZ in
+einem anderen Land) – nicht im Dropdown, eigene Blätter; von Hand gepflegte Status überschreiben sie nie.
 
 **Konfidenz-Regel (vorläufig, wird nach dem Pilot überprüft):**
 - `hoch`: Impressum gelesen und PLZ/Ort gegen OpenPLZ verifiziert
@@ -353,6 +354,13 @@ der nächsten Quelle füllen.**
   Prüfung ohne LLM auf bereits extrahierte Kanzleien an (auch zurück zu `neu`). Big-Four-
   Gesellschaften („… Wirtschaftsprüfungsgesellschaft", Berufsträger) gelten als Kanzlei – die
   gehören auf die Blocklist.
+- **Bundesland-Filter**: Liegt die PLZ einer Kanzlei laut OpenPLZ nicht im Bundesland des Laufs, wird
+  der Status `außerhalb Bundesland` (auch ohne Website; `keine Kanzlei` geht vor). Nichts wird gelöscht –
+  bei einem bundesweiten Lauf sind sie für ihr eigenes Land richtig. `recherche kanzlei-pruefung`
+  wendet den Filter auf bestehende Zeilen an. Schon **vor dem Crawl**: Nennen die Suchtreffer
+  (Kandidaten-/Fund-PLZ, „01067 Dresden" in Titel oder Snippet) nur PLZ außerhalb, wird nicht gecrawlt
+  („außerhalb Schleswig-Holstein laut Suchtreffer (01067 Dresden – Sachsen)" im Blatt „Nicht
+  gefunden"); eine PLZ im Land oder keine erkennbare PLZ → crawlen.
 - Kandidaten **ohne Website** kommen mit ihren Discovery-Daten ins Blatt „Kanzleien"
   („Website vorhanden" = nein).
 
@@ -387,6 +395,7 @@ der nächsten Quelle füllen.**
   Discovery-Daten.
 - Blatt „Keine Kanzlei" (nur wenn es solche Zeilen gibt): alle Spalten wie „Kanzleien", Grund
   vorn – zum Zurückholen von Hand. Diese Zeilen fehlen im Blatt „Kanzleien".
+- Blatt „Außerhalb Bundesland" (nur wenn es solche Zeilen gibt): alle Spalten wie „Kanzleien".
 - Blatt „Dubletten".
 - Blatt „Lauf-Protokoll": Suchbegriff, Trefferzahl, neue Kandidaten, Anfragen, Kosten, Laufzeit.
 
@@ -442,9 +451,11 @@ Schemaversion über `PRAGMA user_version` (aktuell 4, `adresszusatz`); ältere D
   qwen3.6:27b 126 s, beide nicht genauer) – **qwen3.5:9b bleibt Standard**. Die harten Fehler
   waren Regelfehler, keine Modellfehler; Regeln haben bei Name, Personen, Rechtsform und
   Telefon Vorrang vor dem LLM.
-- **Pilot läuft**: `recherche run --bundesland SH` über die 80 Startorte. **Bis zum Ende des
-  Pilots keine strukturellen Änderungen an Datenbank (Schema v4) oder Excel-Format**
-  (Spalten, Blätter); Regelverbesserungen in Extraktion und Zusammenführung sind erlaubt.
+- **Pilot SH** (80 Startorte): 1.169 Kandidaten, 907 Websites gelesen; bei echten SH-Kanzleien Adresse
+  ~97 %, Telefon ~98 %, E-Mail ~95 %, Ansprechpartner ~90 %, Teamgröße 56 %; Stichprobe 15/15 korrekt.
+  Probleme: 15–25 % Portale/Jobbörsen (→ Kanzlei-Erkennung, blocklist-vorschlag), 184 Zeilen außerhalb
+  SH (→ Bundesland-Filter), robots.txt-Fehler als Sperre gewertet (→ RFC-9309-Parser, DNS getrennt,
+  Lesen trotz nicht abrufbarer robots.txt). Schema bleibt v4.
 - `orte`: vollständige Gemeindeliste (OpenPLZ + GV-ISys), Einwohnerregel mit
   Seitenbegrenzung, Zusatz-Suchorte für Kiel/Lübeck. Die erzeugte Liste ersetzt die
   Startliste erst nach `recherche orte --force`.

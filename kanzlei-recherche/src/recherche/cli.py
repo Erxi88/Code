@@ -17,7 +17,7 @@ from rich.table import Table
 
 from .config import Settings, load_settings
 from .coverage import CoverageErgebnis, als_excel, berechne, load_referenz
-from .crawl import DNS_GRUND, run_crawl
+from .crawl import DNS_GRUND, ausserhalb_laut_suchtreffer, run_crawl
 from .export import export_excel
 from .extract.base import AnbieterNichtErreichbar, ExtraktionFehler
 from .extract.lauf import run_extract
@@ -187,8 +187,15 @@ def _crawl(ctx: Kontext, limit: int | None = None, wiederholen: bool = False) ->
             f"{', Playwright-Rückfall an' if cfg.playwright else ''} …"
         )
         start = time.monotonic()
+        pruefer = PlzPruefer(ctx.settings.openplz.url, cache=st)
+        ziel = ctx.bl_cfg.name
+
+        def land_filter(k, funde):
+            return ausserhalb_laut_suchtreffer(k, funde, lambda plz: pruefer.pruefe(plz, None).bundesland, ziel)
+
         stat = run_crawl(st, cfg, ctx.bundesland, ctx.blocklist(), limit=limit,
-                         fortschritt=lambda m: console.print(f"  {m}"), gruendlich=wiederholen)  # fmt: skip
+                         fortschritt=lambda m: console.print(f"  {m}"), gruendlich=wiederholen,
+                         land_filter=land_filter)  # fmt: skip
         st.log_lauf(
             LaufEintrag(lauf_id=_lauf_id(), schritt="crawl", bundesland=ctx.bundesland,
                         suchbegriff=f"{stat.fertig} gelesen, {stat.nicht_gefunden} nicht gefunden",
@@ -200,6 +207,8 @@ def _crawl(ctx: Kontext, limit: int | None = None, wiederholen: bool = False) ->
         console.print(f"  davon {stat.trotz_robots} gelesen, obwohl die robots.txt nicht abrufbar war (Hinweis in „Abweichung\")")
     if stat.dns:
         console.print(f"  {stat.dns} tote Domains ({DNS_GRUND}) – werden bei --wiederholen übersprungen")
+    if stat.ausserhalb:
+        console.print(f"  {stat.ausserhalb} nicht gecrawlt: Suchtreffer nur mit PLZ außerhalb {ctx.bl_cfg.name}")
     for grund, n in sorted(stat.gruende.items(), key=lambda x: -x[1]):
         console.print(f"  {n:4d} × {grund}")
 
@@ -222,7 +231,8 @@ def _extract(
         console.print(f"Extraktion mit {'nur Regeln' if ohne_llm else 'Regeln + ' + extractor.modell} …")
         stat = run_extract(st, ctx.bundesland, extractor, pruefer, ausschluss, _lauf_id(), limit=limit,
                            fortschritt=lambda m: console.print(f"  {m}"),
-                           kanzlei_rechtsformen=s.extract.kanzlei_rechtsformen if s.extract.kanzlei_pruefung else None)  # fmt: skip
+                           kanzlei_rechtsformen=s.extract.kanzlei_rechtsformen if s.extract.kanzlei_pruefung else None,
+                           ziel_land=ctx.bl_cfg.name)  # fmt: skip
     console.print(
         f"Fertig: {stat.fertig} Kanzleien ({stat.ohne_website} ohne Website), {stat.fehler} Fehler, "
         f"{stat.llm_aufrufe} LLM-Aufrufe, {pruefer.anfragen} OpenPLZ-Anfragen."
@@ -474,9 +484,10 @@ def kanzlei_pruefung(
     ctx = _kontext(config, bundesland, db)
     with ctx.storage() as st:
         stat = run_pruefung(st, ctx.bundesland, tuple(ctx.settings.extract.kanzlei_rechtsformen),
-                            fortschritt=lambda m: console.print(f"  {m}"))
-    console.print(f"Geprüft: {stat.geprueft} Kanzleien mit Website – {stat.keine_kanzlei} keine Kanzlei, "
-                  f"{stat.wieder_kanzlei} wieder Kanzlei, {stat.herabgestuft} von Konfidenz „hoch\" herabgestuft.")
+                            fortschritt=lambda m: console.print(f"  {m}"), ziel_land=ctx.bl_cfg.name)
+    console.print(f"Geprüft: {stat.geprueft} Kanzleien – {stat.keine_kanzlei} keine Kanzlei, {stat.ausserhalb} außerhalb "
+                  f"{ctx.bl_cfg.name}, {stat.wieder_kanzlei} wieder Kanzlei, {stat.herabgestuft} von Konfidenz „hoch\" "
+                  "herabgestuft.")
     if not ctx.settings.extract.kanzlei_pruefung:
         console.print("[yellow]Für neue Extraktionen extract.kanzlei_pruefung: true in settings.yaml setzen.[/yellow]")
 
