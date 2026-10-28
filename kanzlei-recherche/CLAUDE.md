@@ -170,7 +170,11 @@ der nächsten Quelle füllen.**
     sie übernommen, mit Hinweis in „Abweichung".
   - Telefon: Festnetz vor Mobil (015/016/017), Impressum vor den anderen Seiten. Neben
     „Tel/Telefon/Fon" zählen „Telefonnummer", „Rufnummer", „Zentrale", „Büro", ☎ und im
-    Impressum jede unbeschriftete Nummernzeile mit Vorwahl (nicht hinter „Fax"). Mobil nur als Rückfall.
+    Impressum jede unbeschriftete Nummernzeile mit Vorwahl (nicht hinter „Fax"). Liefert der
+    bereinigte Text kein Festnetz, wird es aus dem rohen HTML genommen (Text und tel:-Links,
+    nicht Attribute/Skripte), bei mehreren Standorten die Nummer nächst der Kanzlei-PLZ.
+    Mobil nur als Rückfall. Gültig ist nur eine Rufnummer mit Ortsnetz 2–9, Mobil 15–17 oder
+    Service 18 (Zahlenkolonnen und SVG-Pfade sind keine Nummern).
   - E-Mail: Impressum-Text vor Navigation/Fußzeile vor mailto-Links.
 - Stufe 2 LLM über Ollama (`ollama.py`, URL und Modell aus `settings.yaml`) auf allen
   Seiten: Name, Rechtsform, Personen (Name, Titel, Funktion), genannte

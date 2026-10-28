@@ -22,7 +22,7 @@ from ..textnorm import text_normalisieren
 from .base import AnbieterNichtErreichbar, Extractor, ExtraktionFehler
 from .merge import zusammenfuehren
 from .prompt import seiten_rahmen
-from .rules import Ausschluss, extract_impressum
+from .rules import Ausschluss, extract_impressum, festnetz_aus_html, ist_mobil
 
 log = logging.getLogger(__name__)
 
@@ -64,7 +64,12 @@ def regeln_fuer(seiten, ausschluss: Ausschluss, domain: str | None):
     if meta:
         texte.append((meta, []))
     (text, lnks), *weitere = texte
-    return extract_impressum(text, ausschluss, lnks, domain, weitere, rahmen=seiten_rahmen(seiten))
+    erg = extract_impressum(text, ausschluss, lnks, domain, weitere, rahmen=seiten_rahmen(seiten))
+    if erg.telefon is None or ist_mobil(erg.telefon):
+        # Festnetz fehlt im bereinigten Text (z. B. Standort-Block der Fußzeile entfernt): rohes HTML
+        if festnetz := festnetz_aus_html([s.html for s in reihenfolge], erg.plz):
+            erg.telefon = festnetz
+    return erg
 
 
 def run_extract(

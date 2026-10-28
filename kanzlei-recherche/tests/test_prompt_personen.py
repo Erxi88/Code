@@ -770,3 +770,31 @@ def test_telefon_im_rohen_html():
             '</template><p data-tel="0176 41466224">x</p></footer>')
     stellen = {stelle.split(",")[0] for _, stelle in telefon_im_html(html)}
     assert stellen == {"tel:-Link", "Text", "Attribut"}
+
+
+@pytest.mark.parametrize("roh,gueltig", [
+    ("+49 1406251234", False), ("0140 625123", False), ("+49 0431 123456", False),
+    ("0431 38575740", True), ("0176 41466224", True), ("01806 123456", True), ("+49 40 1234567", True),
+])  # fmt: skip
+def test_telefon_ohne_gueltige_vorwahl_ist_artefakt(roh, gueltig):
+    from recherche.normalize import normalize_telefon
+
+    assert (normalize_telefon(roh) is not None) is gueltig
+
+
+def test_festnetz_aus_rohem_html_naechste_zur_kanzlei_plz():
+    """900grad: Standort-Block mit Kiel, Rendsburg, Hamburg im <template> – im Text fehlt er, im Impressum nur Mobil."""
+    from recherche.extract.lauf import regeln_fuer
+    from recherche.extract.rules import Ausschluss, telefon_im_html
+
+    start = ("<html><body><p>Willkommen</p><template><div><p>24768 Rendsburg</p><p>Telefon +49 (0)4331 12 34 56</p>"
+             "<p>24103 Kiel</p><p>Telefon +49 (0)431 38 57 57 40</p><p>20095 Hamburg</p><p>Telefon +49 (0)40 12 34 56</p>"
+             "</div></template><svg><path d='M0.999896123 1406251234'/></svg></body></html>")
+    impressum = ("<html><body><p>900 GRAD Steuerberatungsgesellschaft PartmbB</p><p>Holstenstraße 1</p><p>24103 Kiel</p>"
+                 "<p><a href='tel:+4917641466224'>Neumandanten</a></p></body></html>")
+    seiten = {Seitentyp.IMPRESSUM: _seite(Seitentyp.IMPRESSUM, "https://g.example/impressum", impressum),
+              Seitentyp.START: _seite(Seitentyp.START, "https://g.example/", start)}
+    assert regeln_fuer(seiten, Ausschluss(), "g.example").telefon == "+49 431 38575740"
+    stellen = dict(telefon_im_html(start))
+    assert "<template> wird entfernt" in stellen["+49 431 38575740"]
+    assert all(not n.startswith("+49 14") and not n.startswith("+49140") for n in stellen)

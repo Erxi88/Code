@@ -49,6 +49,10 @@ def normalize_telefon(roh: str | None) -> str | None:
     ziffern = "".join(gruppen)
     if not 6 <= len(ziffern) <= 13:
         return None
+    # gültige deutsche Rufnummer: Ortsnetz 2–9, Mobil 15/16/17, Service 18 – sonst Artefakt
+    # (Zahlenkolonnen, SVG-Pfade: „+49 140625…")
+    if not (ziffern[0] in "23456789" or ziffern[:2] in ("15", "16", "17", "18")):
+        return None
     if len(gruppen) >= 2:
         return f"{land} {gruppen[0]} {''.join(gruppen[1:])}"
     return f"{land}{ziffern}"

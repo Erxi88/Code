@@ -262,22 +262,68 @@ def telefon_kandidaten(text: str, ausschluss: Ausschluss | None = None, impressu
 _NUMMER_IM_HTML = re.compile(r"(?:\+49|(?<![\d.])0)[\d\s()/\-–.]{7,22}\d")
 
 
+def _entfernt_durch(html: str, nummer_roh: str) -> str | None:
+    """Welcher Bereinigungsschritt die Nummer aus dem Text entfernt (Diagnose)."""
+    from bs4 import BeautifulSoup
+
+    from ..crawl import _COOKIE_ELEMENTE, _ENTFERNEN
+
+    soup = BeautifulSoup(html, "lxml")
+    for s in soup.find_all(string=lambda x: x and nummer_roh in x):
+        for el in s.parents:
+            if el.name in _ENTFERNEN:
+                return f"<{el.name}> wird entfernt"
+            kennung = " ".join([el.get("id") or "", *(el.get("class") or [])]) if hasattr(el, "get") else ""
+            if kennung.strip() and _COOKIE_ELEMENTE.search(kennung):
+                return f"Cookie-Filter (id/class „{kennung.strip()[:40]}“)"
+    return None
+
+
 def telefon_im_html(html: str | None) -> list[tuple[str, str]]:
     """(Nummer, Fundstelle) aller telefonartigen Zahlen im rohen HTML – auch in Attributen, Skripten,
-    <template>/<svg> und tel:-Links. Zeigt, ob eine Nummer vor der Textumwandlung verloren geht."""
+    <template>/<svg> und tel:-Links. Zeigt, ob eine Nummer vor der Textumwandlung verloren geht.
+    Ohne Trennzeichen zählt eine Zahl nur als tel:-Link (lange Ziffernfolgen sind meist SVG-Pfade)."""
     gefunden: list[tuple[str, str]] = []
     for m in _NUMMER_IM_HTML.finditer(html or ""):
-        if not (n := normalize_telefon(m.group(0))):
-            continue
+        roh = m.group(0)
         davor = html[max(0, m.start() - 60): m.start()]
-        stelle = ("tel:-Link" if davor.rstrip().endswith("tel:") else
+        tel_link = davor.rstrip().endswith("tel:")
+        if not (n := normalize_telefon(roh)) or (not tel_link and not re.search(r"[\s/()\-–.]", roh)):
+            continue
+        stelle = ("tel:-Link" if tel_link else
                   "Skript" if davor.rfind("<script") > davor.rfind("</script") else
                   "Attribut" if re.search(r"=\s*[\"'][^\"'<>]*$", davor) else "Text")
         tag = re.findall(r"<(\w+)", davor)
-        eintrag = (n, f"{stelle}{', in <' + tag[-1] + '>' if tag else ''}")
-        if eintrag not in gefunden:
-            gefunden.append(eintrag)
+        stelle += f", in <{tag[-1]}>" if tag else ""
+        if stelle.startswith("Text") and (grund := _entfernt_durch(html, roh)):
+            stelle += f", {grund}"
+        if (n, stelle) not in gefunden:
+            gefunden.append((n, stelle))
     return gefunden
+
+
+def festnetz_aus_html(seiten_html: list[str | None], plz: str | None) -> str | None:
+    """Rückfall, wenn der bereinigte Text kein Festnetz liefert: Festnetznummer aus Text oder tel:-Link im
+    rohen HTML – bei mehreren die, die der Kanzlei-PLZ am nächsten steht (Standort-Blöcke mit mehreren
+    Niederlassungen: „24103 Kiel … 0431 …", „24768 Rendsburg … 04331 …")."""
+    beste: tuple[int, int, str] | None = None
+    for rang, html in enumerate(h for h in seiten_html if h):
+        orte = [m.start() for m in re.finditer(re.escape(plz), html)] if plz else []
+        for m in _NUMMER_IM_HTML.finditer(html):
+            roh = m.group(0)
+            davor = html[max(0, m.start() - 60): m.start()]
+            tel_link = davor.rstrip().endswith("tel:")
+            if davor.rfind("<script") > davor.rfind("</script") or (not tel_link and re.search(r"=\s*[\"'][^\"'<>]*$", davor)):
+                continue
+            if not tel_link and not re.search(r"[\s/()\-–.]", roh):
+                continue
+            if not (n := normalize_telefon(roh)) or ist_mobil(n) or _FAX_DAVOR.search(re.sub(r"<[^>]+>", " ", davor)):
+                continue
+            abstand = min((abs(m.start() - o) for o in orte), default=10**6)
+            kandidat = (abstand, rang, n)
+            if beste is None or kandidat < beste:
+                beste = kandidat
+    return beste[2] if beste else None
 
 
 def extract_impressum(
