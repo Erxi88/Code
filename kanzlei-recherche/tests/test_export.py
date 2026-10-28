@@ -79,7 +79,7 @@ def test_kanzlei_werte(wb):
         "Maren Petersen (Steuerberaterin, Partnerin); M.Sc. Ole Brandt (Steuerberater)"
     )
     assert z["Teamgröße"] == 18
-    assert z["Größenklasse"] == "16-50"
+    assert z["Größenklasse"] == "11-20"  # gespeichert „16-50" (alte Einteilung), aus der Zahl neu
     assert z["Konfidenz"] == "hoch"
     assert z["Quell-URLs"].splitlines() == [
         "https://www.hansen-steuerberatung.example/impressum",
@@ -91,7 +91,13 @@ def test_kanzlei_werte(wb):
 
 def test_teamgroesse_klasse_wenn_keine_zahl(wb):
     zeilen = {z["Domain"]: z for z in _zeilen(wb[BLATT_KANZLEIEN])}
-    assert zeilen["foerde-steuer.example"]["Teamgröße"] == "16-50"
+    # gespeichert mit alter Einteilung: Text-Basis neu ausgewertet („über 20" → 21-50, „rund 30" → 21-50)
+    assert zeilen["foerde-steuer.example"]["Teamgröße"] == "21-50"
+    assert zeilen["ostholstein-steuer.example"]["Größenklasse"] == "21-50"
+    assert zeilen["nordtax-norderstedt.example"]["Größenklasse"] == "51-100"
+    # nicht umrechenbar („gut zehn", „kleine Kanzlei"): leer, mit Hinweis
+    for d in ("wedel-steuer.example", "dithmarscher-steuerkanzlei.example"):
+        assert zeilen[d]["Größenklasse"] is None and "alte Einteilung" in zeilen[d]["Abweichung"]
     assert zeilen["steuerbuero-schuett.example"]["Teamgröße"] is None
 
 

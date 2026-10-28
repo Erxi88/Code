@@ -3,6 +3,7 @@ import sqlite3
 import pytest
 from conftest import FIXTURES
 
+from recherche.groesse import neu_einordnen
 from recherche.models import (
     DublettenArt,
     Fund,
@@ -39,7 +40,10 @@ def test_kanzleien_roundtrip(storage, kanzleien):
     for k in kanzleien:
         g = geladen[k.domain]
         assert g.id is not None
-        assert g.model_dump(exclude={"id"}) == k.model_dump(exclude={"id"})
+        # Größenklasse wird beim Laden nach der aktuellen Einteilung neu eingeordnet (Testdaten: alte Klassen)
+        ohne = {"id", "teamgroesse_klasse", "abweichung"}
+        assert g.model_dump(exclude=ohne) == k.model_dump(exclude=ohne)
+        assert g.teamgroesse_klasse == neu_einordnen(k.teamgroesse, k.teamgroesse_klasse, k.teamgroesse_basis)[0]
 
 
 def test_kanzlei_nullfelder_bleiben_none(storage, kanzleien):

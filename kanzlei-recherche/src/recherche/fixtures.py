@@ -29,6 +29,7 @@ from .extract.base import Extractor, ExtraktionsAntwort, LlmPerson
 from .extract.lauf import regeln_fuer
 from .extract.merge import gleiche_person, zusammenfuehren
 from .extract.rules import Ausschluss, telefon_im_html, telefon_kandidaten
+from .groesse import aktiv as groessenklassen
 from .models import Kandidat, Kanzlei, Seite, Seitentyp
 from .normalize import _ortsname, normalize_rechtsform
 from .search.dedupe import adresse_key, telefon_key
@@ -188,7 +189,7 @@ def istwerte(k: Kanzlei) -> dict:
         "ort": k.ort, "telefon": k.telefon, "email": k.email,
         "erster_ansprechpartner": k.hauptansprechpartner.name if k.hauptansprechpartner else None,
         "berufstraeger_anzahl": k.berufstraeger_anzahl, "teamgroesse": k.teamgroesse,
-        "teamgroesse_klasse": k.teamgroesse_klasse.value if k.teamgroesse_klasse else None,
+        "teamgroesse_klasse": k.teamgroesse_klasse,
     }  # fmt: skip
 
 
@@ -230,7 +231,9 @@ def _anzeige(feld: str, ist: dict, soll: dict) -> tuple[object, object]:
         return {k: ist.get(k) for k in teile}, {k: soll.get(k) for k in teile}
     if feld == "teamgroesse":
         def fmt(d: dict) -> str:
-            return f"Zahl {d.get('teamgroesse')}, Klasse {d.get('teamgroesse_klasse')}"
+            klasse = d.get("teamgroesse_klasse")
+            alt = " (alte Einteilung – erwartet.json umstellen)" if klasse and not groessenklassen().gilt(klasse) else ""
+            return f"Zahl {d.get('teamgroesse')}, Klasse {klasse}{alt}"
 
         return fmt(ist), fmt(soll)
     return ist.get(feld), soll.get(feld)

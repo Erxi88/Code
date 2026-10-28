@@ -38,8 +38,8 @@ Je Domain:
 - Feld weglassen = nicht bewerten.
 - Verglichen wird normalisiert: Straße über den Adressschlüssel („Holstenstr. 42" =
   „Holstenstraße 42"), Telefon über die Ziffern, Personen ohne Titel, Namen ohne Satzzeichen.
-- `teamgroesse`: Zahl, wenn ablesbar; sonst `null` und `teamgroesse_klasse` (`1-5`, `6-15`,
-  `16-50`, `>50`) oder beides `null`.
+- `teamgroesse`: Zahl, wenn ablesbar; sonst `null` und `teamgroesse_klasse` (`1`, `2-5`, `6-10`,
+  `11-20`, `21-50`, `51-100`, `>100`; Grenzen in `extract.groessenklassen`) oder beides `null`.
 - `erster_ansprechpartner`: Hauptansprechpartner (Berufsträger oder Leitung): erste Person im
   Impressum-Abschnitt „vertretungsberechtigt/vertreten durch", sonst erste auf der Teamseite.
   Bei gleichrangigen Partnern auch als Liste zulässiger Namen: `["Jörg Petersen", "Sandra Albers"]`.

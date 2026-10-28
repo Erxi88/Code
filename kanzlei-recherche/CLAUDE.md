@@ -12,7 +12,8 @@ die Daten in eine Excel-Liste geschrieben.
 Kanzleiname, Rechtsform, Straße, PLZ, Ort, Bundesland, Telefon, E-Mail, Website,
 Ansprechpartner (Liste aus Name, Titel, Funktion; der erste ist der
 Hauptansprechpartner), Teamgröße (Zahl, wenn ablesbar; sonst Klasse
-`1-5` / `6-15` / `16-50` / `>50`), Teamgröße-Basis (woraus abgeleitet),
+`1` / `2-5` / `6-10` / `11-20` / `21-50` / `51-100` / `>100` aus einer Zahl im Text, „über 20" →
+`21-50`; sonst leer – keine Schätzung), Teamgröße-Basis (woraus abgeleitet),
 Konfidenz (`hoch` / `mittel` / `niedrig`), Quell-URLs, Abrufdatum, Status.
 
 Status-Werte (Excel-Dropdown): `neu` / `geprüft` / `kontaktiert` / `kein Interesse` / `ungültig`.
@@ -319,6 +320,12 @@ der nächsten Quelle füllen.**
     (ebenfalls in Straße und Zusatz zerlegt).
   - Teamgröße: genannte Zahl (LLM, dann Regel) > **alle** Personen der Teamseiten (≥ 2; Untergrenze, eine
     größere Klasse aus dem Text geht vor) > Klasse aus dem Text.
+  - Größenklassen (`groesse.py`): Obergrenzen in `extract.groessenklassen` (Standard 1, 5, 10, 20, 50,
+    100). Das LLM-Schema erzwingt die aktuellen Klassen. Gespeicherte Zeilen werden beim Laden neu
+    eingeordnet: aus der Zahl; ohne Zahl aus der Text-Basis („über 35" → 21-50) oder, wenn der alte
+    Bereich in genau eine neue Klasse fällt, umgerechnet; sonst leer mit Hinweis in „Abweichung".
+    LLM-Aufzeichnungen mit alter Klasse gelten nur, wenn eindeutig umrechenbar; `fixture-eval`
+    markiert Sollwerte der alten Einteilung.
 - **Kanzlei-Erkennung** (`extract/kanzlei.py`, `extract.kanzlei_pruefung`, **bis Pilot-Ende aus**):
   Magazine, Jobbörsen, Branchenbücher, Hochschulen haben oft ein sauberes Verlags-Impressum.
   Kanzlei ist, wer **mindestens eins** erfüllt (ODER): Steuerberaterkammer im Impressum (§ 5 DDG,

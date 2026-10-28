@@ -219,6 +219,8 @@ class ExtractConfig(BaseModel):
     # sonst Status „keine Kanzlei", Konfidenz höchstens „mittel", eigenes Excel-Blatt
     kanzlei_pruefung: bool = False
     kanzlei_rechtsformen: list[str] = Field(default_factory=lambda: ["PartG mbB", "PartG", "Einzelkanzlei"])
+    # Obergrenzen der Größenklassen: [1, 5, 10, 20, 50, 100] → 1 · 2-5 · 6-10 · 11-20 · 21-50 · 51-100 · >100
+    groessenklassen: list[int] = Field(default_factory=lambda: [1, 5, 10, 20, 50, 100])
 
 
 class OpenPlzConfig(BaseModel):
@@ -305,7 +307,11 @@ def load_settings(pfad: str | Path | None = None) -> Settings:
     daten = yaml.safe_load(pfad.read_text(encoding="utf-8-sig")) or {}
     basis = pfad.resolve().parent.parent
     load_dotenv(basis / ".env", override=False)
-    return Settings(**daten, basis_dir=basis)
+    s = Settings(**daten, basis_dir=basis)
+    from .groesse import setze_grenzen
+
+    setze_grenzen(s.extract.groessenklassen)  # gilt für Extraktion, Export und LLM-Schema
+    return s
 
 
 def env(name: str) -> str | None:

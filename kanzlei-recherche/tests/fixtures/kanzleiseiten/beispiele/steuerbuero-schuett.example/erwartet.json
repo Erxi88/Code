@@ -9,6 +9,6 @@
  "email": "kanzlei@steuerbuero-schuett.example",
  "erster_ansprechpartner": "Thomas Schütt",
  "berufstraeger_anzahl": 1,
- "teamgroesse": null,
- "teamgroesse_klasse": "1-5"
+ "teamgroesse": 1,
+ "teamgroesse_klasse": null
 }

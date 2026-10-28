@@ -18,7 +18,7 @@
   ],
   "mitarbeiterzahl": null,
   "mitarbeiterzahl_beleg": null,
-  "teamgroesse_klasse": "1-5"
+  "teamgroesse_klasse": null
  },
  "modell": "qwen3.6:27b",
  "laufzeit_s": 6.1,

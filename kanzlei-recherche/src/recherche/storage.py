@@ -13,6 +13,7 @@ from collections.abc import Iterable
 from datetime import date, datetime
 from pathlib import Path
 
+from .groesse import neu_einordnen
 from .models import (
     Ansprechpartner,
     Dublette,
@@ -596,6 +597,11 @@ class Storage:
         d = dict(row)
         d["ansprechpartner"] = [Ansprechpartner(**a) for a in json.loads(d["ansprechpartner"])]
         d["quell_urls"] = json.loads(d["quell_urls"])
+        # Größenklasse nach der aktuellen Einteilung (settings.yaml) – auch für ältere Zeilen
+        d["teamgroesse_klasse"], hinweis = neu_einordnen(d.get("teamgroesse"), d.get("teamgroesse_klasse"),
+                                                         d.get("teamgroesse_basis"))
+        if hinweis:
+            d["abweichung"] = "; ".join(x for x in (d.get("abweichung"), hinweis) if x)
         return Kanzlei(**d)
 
     def get_kanzlei(self, domain: str) -> Kanzlei | None:

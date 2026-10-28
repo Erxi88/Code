@@ -339,7 +339,7 @@ _UNGEFAEHR = {"rund", "ca", "ca.", "circa", "etwa", "knapp", "fast"}
 @dataclass(frozen=True)
 class Mitarbeiterzahl:
     zahl: int | None  # genaue Angabe
-    klasse: TeamKlasse | None  # bei Unter- oder ungefährer Angabe
+    klasse: str | None  # Größenklasse bei Unter- oder ungefährer Angabe
     beleg: str
 
 

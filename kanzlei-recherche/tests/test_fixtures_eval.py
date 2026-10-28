@@ -176,9 +176,10 @@ def test_beide_leer_ist_richtig(feld):
 def test_anzeige_teamgroesse_nie_none_none():
     from recherche.fixtures import _anzeige
 
-    ist, soll = _anzeige("teamgroesse", {"teamgroesse": None, "teamgroesse_klasse": "6-15"},
+    ist, soll = _anzeige("teamgroesse", {"teamgroesse": None, "teamgroesse_klasse": "6-10"},
                          {"teamgroesse": None, "teamgroesse_klasse": "16-50"})
-    assert (ist, soll) == ("Zahl None, Klasse 6-15", "Zahl None, Klasse 16-50")
+    assert ist == "Zahl None, Klasse 6-10"
+    assert soll == "Zahl None, Klasse 16-50 (alte Einteilung – erwartet.json umstellen)"
 
 
 def test_json_mit_bom(tmp_path):

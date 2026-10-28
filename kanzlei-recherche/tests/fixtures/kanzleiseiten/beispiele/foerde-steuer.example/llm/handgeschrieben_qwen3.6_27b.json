@@ -23,7 +23,7 @@
   ],
   "mitarbeiterzahl": 12,
   "mitarbeiterzahl_beleg": "12 Mitarbeiter (falsch gelesen)",
-  "teamgroesse_klasse": "16-50"
+  "teamgroesse_klasse": "21-50"
  },
  "modell": "qwen3.6:27b",
  "laufzeit_s": 10.4,

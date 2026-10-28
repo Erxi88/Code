@@ -49,21 +49,14 @@ class Konfidenz(StrEnum):
     NIEDRIG = "niedrig"
 
 
-class TeamKlasse(StrEnum):
-    K1_5 = "1-5"
-    K6_15 = "6-15"
-    K16_50 = "16-50"
-    K50_PLUS = ">50"
+class TeamKlasse:
+    """Größenklasse als Text („1", „2-5", …, „>100") – Grenzen aus settings.yaml, siehe groesse.py."""
 
-    @classmethod
-    def aus_zahl(cls, n: int) -> TeamKlasse:
-        if n <= 5:
-            return cls.K1_5
-        if n <= 15:
-            return cls.K6_15
-        if n <= 50:
-            return cls.K16_50
-        return cls.K50_PLUS
+    @staticmethod
+    def aus_zahl(n: int) -> str:
+        from .groesse import aktiv
+
+        return aktiv().aus_zahl(n)
 
 
 class SchrittStatus(StrEnum):
@@ -171,7 +164,7 @@ class Kanzlei(BaseModel):
     ansprechpartner: list[Ansprechpartner] = Field(default_factory=list)  # Berufsträger und Leitung
     berufstraeger_anzahl: int | None = None
     teamgroesse: int | None = None
-    teamgroesse_klasse: TeamKlasse | None = None
+    teamgroesse_klasse: str | None = None  # Größenklasse (groesse.py)
     teamgroesse_basis: str | None = None
     konfidenz: Konfidenz = Konfidenz.NIEDRIG
     abweichung: str | None = None  # Unterschiede zwischen Discovery-Quelle und Website
@@ -194,7 +187,7 @@ class Kanzlei(BaseModel):
         """Zahl, wenn ablesbar; sonst Klasse."""
         if self.teamgroesse is not None:
             return self.teamgroesse
-        return self.teamgroesse_klasse.value if self.teamgroesse_klasse else None
+        return self.teamgroesse_klasse
 
 
 class NichtGefunden(BaseModel):

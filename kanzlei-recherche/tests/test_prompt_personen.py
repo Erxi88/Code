@@ -578,7 +578,7 @@ def test_einzelkanzlei_ohne_teamseite_teamgroesse_eins():
     k = zusammenfuehren(Kandidat(id=1, bundesland="SH", domain="s.example"), [], seiten, None,
                         LlmErgebnis(kanzleiname="Steuerberater Schreiner"))
     assert (k.kanzleiname, k.rechtsform, k.berufstraeger_anzahl) == ("Steuerberater Andreas Schreiner", "Einzelkanzlei", 1)
-    assert (k.teamgroesse, k.teamgroesse_klasse.value if k.teamgroesse_klasse else None) == (1, "1-5")
+    assert (k.teamgroesse, k.teamgroesse_klasse) == (1, "1")
 
 
 @pytest.mark.parametrize("zeilen", [

@@ -9,7 +9,7 @@ from recherche.extract.merge import (
     teamgroesse,
     zusammenfuehren,
 )  # fmt: skip
-from recherche.models import Fund, Kandidat, Konfidenz, Seite, Seitentyp, TeamKlasse
+from recherche.models import Fund, Kandidat, Konfidenz, Seite, Seitentyp
 from recherche.normalize import PlzPruefung
 
 K = Kandidat(id=7, bundesland="SH", domain="hansen.example", website="https://hansen.example/",
@@ -119,12 +119,12 @@ def test_teamgroesse_genannte_zahl_vor_zaehlung():
 def test_teamgroesse_alle_personen_der_teamseite():
     assert teamgroesse(LLM, SEITEN[Seitentyp.TEAM]) == (5, None, "5 Personen auf Teamseite")
     k = zusammenfuehren(K, [], SEITEN, REGEL, LLM)
-    assert (k.teamgroesse, k.teamgroesse_klasse) == (5, TeamKlasse.K1_5)
+    assert (k.teamgroesse, k.teamgroesse_klasse) == (5, "2-5")
 
 
 def test_teamgroesse_klasse_wenn_gezaehlt_kleiner():
-    llm = LLM.model_copy(update={"teamgroesse_klasse": TeamKlasse.K16_50, "personen": P[:2]})
-    assert teamgroesse(llm, SEITEN[Seitentyp.TEAM]) == (None, TeamKlasse.K16_50, "Einschätzung aus dem Text")
+    llm = LLM.model_copy(update={"teamgroesse_klasse": "21-50", "personen": P[:2]})
+    assert teamgroesse(llm, SEITEN[Seitentyp.TEAM]) == (None, "21-50", "Einschätzung aus dem Text")
 
 
 def test_teamgroesse_ohne_teamseite():

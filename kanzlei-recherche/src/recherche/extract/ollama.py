@@ -40,7 +40,8 @@ Regeln:
   Versicherung, des Webdesigns oder Datenschutzbeauftragte externer Firmen.
 - mitarbeiterzahl nur, wenn eine Zahl ausdrücklich genannt wird (z. B. „Team aus 12 Mitarbeitern");
   Personen nicht selbst zählen.
-- teamgroesse_klasse nur, wenn keine Zahl genannt ist, aber eine Größenordnung im Text steht.
+- teamgroesse_klasse nur, wenn keine Zahl genannt ist, aber eine Größenordnung mit Zahl im Text steht
+  („über 20 Mitarbeitende" → 21-50); nie schätzen („kleine Kanzlei" → null).
 - Der Abschnitt PERSONEN ist ein automatischer VORSCHLAG aus Kacheln und Listen, noch NICHT im Ergebnis:
   Übernimm jede dort genannte Person vollständig in `personen` (Name, Titel, Funktion – prüfe sie am Text
   und ergänze fehlende Titel/Funktionen), lass nur offensichtliche Fehlerkennungen (keine Person) weg und

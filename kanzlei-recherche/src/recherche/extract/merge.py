@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 from datetime import date
 
 from ..crawl import html_zu_text
+from ..groesse import aktiv as groessenklassen
 from ..models import (
     Ansprechpartner,
     Fund,
@@ -69,7 +70,6 @@ _KEIN_BERUFSTRAEGER = re.compile(
     r"(?:ausbildung|prüfung|vorbereitung)\s+zu[mr]?\s+steuerberater\w*",
     re.I,
 )
-_KLASSEN = list(TeamKlasse)
 _TITEL = re.compile(r"\b(dr|prof|dipl|mag|ll\.?m|m\.?a|m\.?sc|b\.?a|b\.?sc|rer|pol|oec|kfm|kffr|ing|jur)\b\.?", re.I)
 
 
@@ -506,10 +506,11 @@ def ansprechpartner(
     return [Ansprechpartner(name=p.name, titel=p.titel, funktion=p.funktion) for p in sorted(auswahl, key=rang)]
 
 
-def _groesser(klasse: TeamKlasse | None, andere: TeamKlasse | None) -> TeamKlasse | None:
+def _groesser(klasse: str | None, andere: str | None) -> str | None:
     if klasse is None or andere is None:
         return klasse or andere
-    return klasse if _KLASSEN.index(klasse) >= _KLASSEN.index(andere) else andere
+    k = groessenklassen()
+    return klasse if k.index(klasse) >= k.index(andere) else andere
 
 
 def teamgroesse(
@@ -517,7 +518,7 @@ def teamgroesse(
     team_seiten: list[Seite] | Seite | None,
     erkannte: list[ErkanntePerson] | None = None,
     angabe: Mitarbeiterzahl | None = None,
-) -> tuple[int | None, TeamKlasse | None, str | None]:
+) -> tuple[int | None, str | None, str | None]:
     """(Zahl, Klasse, Basis).
 
     Vorrang: genannte Zahl (LLM, dann Regel) > gezählte Personen der Teamseiten (≥ 2; Regel-Erkennung
@@ -542,7 +543,7 @@ def teamgroesse(
             if nachname and nachname[0] in teamtext and not any(gleiche_person(p.name, q) for q in gezaehlt):
                 gezaehlt.append(p.name)
     n = len(gezaehlt)
-    if n >= 2 and (klasse is None or _KLASSEN.index(TeamKlasse.aus_zahl(n)) >= _KLASSEN.index(klasse)):
+    if n >= 2 and (klasse is None or groessenklassen().index(TeamKlasse.aus_zahl(n)) >= groessenklassen().index(klasse)):
         return n, None, f"{n} Personen auf Teamseite"
     if klasse:
         if angabe and angabe.klasse == klasse:

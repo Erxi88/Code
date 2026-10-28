@@ -52,7 +52,7 @@ KANZLEI_SPALTEN: list[Spalte] = [
     ("Weitere Ansprechpartner", 45, lambda k: "; ".join(a.anzeige() for a in k.ansprechpartner[1:]) or None),
     ("Berufsträger (Anzahl)", 11, lambda k: k.berufstraeger_anzahl),
     ("Teamgröße", 10, lambda k: k.teamgroesse_anzeige),
-    ("Größenklasse", 12, lambda k: k.teamgroesse_klasse.value if k.teamgroesse_klasse else None),
+    ("Größenklasse", 12, lambda k: k.teamgroesse_klasse),
     ("Teamgröße-Basis", 30, lambda k: k.teamgroesse_basis),
     ("Konfidenz", 10, lambda k: k.konfidenz.value),
     ("Abweichung", 45, lambda k: k.abweichung),

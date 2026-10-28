@@ -22,24 +22,20 @@ def test_testdaten_sonderfaelle(kanzleien):
 
 
 def test_teamklasse_aus_zahl():
-    assert TeamKlasse.aus_zahl(1) == TeamKlasse.K1_5
-    assert TeamKlasse.aus_zahl(5) == TeamKlasse.K1_5
-    assert TeamKlasse.aus_zahl(6) == TeamKlasse.K6_15
-    assert TeamKlasse.aus_zahl(15) == TeamKlasse.K6_15
-    assert TeamKlasse.aus_zahl(16) == TeamKlasse.K16_50
-    assert TeamKlasse.aus_zahl(50) == TeamKlasse.K16_50
-    assert TeamKlasse.aus_zahl(51) == TeamKlasse.K50_PLUS
+    erwartet = {1: "1", 2: "2-5", 5: "2-5", 6: "6-10", 10: "6-10", 11: "11-20", 20: "11-20", 21: "21-50",
+                50: "21-50", 51: "51-100", 100: "51-100", 101: ">100"}
+    assert {n: TeamKlasse.aus_zahl(n) for n in erwartet} == erwartet
 
 
 def test_kanzlei_klasse_wird_aus_zahl_abgeleitet():
     k = Kanzlei(domain="a.example", lauf_bundesland="SH", teamgroesse=7)
-    assert k.teamgroesse_klasse == TeamKlasse.K6_15
+    assert k.teamgroesse_klasse == "6-10"
     assert k.teamgroesse_anzeige == 7
 
 
 def test_kanzlei_anzeige_klasse_ohne_zahl():
-    k = Kanzlei(domain="a.example", lauf_bundesland="SH", teamgroesse_klasse=">50")
-    assert k.teamgroesse_anzeige == ">50"
+    k = Kanzlei(domain="a.example", lauf_bundesland="SH", teamgroesse_klasse=">100")
+    assert k.teamgroesse_anzeige == ">100"
 
 
 def test_kanzlei_standardwerte():

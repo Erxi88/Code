@@ -7,9 +7,10 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
-from ..models import Seite, Seitentyp, TeamKlasse
+from ..groesse import aktiv as groessenklassen
+from ..models import Seite, Seitentyp
 
 
 class RegelErgebnis(BaseModel):
@@ -55,14 +56,26 @@ class LlmErgebnis(BaseModel):
         None, description="Anzahl Mitarbeitende, nur wenn im Text ausdrücklich als Zahl genannt"
     )
     mitarbeiterzahl_beleg: str | None = Field(None, description="wörtliche Textstelle zur Mitarbeiterzahl")
-    teamgroesse_klasse: TeamKlasse | None = Field(
+    teamgroesse_klasse: str | None = Field(
         None, description="nur wenn keine Zahl genannt ist, der Text aber eine Größenordnung angibt"
     )
+
+    @field_validator("teamgroesse_klasse")
+    @classmethod
+    def _klasse_einordnen(cls, v: str | None) -> str | None:
+        """Aktuelle Einteilung; Aufzeichnungen mit alter Einteilung nur, wenn eindeutig umrechenbar."""
+        return groessenklassen().umrechnen(v) if v else None
 
 
 def llm_schema() -> dict:
     """JSON-Schema für den Ollama-Parameter `format`."""
-    return LlmErgebnis.model_json_schema()
+    schema = LlmErgebnis.model_json_schema()
+    # Größenklassen aus settings.yaml als Aufzählung erzwingen
+    schema["properties"]["teamgroesse_klasse"] = {
+        "anyOf": [{"enum": groessenklassen().namen, "type": "string"}, {"type": "null"}], "default": None,
+        "description": schema["properties"]["teamgroesse_klasse"].get("description", ""),
+    }
+    return schema
 
 
 class ExtraktionsAntwort(BaseModel):

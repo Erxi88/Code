@@ -121,6 +121,9 @@ extract:
   # Nach dem Pilot einschalten; bestehende Daten: recherche kanzlei-pruefung
   kanzlei_pruefung: false
   kanzlei_rechtsformen: [PartG mbB, PartG, Einzelkanzlei]
+  # Größenklassen der Teamgröße als Obergrenzen: 1 · 2-5 · 6-10 · 11-20 · 21-50 · 51-100 · >100.
+  # Zahl, wenn ablesbar; sonst Klasse aus dem Text („über 20" → 21-50); sonst leer – keine Schätzung.
+  groessenklassen: [1, 5, 10, 20, 50, 100]
 
 llm:
   provider: ollama
