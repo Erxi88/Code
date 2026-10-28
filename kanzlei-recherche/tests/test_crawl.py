@@ -544,3 +544,26 @@ def test_crawl_ueberspringt_kandidaten_ausserhalb(storage):
     (ng,) = storage.nicht_gefunden("SH")
     assert ng.domain == "dresden-steuer.example" and ng.grund.startswith("außerhalb Schleswig-Holstein laut Suchtreffer")
     assert not any("dresden" in u for u in web.urls())
+
+
+def test_wiederholen_rendert_gecachte_403_startseite(storage):
+    """Erster Lauf ohne Playwright cacht HTTP 403; crawl --wiederholen mit Playwright rendert jetzt."""
+    import asyncio
+
+    original = beispiel_seiten("foerde-steuer.example")
+    start = "https://foerde-steuer.example/"
+    web, clock, ids = _setup(storage, {**original, start: (403, "Access denied")}, ("foerde-steuer.example", {}))
+    assert _crawl(storage, web, clock).fertig == 0
+    assert storage.get_seite(start).http_status == 403
+    storage.fehler_zuruecksetzen("SH", "crawl")
+
+    async def renderer(url):
+        return original[start][1]
+
+    async def lauf(gruendlich):
+        c = Crawler(CFG.model_copy(update={"playwright": True}), storage, set(), client=web.client(), renderer=renderer,
+                    clock=clock, sleep=clock.sleep, gruendlich=gruendlich)
+        return await c.run(storage.kandidaten("SH", crawl_status=SchrittStatus.OFFEN, nur_mit_website=True), "SH")
+
+    assert asyncio.run(lauf(True)).fertig == 1
+    assert storage.get_seite(start).http_status == 200  # Cache durch das gerenderte HTML ersetzt

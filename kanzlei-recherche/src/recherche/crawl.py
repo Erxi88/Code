@@ -527,7 +527,10 @@ class Crawler:
         """Lädt eine Seite (oder nimmt sie aus dem Cache). Fehler stehen in Abruf.fehler."""
         if (seite := self.storage.get_seite(url)) is not None:
             fehler = None if seite.html is not None else f"HTTP {seite.http_status}"
-            return Abruf(url, seite.http_status, seite.html, seite.text, seite.final_url, fehler, aus_cache=True)
+            abruf = Abruf(url, seite.http_status, seite.html, seite.text, seite.final_url, fehler, aus_cache=True)
+            if self.gruendlich and self.cfg.playwright:
+                abruf = await self._gecacht_rendern(abruf, domain, typ)
+            return abruf
         if not await self.erlaubt(url):
             return Abruf(url, fehler=await self.robots_meldung(url))
         abruf = await self._mit_retries(url, domain)
@@ -546,6 +549,21 @@ class Crawler:
                       html=abruf.html, final_url=abruf.final_url)
             )  # fmt: skip
         return abruf
+
+    async def _gecacht_rendern(self, abruf: Abruf, domain: str, typ: Seitentyp) -> Abruf:
+        """crawl --wiederholen mit Playwright: eine im ersten Lauf (ohne Playwright) gecachte Startseite
+        mit HTTP 403 oder eine fast leere Seite jetzt rendern und den Cache ersetzen, wenn es mehr Text gibt."""
+        vorher = len(abruf.text or "")
+        if abruf.status == 403 and typ == Seitentyp.START:
+            neu = await self._rendern_nach_403(abruf)
+        elif abruf.ok and (vorher < self.cfg.min_text_zeichen or self._team_ohne_text(abruf, typ)):
+            neu = await self._rendern(abruf)
+        else:
+            return abruf
+        if neu.ok and len(neu.text or "") > vorher:
+            self.storage.save_seite(Seite(url=abruf.url, domain=domain, seitentyp=typ, http_status=neu.status,
+                                          text=neu.text, html=neu.html, final_url=neu.final_url), ersetzen=True)
+        return neu
 
     async def _mit_retries(self, url: str, domain: str) -> Abruf:
         versuche = self.cfg.retries + 1

@@ -176,7 +176,8 @@ der nächsten Quelle füllen.**
   Teamseiten mit großem HTML, aber kaum Text (≥ `playwright_team_min_html`, Text unter
   `playwright_team_min_anteil` = 2 % des HTML; Namen per JavaScript) – nur mit
   `crawl.playwright: true` (`setup.sh --mit-playwright`). Das gerenderte HTML ersetzt das
-  ursprüngliche nur, wenn es mehr Text ergibt. Das Ergebnis (gerendert, fehlgeschlagen
+  ursprüngliche nur, wenn es mehr Text ergibt. Mit `crawl --wiederholen` werden auch gecachte
+  403-Startseiten und Leerseiten aus einem Lauf ohne Playwright gerendert (Cache wird ersetzt). Das Ergebnis (gerendert, fehlgeschlagen
   mit Grund, nicht mehr Text, nötig aber aus) steht in `meta.json` der Fixture und in der
   Ausgabe von `fixture-add`.
 - Fehler (nicht erreichbar, HTTP-Fehler, robots.txt, kein Impressum, JavaScript-Seite,

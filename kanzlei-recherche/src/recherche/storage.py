@@ -508,12 +508,13 @@ class Storage:
     def hat_seite(self, url: str) -> bool:
         return self.conn.execute("SELECT 1 FROM seiten WHERE url = ?", (url,)).fetchone() is not None
 
-    def save_seite(self, s: Seite) -> bool:
-        """Speichert eine Seite. Bereits gecachte URLs werden nie überschrieben."""
+    def save_seite(self, s: Seite, ersetzen: bool = False) -> bool:
+        """Speichert eine Seite. Bereits gecachte URLs werden nie überschrieben – außer mit `ersetzen`
+        (Playwright-Ergebnis für eine gecachte 403- oder Leerseite bei crawl --wiederholen)."""
         html_gz = gzip.compress(s.html.encode("utf-8")) if s.html is not None else None
         with self.conn:
             cur = self.conn.execute(
-                """INSERT OR IGNORE INTO seiten
+                f"""INSERT OR {'REPLACE' if ersetzen else 'IGNORE'} INTO seiten
                    (url, domain, seitentyp, http_status, text, abgerufen_am, html_gz, final_url)
                    VALUES (?,?,?,?,?,?,?,?)""",
                 (s.url, s.domain, s.seitentyp.value, s.http_status, s.text, _iso(s.abgerufen_am),
