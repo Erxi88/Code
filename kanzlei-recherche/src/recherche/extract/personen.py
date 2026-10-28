@@ -145,6 +145,10 @@ def name_zerlegen(text: str) -> tuple[str, str | None] | None:
 _FREMDE_FIRMA = re.compile(r"\b(?:gmbh|ag|kg|ohg|gbr|e\.\s?k\.|e\.\s?v\.|ug|se|mandant\w*|kunde\w*)\b", re.I)
 
 
+# Firmen- oder Adresszeile („Hansen & Petersen Steuerberater PartG mbB · Holstenstraße 42 · 24103 Kiel")
+_FIRMENZEILE = re.compile(r"\b\d{5}\b|\b(?:partg|mbb|partmbb)\b", re.I)
+
+
 def ist_externe_funktion(funktion: str | None) -> bool:
     return bool(funktion) and bool(_FREMDE_FIRMA.search(funktion))
 
@@ -153,7 +157,7 @@ def _ist_funktion(zeile: str, f: Funktionen) -> bool:
     # Aufzählungen dürfen länger sein („Dipl.-Betriebswirt, Steuerberater, Fachberater für … (DStV e.V.), …")
     grenze = (220, 30) if zeile.count(",") >= 2 else (120, 12)
     return (len(zeile) <= grenze[0] and len(zeile.split()) <= grenze[1] and bool(f.muster_alle.search(zeile))
-            and not ist_externe_funktion(zeile))  # fmt: skip
+            and not ist_externe_funktion(zeile) and not _FIRMENZEILE.search(zeile))  # fmt: skip
 
 
 # Kontaktzeilen zwischen Funktion und Qualifikation in einer Kachel („trenner@…", „Tel. 0431 …", „vCard")
@@ -179,61 +183,98 @@ def _beginnt_mit_name(zeile: str) -> bool:
     return bool(name_zerlegen(zeile) or name_zerlegen(_TRENNER.split(zeile, maxsplit=1)[0]))
 
 
+def _nur_titel(zeile: str) -> bool:
+    """„Dipl.-Volkswirt", „Dr. rer. pol.", „M.Sc." – eine Zeile, die nur aus Titeln besteht."""
+    m = _TITEL.match(zeile.strip() + " ")
+    return bool(zeile.strip()) and m is not None and m.end() >= len(zeile.strip())
+
+
 def erkenne_personen(
     text: str, funktionen: Funktionen | None = None, rahmen: set[str] | None = None
 ) -> list[ErkanntePerson]:
     """Personen mit Funktion aus zeilenweisem Seitentext (Kacheln, Listen, „Name – Funktion").
 
     Ein Name gilt nur mit einer Funktion aus config/personen_funktionen.yaml in derselben Zeile,
-    in der Folgezeile oder – bei Kacheln mit Rolle als Überschrift – direkt darüber. Zeilen aus
-    Navigation/Fußzeile (`rahmen`, normalisiert wie im Prompt) werden übersprungen.
+    in den Folgezeilen (Titelzeilen wie „Dipl.-Volkswirt" und bis zu zwei Kontaktzeilen dazwischen
+    unterbrechen nicht) oder darüber – als Rolle der Kachel oder als Abschnittsüberschrift („Partner"),
+    die für alle Kacheln darunter gilt bis zur nächsten Überschrift oder zu anderem Text.
+    Zeilen aus Navigation/Fußzeile (`rahmen`) sind nie Namen, als Funktion unter einem Namen zählen
+    sie („Steuerberater" steht oft auch im Logo).
     """
     f = funktionen or lade_funktionen()
     rahmen = rahmen or set()
     zeilen = [z.strip() for z in (text_normalisieren(text) or "").splitlines()]
-    zeilen = ["" if " ".join(z.lower().split()) in rahmen else z for z in zeilen]
+    im_rahmen = {i for i, z in enumerate(zeilen) if " ".join(z.lower().split()) in rahmen}
     gefunden: list[ErkanntePerson] = []
     vergeben: set[int] = set()
+    abschnitt: str | None = None  # Überschrift über mehreren Kacheln („Partner")
 
     def hinzu(name_titel, funktion: str, i: int) -> None:
         name, titel = name_titel
         schluessel = frozenset(name.lower().split())
         if any(frozenset(p.name.lower().split()) == schluessel for p in gefunden):
             return
-        gefunden.append(ErkanntePerson(name, titel, _funktion_saeubern(funktion), i))
+        gefunden.append(ErkanntePerson(name, titel or None, _funktion_saeubern(funktion), i))
+
+    def name_in(j: int):
+        return None if j in im_rahmen or not zeilen[j] else name_zerlegen(zeilen[j])
+
+    def naechster_name(j: int) -> bool:
+        k = j + 1
+        while k < len(zeilen) and not zeilen[k]:
+            k += 1
+        return k < len(zeilen) and name_in(k) is not None
 
     for i, z in enumerate(zeilen):
         if not z or i in vergeben:
             continue
         # „Jens Hansen – Steuerberater" / „Dr. Henrik Lorenzen, Geschäftsführer" / „Sabine Schulz (Steuerfachwirtin)"
         teile = _TRENNER.split(z, maxsplit=1)
-        if len(teile) == 2 and (nt := name_zerlegen(teile[0])) and _ist_funktion(teile[1], f):
+        if i not in im_rahmen and len(teile) == 2 and (nt := name_zerlegen(teile[0])) and _ist_funktion(teile[1], f):
             hinzu(nt, teile[1], i)
             vergeben.add(i)
             continue
-        nt = name_zerlegen(z)
+        nt = name_in(i)
         if nt is None:
+            # Abschnittsüberschrift: kurze Funktionszeile direkt über einem Namen
+            if _ist_funktion(z, f) and len(z.split()) <= 4 and not _beginnt_mit_name(z) and naechster_name(i):
+                abschnitt = z
+            elif not _KONTAKTZEILE.match(z) and not _nur_titel(z):
+                abschnitt = None  # anderer Text beendet den Abschnitt
             continue
-        # Funktion in der Folgezeile – auch mehrere Funktionszeilen untereinander
-        # („Sven Drews" / „Gesellschafter" / „Steuerberater")
-        folge, uebersprungen = [], 0
-        for j in range(i + 1, min(len(zeilen), i + 7)):
-            if folge and uebersprungen < 2 and zeilen[j] and _KONTAKTZEILE.match(zeilen[j]):
-                uebersprungen += 1  # Kontaktzeile innerhalb der Kachel überspringen
-                continue
-            if not (zeilen[j] and _ist_funktion(zeilen[j], f) and not _beginnt_mit_name(zeilen[j])):
+        # Folgezeilen: Funktionen, Titel, Kontaktzeilen („Sven Drews" / „Gesellschafter" / „Steuerberater")
+        folge, titel_zusatz, kontakt = [], [], 0
+        for j in range(i + 1, min(len(zeilen), i + 8)):
+            zj = zeilen[j]
+            if not zj or _beginnt_mit_name(zj) and j not in im_rahmen and not _ist_funktion(zj, f):
                 break
-            folge.append(j)
+            if j in im_rahmen and len(zj.split()) > 3:
+                break  # Fußzeile („Hansen & Petersen Steuerberater PartG mbB · …") gehört nicht zur Kachel
+            if _ist_funktion(zj, f) and not _beginnt_mit_name(zj):
+                folge.append(j)
+            elif _nur_titel(zj):
+                titel_zusatz.append(j)  # „Dipl.-Volkswirt" zwischen Funktion und Berufsbezeichnung
+            elif folge and kontakt < 2 and _KONTAKTZEILE.match(zj):
+                kontakt += 1  # Kontaktzeile innerhalb der Kachel überspringen
+            else:
+                break
+        titel = " ".join(x for x in [nt[1], *(zeilen[j] for j in titel_zusatz)] if x) or None
+        funktion = ", ".join(zeilen[j].strip(" ,;") for j in folge)
         if folge:
-            hinzu(nt, ", ".join(zeilen[j].strip(" ,;") for j in folge), i)
-            vergeben.update({i, *folge})
+            if abschnitt and abschnitt.lower() not in funktion.lower():
+                funktion = f"{abschnitt}, {funktion}"
+            hinzu((nt[0], titel), funktion, i)
+            vergeben.update({i, *folge, *titel_zusatz})
+        elif abschnitt:
+            hinzu((nt[0], titel), abschnitt, i)  # Kachel unter der Überschrift („Partner"), ohne eigene Funktion
+            vergeben.update({i, *titel_zusatz})
         elif i > 0 and zeilen[i - 1] and i - 1 not in vergeben and _ist_funktion(zeilen[i - 1], f) \
                 and not _beginnt_mit_name(zeilen[i - 1]):
-            hinzu(nt, zeilen[i - 1], i)  # Funktion über dem Namen (Kachel mit Rolle als Überschrift)
+            hinzu((nt[0], titel), zeilen[i - 1], i)  # Funktion über dem Namen (Kachel mit Rolle als Überschrift)
             vergeben.update({i - 1, i})
-        elif nt[1] and (b := f.muster_berufstraeger.search(nt[1])):
-            hinzu(nt, b.group(0), i)  # „StB Justyna Slama": die Berufsbezeichnung steht vor dem Namen
-            vergeben.add(i)
+        elif titel and (b := f.muster_berufstraeger.search(titel)):
+            hinzu((nt[0], titel), b.group(0), i)  # „StB Justyna Slama": die Berufsbezeichnung steht vor dem Namen
+            vergeben.update({i, *titel_zusatz})
     return gefunden
 
 

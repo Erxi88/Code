@@ -423,7 +423,10 @@ def prompt_diagnose(fx: Fixture, llm_cfg, ausschluss: Ausschluss, modell: str | 
         versteckt[s.seitentyp] = versteckte_quellen(s.html, _text(s))
         zeilen = [z.strip() for z in _text(s).splitlines() if z.strip()]
         for q in erkannte:  # Zeilen rund um den Namen: zeigt, wo Funktionen verloren gehen
-            if q.name not in umfeld and (i := next((k for k, z in enumerate(zeilen) if q.name in z), None)) is not None:
+            # die Kachelzeile des Namens (Zeile beginnt mit dem Namen), sonst die erste Erwähnung
+            treffer = [k for k, z in enumerate(zeilen) if q.name in z]
+            kachel = [k for k in treffer if len(zeilen[k]) <= len(q.name) + 40]
+            if q.name not in umfeld and (i := (kachel or treffer or [None])[0]) is not None:
                 umfeld[q.name] = " ⏎ ".join(z[:60] for z in zeilen[max(0, i - 1): i + 5])
         if True:
             for q in erkenne_personen(_text(s)):  # ohne Rahmen-Filter: was ginge nur dort verloren?

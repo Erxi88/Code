@@ -200,10 +200,14 @@ der nächsten Quelle füllen.**
 - Personen (`personen.py`, `config/personen_funktionen.yaml`): Kacheln/Listen auf beiden
   Teamseiten. Ein Name gilt nur mit einer Funktion aus der Liste **in derselben Zeile**
   („Name – Funktion", „Name (Funktion)"), **in der Folgezeile** (auch mehrere
-  Funktionszeilen untereinander: „Gesellschafter" / „Steuerberater", bis zu zwei Kontaktzeilen
-  dazwischen werden übersprungen, Aufzählungen mit Kommas dürfen bis 220 Zeichen lang sein;
-  eine Zeile, die mit einem Namen beginnt, ist die nächste Person) oder direkt darüber (Kachel mit Rolle als
-  Überschrift); Zeilen aus dem RAHMEN, Menüwörter („Berufsträger", „Firmenphilosophie",
+  Funktionszeilen untereinander: „Gesellschafter" / „Steuerberater"; reine Titelzeilen
+  („Dipl.-Volkswirt") und bis zu zwei Kontaktzeilen dazwischen unterbrechen nicht und Titel
+  wandern in den Titel; Aufzählungen mit Kommas dürfen bis 220 Zeichen lang sein; eine Zeile,
+  die mit einem Namen beginnt, ist die nächste Person; Firmen-/Adresszeilen mit PLZ oder
+  PartG/mbB sind nie Funktion), als **Abschnittsüberschrift** („Partner" über mehreren
+  Kacheln, gilt bis zur nächsten Überschrift oder zu anderem Text) oder direkt darüber (Kachel mit Rolle als
+  Überschrift); Zeilen aus dem RAHMEN sind nie Namen, kurze Rahmenzeilen („Steuerberater" im
+  Logo) zählen aber als Funktion unter einem Namen; Menüwörter („Berufsträger", „Firmenphilosophie",
   „Historie" …) und Institutionen („…kammer", „…gericht") sind nie Namen; „BD-Partner"
   (Bindestrich davor) ist keine Funktion und kein Impressum-Schlüsselwort. Initialen („W. Drews") und Anrede
   („Frau …") sind erlaubt; `*kauffrau` in der Liste trifft auch Komposita

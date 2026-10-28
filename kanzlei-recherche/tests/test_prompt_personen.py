@@ -631,3 +631,32 @@ def test_qualifikationen_im_bild_attribut():
             "<img alt='Hans-Joachim Trenner, Geschäftsführer, Dipl.-Volkswirt, Steuerberater' src='t.jpg'>")
     p = erkannte_personen([_seite(Seitentyp.TEAM, "https://tw.example/team", html)])
     assert [(x.name, x.funktion) for x in p] == [("Hans-Joachim Trenner", "Geschäftsführer, Dipl.-Volkswirt, Steuerberater")]
+
+
+def test_titelzeile_und_rahmen_in_der_kachel():
+    """trenner-witt: Name ⏎ Geschäftsführer ⏎ Dipl.-Volkswirt ⏎ Steuerberater; „Steuerberater" steht auch im Logo."""
+    text = ("Hans-Joachim Trenner\nGeschäftsführer\nDipl.-Volkswirt\nSteuerberater\n0431 / 240 44 0\ntrenner@tw.example\n"
+            "Eike Witt\nGeschäftsführer\nSteuerberater\nDoris Lorenzen\nSteuerfachangestellte\n"
+            "Trenner & Witt Steuerberater PartG mbB · Holstenweg 1 · 24103 Kiel")
+    p = erkenne_personen(text, rahmen={"steuerberater", "trenner & witt steuerberater partg mbb · holstenweg 1 · 24103 kiel"})
+    assert [(x.name, x.titel, x.funktion) for x in p] == [
+        ("Hans-Joachim Trenner", "Dipl.-Volkswirt", "Geschäftsführer, Steuerberater"),
+        ("Eike Witt", None, "Geschäftsführer, Steuerberater"), ("Doris Lorenzen", None, "Steuerfachangestellte")]
+    assert sum(ist_berufstraeger(LlmPerson(name=x.name, titel=x.titel, funktion=x.funktion)) for x in p) == 2
+
+
+def test_abschnittsueberschrift_gilt_fuer_alle_kacheln():
+    """stb-kiel: „Partner" über mehreren Kacheln, je Name ⏎ Titel ⏎ Steuerberater."""
+    text = ("Unsere Leistungen reichen von der Buchhaltung bis zur Gestaltungsberatung für Unternehmen.\nPartner\n"
+            "Niels Benthin\nDipl.-Betriebswirt\nSteuerberater\nDirk-Henning Schwark\nDipl.-Kaufmann\nSteuerberater\n"
+            "Bert Kühl\nSteuerberater\nSven Hansen\nPartner bis 01.01.2025\nSteuerberater\n"
+            "Angestellte Berufsträger\nJustyna Slama\nSteuerberaterin")
+    p = {x.name: x.funktion for x in erkenne_personen(text, rahmen={"steuerberater"})}
+    assert p == {"Niels Benthin": "Partner, Steuerberater", "Dirk-Henning Schwark": "Partner, Steuerberater",
+                 "Bert Kühl": "Partner, Steuerberater", "Sven Hansen": "Partner bis 01.01.2025, Steuerberater",
+                 "Justyna Slama": "Steuerberaterin"}
+
+
+def test_firmenzeile_ist_keine_funktion():
+    p = erkenne_personen("Tim Jensen\nAuszubildender\nHansen & Petersen Steuerberater PartG mbB · Holstenstraße 42 · 24103 Kiel")
+    assert p[0].funktion == "Auszubildender"
