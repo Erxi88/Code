@@ -486,3 +486,52 @@ def prompt_diagnose(fx: Fixture, llm_cfg, ausschluss: Ausschluss, modell: str | 
         telefon_html=[(s.seitentyp.value, n, stelle) for s in (fx.seiten.get(typ) for typ in
                       (Seitentyp.IMPRESSUM, Seitentyp.START)) if s is not None for n, stelle in telefon_im_html(s.html)],
     )  # fmt: skip
+
+
+# ---------------------------------------------------------------------- fixture-klassen-umstellen
+
+
+@dataclass
+class KlassenUmstellung:
+    domain: str
+    alt: str | None
+    neu: str | None
+    hinweis: str  # „aus Zahl 12", „umgerechnet", „unentscheidbar – leer" …
+    vorschlag: str | None = None  # Klasse aus dem Seitentext (nur zur Ansicht, nicht übernommen)
+
+    @property
+    def geaendert(self) -> bool:
+        return self.alt != self.neu
+
+
+def klassen_umstellen(ordner: Path, schreiben: bool = True) -> list[KlassenUmstellung]:
+    """erwartet.json auf die aktuellen Größenklassen umstellen: mit Zahl → Klasse aus der Zahl (bzw. leer,
+    wenn vorher leer); ohne Zahl → alte Klasse nur, wenn ihr Bereich in genau eine neue fällt, sonst leer.
+    Vor dem Schreiben wird erwartet.json.bak angelegt. Gibt alle Fixtures mit Teamgröße-Sollwert zurück."""
+    from .extract.personen import mitarbeiterzahl
+
+    k = groessenklassen()
+    ergebnis = []
+    for pfad in sorted(p for p in ordner.iterdir() if (p / "erwartet.json").exists()) if ordner.exists() else []:
+        datei = pfad / "erwartet.json"
+        roh = datei.read_text(encoding="utf-8-sig")
+        soll = json.loads(roh)
+        zahl, alt = soll.get("teamgroesse"), soll.get("teamgroesse_klasse")
+        if alt is None or k.gilt(alt):
+            continue
+        if zahl is not None:
+            neu, hinweis, vorschlag = k.aus_zahl(int(zahl)), f"aus Zahl {zahl}", None
+        elif neu := k.umrechnen(alt):
+            hinweis, vorschlag = "umgerechnet", None
+        else:
+            fx = Fixture.laden(pfad)
+            angabe = mitarbeiterzahl([s.text or "" for s in fx.seiten.values()])
+            vorschlag = (angabe.klasse or k.aus_zahl(angabe.zahl)) if angabe else None
+            beleg = f" (Text: „{angabe.beleg}“)" if angabe else ""
+            hinweis = f"unentscheidbar – leer, bitte von Hand prüfen{beleg}"
+        ergebnis.append(KlassenUmstellung(pfad.name, alt, neu, hinweis, vorschlag))
+        if schreiben:
+            (pfad / "erwartet.json.bak").write_text(roh, encoding="utf-8")
+            soll["teamgroesse_klasse"] = neu
+            datei.write_text(json.dumps(soll, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+    return ergebnis

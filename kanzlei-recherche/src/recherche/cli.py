@@ -217,12 +217,37 @@ def _extractor(ctx: Kontext, modell: str | None) -> OllamaExtractor:
     return OllamaExtractor(ctx.settings.llm, modell=modell)
 
 
+def _sekunden_je_kanzlei(st: Storage, bundesland: str, ohne_llm: bool) -> float:
+    """Mittlere Laufzeit je Kanzlei aus früheren Extraktionen (Lauf-Protokoll); sonst Erfahrungswert."""
+    laeufe = [e for e in st.lauf_protokoll(bundesland) if e.schritt == "extract" and e.trefferzahl
+              and (e.adapter == "nur Regeln") == ohne_llm and e.laufzeit_s]
+    if laeufe:
+        return sum(e.laufzeit_s for e in laeufe) / sum(e.trefferzahl for e in laeufe)
+    return 0.2 if ohne_llm else 15.0
+
+
+def _dauer(sekunden: float) -> str:
+    h, m = divmod(round(sekunden / 60), 60)
+    return f"{h} h {m} min" if h else f"{m} min"
+
+
 def _extract(
     ctx: Kontext, ohne_llm: bool = False, modell: str | None = None, limit: int | None = None,
-    wiederholen: bool = False,
+    wiederholen: bool = False, alle: bool = False, ja: bool = False,
 ) -> None:
     s = ctx.settings
     with ctx.storage() as st:
+        if alle:
+            n = sum(1 for k in st.kandidaten(ctx.bundesland)
+                    if k.crawl_status == SchrittStatus.FERTIG or not (k.domain or k.website))
+            je = _sekunden_je_kanzlei(st, ctx.bundesland, ohne_llm)
+            console.print(f"Neu-Extraktion aller Zeilen in {ctx.bundesland}: {n} Kandidaten, geschätzt "
+                          f"{_dauer(n * je)} ({je:.1f} s je Kanzlei{' laut Lauf-Protokoll' if st.lauf_protokoll(ctx.bundesland) else ''}). "
+                          "Gepflegte Status bleiben; abbrechen und erneut aufrufen setzt fort.")
+            if not ja and not typer.confirm("Alle Kanzleien neu extrahieren?", default=False):
+                console.print("Abgebrochen – nichts geändert.")
+                return
+            console.print(f"{st.extract_alle_offen(ctx.bundesland)} Kandidaten wieder offen.")
         if wiederholen:
             console.print(f"{st.fehler_zuruecksetzen(ctx.bundesland, 'extract')} fehlgeschlagene Kandidaten wieder offen.")
         extractor = None if ohne_llm else _extractor(ctx, modell)
@@ -391,9 +416,13 @@ def extract(
     modell: Annotated[str | None, typer.Option(help="Ollama-Modell statt llm.modell")] = None,
     limit: LimitOpt = None,
     wiederholen: WiederholenOpt = False,
+    alle: Annotated[bool, typer.Option("--alle", help="alle Kanzleien neu extrahieren (z. B. nach Regeländerungen)")] = False,
+    ja: Annotated[bool, typer.Option("--ja", "-y", help="ohne Rückfrage (mit --alle)")] = False,
 ) -> None:
-    """Daten aus den gecachten Seiten extrahieren (Regeln + LLM) und mit der Discovery zusammenführen."""
-    _extract(_kontext(config, bundesland, db), ohne_llm, modell, limit, wiederholen)
+    """Daten aus den gecachten Seiten extrahieren (Regeln + LLM) und mit der Discovery zusammenführen.
+
+    --alle extrahiert auch bereits fertige Kandidaten neu (Rückfrage mit Zeitschätzung); fortsetzbar."""
+    _extract(_kontext(config, bundesland, db), ohne_llm, modell, limit, wiederholen, alle, ja)
 
 
 @app.command("fixture-add")
@@ -490,6 +519,36 @@ def kanzlei_pruefung(
                   "herabgestuft.")
     if not ctx.settings.extract.kanzlei_pruefung:
         console.print("[yellow]Für neue Extraktionen extract.kanzlei_pruefung: true in settings.yaml setzen.[/yellow]")
+
+
+@app.command("fixture-klassen-umstellen")
+def fixture_klassen_umstellen(
+    config: ConfigOpt = None,
+    ordner: Annotated[Path | None, typer.Option(help="Fixture-Ordner (Standard: pfade.fixtures_echt)")] = None,
+    probe: Annotated[bool, typer.Option("--probe", help="nur anzeigen, nichts schreiben")] = False,
+) -> None:
+    """Teamgröße-Klassen in erwartet.json auf die aktuelle Einteilung (extract.groessenklassen) umstellen.
+
+    Mit Zahl → Klasse aus der Zahl; ohne Zahl → alte Klasse nur, wenn eindeutig umrechenbar, sonst leer
+    (mit Vorschlag aus dem Seitentext zum Nachtragen von Hand). Sicherung: erwartet.json.bak."""
+    from .fixtures import klassen_umstellen
+
+    s = load_settings(config)
+    ziel = ordner or s.pfad(s.pfade.fixtures_echt)
+    liste = klassen_umstellen(ziel, schreiben=not probe)
+    if not liste:
+        console.print(f"Keine erwartet.json mit alter Größenklasse in {ziel}.")
+        return
+    t = Table(title=f"Größenklassen {'(Probe, nichts geschrieben)' if probe else 'umgestellt'} – {ziel}")
+    for col in ("Fixture", "alt", "neu", "Hinweis", "Vorschlag aus Text"):
+        t.add_column(col)
+    for u in liste:
+        t.add_row(u.domain, u.alt or "–", u.neu or "leer", u.hinweis, u.vorschlag or "")
+    console.print(t)
+    offen = [u for u in liste if u.neu is None]
+    if offen:
+        console.print(f"[yellow]{len(offen)} ohne eindeutige Klasse – teamgroesse_klasse in erwartet.json von Hand "
+                      "setzen (Vorschlag prüfen) oder leer lassen.[/yellow]")
 
 
 @app.command("fixture-eval")

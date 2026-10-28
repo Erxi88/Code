@@ -149,7 +149,7 @@ der nächsten Quelle füllen.**
   Sperren nur für GPTBot/ClaudeBot/CCBot oder nur für Pfade (`/wp-admin/`) betreffen die
   Startseite nicht. 4xx → alles erlaubt. Bei 5xx, Timeout oder Verbindungsfehler werden http/https
   und mit/ohne www probiert; bleibt sie unerreichbar, wird die Seite trotzdem gelesen (RFC 9309 sieht
-  die Sperre dann nur vorübergehend vor) – Hinweis „robots.txt nicht abrufbar (HTTP 500), Seite
+  die Sperre dann nur vorübergehend vor; so entschieden – echte Verbote bleiben respektiert) – Hinweis „robots.txt nicht abrufbar (HTTP 500), Seite
   gelesen" in der Crawl-Ausgabe und in „Abweichung". Fehler werden gecacht, mit `--wiederholen` neu
   versucht. **DNS-Fehler** (Domain existiert nicht) → „Domain nicht erreichbar (DNS)", nie als
   robots-Sperre; diese Domains überspringt `crawl --wiederholen`. Anfragen mit vollständigem
@@ -339,7 +339,9 @@ der nächsten Quelle füllen.**
     eingeordnet: aus der Zahl; ohne Zahl aus der Text-Basis („über 35" → 21-50) oder, wenn der alte
     Bereich in genau eine neue Klasse fällt, umgerechnet; sonst leer mit Hinweis in „Abweichung".
     LLM-Aufzeichnungen mit alter Klasse gelten nur, wenn eindeutig umrechenbar; `fixture-eval`
-    markiert Sollwerte der alten Einteilung.
+    markiert Sollwerte der alten Einteilung, `recherche fixture-klassen-umstellen [--probe]` stellt die
+    erwartet.json unter `echt/` um (mit Zahl → aus der Zahl; ohne Zahl → nur eindeutig umrechenbare
+    alte Klassen, sonst leer mit Vorschlag aus dem Seitentext; Sicherung `erwartet.json.bak`).
 - **Kanzlei-Erkennung** (`extract/kanzlei.py`, `extract.kanzlei_pruefung`, **bis Pilot-Ende aus**):
   Magazine, Jobbörsen, Branchenbücher, Hochschulen haben oft ein sauberes Verlags-Impressum.
   Kanzlei ist, wer **mindestens eins** erfüllt (ODER): Steuerberaterkammer im Impressum (§ 5 DDG,
@@ -362,6 +364,9 @@ der nächsten Quelle füllen.**
   (Kandidaten-/Fund-PLZ, „01067 Dresden" in Titel oder Snippet) nur PLZ außerhalb, wird nicht gecrawlt
   („außerhalb Schleswig-Holstein laut Suchtreffer (01067 Dresden – Sachsen)" im Blatt „Nicht
   gefunden"); eine PLZ im Land oder keine erkennbare PLZ → crawlen.
+- `recherche extract --alle [--ja]`: alle Kanzleien neu extrahieren (nach Regeländerungen), mit
+  Rückfrage und Zeitschätzung aus dem Lauf-Protokoll (sonst 15 s je Kanzlei); fortsetzbar, gepflegte
+  Status bleiben. Erst nach einem Gesamtlauf ausführen.
 - Kandidaten **ohne Website** kommen mit ihren Discovery-Daten ins Blatt „Kanzleien"
   („Website vorhanden" = nein).
 
@@ -403,7 +408,8 @@ der nächsten Quelle füllen.**
 ### CLI (`cli.py`)
 
 `recherche search | fill | coverage | crawl | extract | export | run | search-compare | orte |
-blocklist-vorschlag | kanzlei-pruefung | robots-check | fixture-add | fixture-eval | fixture-prompt`,
+blocklist-vorschlag | kanzlei-pruefung | robots-check | fixture-add | fixture-eval | fixture-prompt |
+fixture-klassen-umstellen`,
 jeweils mit `--bundesland` und `--db`. **Jeder Schritt muss nach Abbruch
 wiederaufnehmbar sein**: Fortschritt steht in SQLite (Status je Domain und
 Schritt, erledigte Queries im Lauf-Protokoll); ein erneuter Aufruf macht nur das,

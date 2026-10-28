@@ -472,3 +472,23 @@ def test_search_compare_auswahl(fakes, db_pfad):
     r = runner.invoke(cli.app, _args("search-compare", db_pfad, "--orte", "Kiel", "--adapter", "brave,ddgs"))
     assert r.exit_code == 0, r.output
     assert "places" not in r.output.split("Je Adapter")[1].split("Überschneidung")[0]
+
+
+def test_extract_alle_mit_rueckfrage(tmp_path):
+    from recherche.models import Kandidat, LaufEintrag, SchrittStatus
+    from recherche.storage import Storage
+
+    db = tmp_path / "t.sqlite"
+    with Storage(db) as st:
+        for i in range(3):
+            st.add_kandidat(Kandidat(bundesland="SH", name=f"Kanzlei {i}", extract_status=SchrittStatus.FERTIG))
+        st.log_lauf(LaufEintrag(lauf_id="l", schritt="extract", bundesland="SH", adapter="nur Regeln",
+                                trefferzahl=10, laufzeit_s=20.0))
+    r = runner.invoke(cli.app, ["extract", "--db", str(db), "-b", "SH", "--alle", "--ohne-llm"], input="n\n")
+    assert r.exit_code == 0, r.output
+    assert "3 Kandidaten" in r.output and "2.0 s je Kanzlei" in r.output and "Abgebrochen" in r.output
+    with Storage(db) as st:
+        assert all(k.extract_status == SchrittStatus.FERTIG for k in st.kandidaten("SH"))
+    r = runner.invoke(cli.app, ["extract", "--db", str(db), "-b", "SH", "--alle", "--ohne-llm", "--ja"])
+    assert r.exit_code == 0, r.output
+    assert "3 Kandidaten wieder offen" in r.output and "Fertig: 3 Kanzleien" in r.output

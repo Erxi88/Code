@@ -456,6 +456,15 @@ class Storage:
             )
         return cur.rowcount
 
+    def extract_alle_offen(self, bundesland: str) -> int:
+        """extract --alle: alle bereits extrahierten (oder fehlgeschlagenen) Kandidaten wieder auf „offen".
+        Die Kanzlei-Zeilen bleiben bis zur Neu-Extraktion stehen; gepflegte Status bleiben erhalten."""
+        with self.conn:
+            cur = self.conn.execute(
+                "UPDATE kandidaten SET extract_status = 'offen', fehler = NULL "
+                "WHERE bundesland = ? AND extract_status != 'offen'", (bundesland,))
+        return cur.rowcount
+
     # ------------------------------------------------------------------ Funde
 
     def add_fund(self, f: Fund) -> bool:
