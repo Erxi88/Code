@@ -177,29 +177,36 @@ def test_404_wird_gecacht(storage):
     assert storage.get_seite("https://leer.example/").http_status == 404
 
 
-@pytest.mark.parametrize(("robots", "erwartet"), [((200, "User-agent: *\nDisallow: /\n"), "robots.txt"),
-                                                  ((503, ""), "robots.txt")])
-def test_robots(storage, robots, erwartet):
-    seiten = {**beispiel_seiten("foerde-steuer.example"), "https://foerde-steuer.example/robots.txt": robots,
-              "http://foerde-steuer.example/robots.txt": robots}
+def _robots_ueberall(domain, antwort):
+    """robots.txt-Antwort für alle Varianten (http/https, mit/ohne www)."""
+    return {f"{s}://{w}{domain}/robots.txt": antwort for s in ("https", "http") for w in ("", "www.")}
+
+
+def test_robots(storage):
+    seiten = {**beispiel_seiten("foerde-steuer.example"),
+              **_robots_ueberall("foerde-steuer.example", (200, "User-agent: *\nDisallow: /\n"))}
     web, clock, _ = _setup(storage, seiten, ("foerde-steuer.example", {}))
     _crawl(storage, web, clock)
     (ng,) = storage.nicht_gefunden("SH")
-    assert erwartet in ng.grund
+    assert "robots.txt verbietet" in ng.grund
     assert [u for u in web.urls() if not u.endswith("robots.txt")] == []
 
 
-def test_vorubergehende_fehler_werden_nicht_gecacht(storage):
-    foerde = beispiel_seiten("foerde-steuer.example")
-    seiten = {**foerde, "https://foerde-steuer.example/robots.txt": (503, ""),
-              "http://foerde-steuer.example/robots.txt": (503, "")}
+def test_robots_mit_5xx_wird_beim_wiederholen_neu_geladen(storage):
+    seiten = {**beispiel_seiten("foerde-steuer.example"), **_robots_ueberall("foerde-steuer.example", (503, ""))}
     web, clock, ids = _setup(storage, seiten, ("foerde-steuer.example", {}))
-    _crawl(storage, web, clock)
-    assert "robots.txt" in storage.nicht_gefunden("SH")[0].grund
-    # Server wieder in Ordnung: --wiederholen liest die Seite jetzt
-    web.seiten["https://foerde-steuer.example/robots.txt"] = (404, "")
-    storage.fehler_zuruecksetzen("SH", "crawl")
-    assert _crawl(storage, web, clock).fertig == 1
+    assert _crawl(storage, web, clock).trotz_robots == 1  # gelesen, mit Hinweis
+    assert storage.cache_get("robots", "https://foerde-steuer.example")["status"] == 503
+    # Server wieder in Ordnung und sperrt jetzt: crawl --wiederholen lädt die robots.txt neu
+    web.seiten["https://foerde-steuer.example/robots.txt"] = (200, "User-agent: *\nDisallow: /\n")
+    import asyncio
+
+    async def lauf(gruendlich):
+        c = Crawler(CFG, storage, set(), client=web.client(), clock=clock, sleep=clock.sleep, gruendlich=gruendlich)
+        return await c.erlaubt("https://foerde-steuer.example/")
+
+    assert asyncio.run(lauf(False)) is True  # ohne --wiederholen: gecachter Fehler
+    assert asyncio.run(lauf(True)) is False
 
 
 def test_5xx_nach_retries_wird_nicht_gecacht(storage):
@@ -356,18 +363,52 @@ def test_playwright_ergebnis_wird_gemeldet(storage, playwright, renderer, erwart
 
 # ---- Pilot: robots.txt-Gründe, mehr Impressum-Pfade, Playwright nach 403
 
-@pytest.mark.parametrize(("robots", "grund"), [
-    ((200, "User-agent: *\nDisallow: /\n"), "robots.txt verbietet den Zugriff"),
-    ((503, ""), "robots.txt nicht erreichbar (HTTP 503) – nach RFC 9309 gesperrt"),
-    (httpx.ConnectTimeout("x"), "robots.txt nicht erreichbar (Timeout) – nach RFC 9309 gesperrt"),
-    (httpx.ConnectError("x"), "robots.txt nicht erreichbar (ConnectError) – nach RFC 9309 gesperrt"),
+@pytest.mark.parametrize(("robots", "hinweis"), [
+    ((503, ""), "robots.txt nicht abrufbar (HTTP 503), Seite gelesen"),
+    ((500, ""), "robots.txt nicht abrufbar (HTTP 500), Seite gelesen"),  # obh-partner.de: nur /robots.txt 500
+    (httpx.ConnectTimeout("x"), "robots.txt nicht abrufbar (Timeout), Seite gelesen"),
+    (httpx.ConnectError("Connection reset by peer"), "robots.txt nicht abrufbar (ConnectError), Seite gelesen"),
 ])  # fmt: skip
-def test_robots_grund_unterscheidet_sperre_und_nicht_erreichbar(storage, robots, grund):
-    seiten = {**beispiel_seiten("foerde-steuer.example"), "https://foerde-steuer.example/robots.txt": robots,
-              "http://foerde-steuer.example/robots.txt": robots}
+def test_robots_nicht_abrufbar_seite_wird_trotzdem_gelesen(storage, robots, hinweis):
+    seiten = {**beispiel_seiten("foerde-steuer.example"), **_robots_ueberall("foerde-steuer.example", robots)}
+    web, clock, _ = _setup(storage, seiten, ("foerde-steuer.example", {}))
+    meldungen = []
+    import asyncio
+
+    async def lauf():
+        c = Crawler(CFG, storage, set(), client=web.client(), clock=clock, sleep=clock.sleep)
+        return await c.run(storage.kandidaten("SH", crawl_status=SchrittStatus.OFFEN, nur_mit_website=True), "SH",
+                           meldungen.append)
+
+    stat = asyncio.run(lauf())
+    assert (stat.fertig, stat.trotz_robots) == (1, 1) and hinweis in meldungen[0]
+    # alle vier Varianten probiert, bevor die Seite ohne robots.txt gelesen wird
+    assert sum(u.endswith("/robots.txt") for u in web.urls()) == 4
+    assert storage.cache_get("robots", "https://foerde-steuer.example")["versuche"][1].startswith("http://foerde")
+
+
+def test_robots_variante_mit_www_wird_genommen(storage):
+    seiten = {**beispiel_seiten("foerde-steuer.example"),
+              "https://foerde-steuer.example/robots.txt": httpx.ConnectError("Connection refused"),
+              "http://foerde-steuer.example/robots.txt": httpx.ConnectError("Connection refused"),
+              "https://www.foerde-steuer.example/robots.txt": (200, "User-agent: *\nDisallow: /\n")}
     web, clock, _ = _setup(storage, seiten, ("foerde-steuer.example", {}))
     _crawl(storage, web, clock)
-    assert storage.nicht_gefunden("SH")[0].grund == f"Startseite: {grund}"
+    assert storage.nicht_gefunden("SH")[0].grund == "Startseite: robots.txt verbietet den Zugriff"
+
+
+@pytest.mark.parametrize("meldung", [
+    "[Errno -2] Name or service not known", "[Errno 11001] getaddrinfo failed", "Could not resolve host: bos-kiel.de",
+])  # fmt: skip
+def test_dns_fehler_ist_tote_domain_und_wird_beim_wiederholen_uebersprungen(storage, meldung):
+    fehler = httpx.ConnectError(meldung)
+    seiten = {f"{s}://{w}tot.example/{p}": fehler for s in ("https", "http") for w in ("", "www.") for p in ("", "robots.txt")}
+    web, clock, ids = _setup(storage, seiten, ("tot.example", {}))
+    stat = _crawl(storage, web, clock)
+    assert storage.nicht_gefunden("SH")[0].grund == "Startseite: Domain nicht erreichbar (DNS)"
+    assert stat.dns == 1 and not any(u.endswith("/") for u in web.urls())  # keine Seitenabrufe
+    assert storage.fehler_zuruecksetzen("SH", "crawl", ausser="Domain nicht erreichbar (DNS)") == 0
+    assert storage.fehler_zuruecksetzen("SH", "crawl") == 1
 
 
 @pytest.mark.parametrize("robots", [
@@ -439,3 +480,33 @@ def test_playwright_nach_403_auf_der_startseite(storage):
     assert _crawl(storage, web, clock, cfg=CFG.model_copy(update={"playwright": True}), renderer=renderer).fertig == 1
     assert aufrufe == [start]
     assert storage.kandidat_seiten(ids[0])[Seitentyp.START].http_status == 200
+
+
+def test_robots_check_diagnose():
+    import asyncio
+
+    from recherche.crawl import robots_check
+
+    clock = FakeAsyncClock()
+    web = FakeWeb({
+        "https://obh.example/robots.txt": (500, ""),
+        "http://obh.example/robots.txt": (301, "", {"location": "https://obh.example/robots.txt"}),
+        "https://www.obh.example/robots.txt": httpx.ConnectError("[Errno -2] Name or service not known"),
+        "http://www.obh.example/robots.txt": (200, "User-agent: *\nDisallow: /intern/\n"),
+        "https://obh.example/": (200, "<html><body>Kanzlei</body></html>"),
+    }, clock)
+    zeilen = asyncio.run(robots_check(CFG, "obh.example", client=web.client()))
+    text = "\n".join(zeilen)
+    assert "HTTP 500 → nicht abrufbar (5xx)" in text
+    assert "301 http://obh.example/robots.txt" in text  # Weiterleitungskette
+    assert "DNS – Domain existiert nicht" in text
+    assert "gilt Gruppe „*\"; Startseite: erlaubt (keine passende Regel)" in text
+    assert zeilen[-1].strip().startswith("HTTP 200")
+
+
+def test_robots_entscheidung_nennt_regel():
+    from recherche.robots import Robots
+
+    r = Robots.parse("User-agent: *\nDisallow: /\nAllow: /impressum\n")
+    assert r.entscheidung("kanzlei-recherche/0.1", "https://x/") == (False, "Disallow: /")
+    assert r.entscheidung("kanzlei-recherche/0.1", "https://x/impressum") == (True, "Allow: /impressum")

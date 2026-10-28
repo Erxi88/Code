@@ -57,15 +57,28 @@ class Robots:
         return [r for agents, regeln in self.gruppen if "*" in agents for r in regeln]
 
     def erlaubt(self, user_agent: str, url: str) -> bool:
+        return self.entscheidung(user_agent, url)[0]
+
+    def gruppe_fuer(self, token: str) -> str:
+        """Welche Gruppe gilt für uns: unser Produkt-Token, „*" oder keine."""
+        token = token.lower()
+        if any(token in agents for agents, _ in self.gruppen):
+            return token
+        return "*" if any("*" in agents for agents, _ in self.gruppen) else "keine"
+
+    def entscheidung(self, user_agent: str, url: str) -> tuple[bool, str | None]:
+        """(erlaubt, entscheidende Regel wie „Disallow: /") – für robots-check."""
         teile = urlsplit(url)
         pfad = unquote(teile.path or "/") + (f"?{teile.query}" if teile.query else "")
-        beste: tuple[int, bool] | None = None
+        beste: tuple[int, bool, str] | None = None
         for erlaubt, muster in self.regeln_fuer(produkt_token(user_agent)):
             if _passt(muster, pfad):
-                kandidat = (len(muster), erlaubt)  # länger gewinnt, bei Gleichstand Allow (True > False)
-                if beste is None or kandidat > beste:
+                kandidat = (len(muster), erlaubt, muster)  # länger gewinnt, bei Gleichstand Allow (True > False)
+                if beste is None or kandidat[:2] > beste[:2]:
                     beste = kandidat
-        return True if beste is None else beste[1]
+        if beste is None:
+            return True, None
+        return beste[1], f"{'Allow' if beste[1] else 'Disallow'}: {beste[2]}"
 
     def sperrt_alles(self, user_agent: str) -> bool:
         return not self.erlaubt(user_agent, "https://x/")

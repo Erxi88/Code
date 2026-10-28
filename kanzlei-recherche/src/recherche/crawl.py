@@ -28,7 +28,7 @@ from bs4 import BeautifulSoup, Comment
 
 from .config import CrawlConfig
 from .models import Kandidat, NichtGefunden, SchrittStatus, Seite, Seitentyp
-from .robots import Robots
+from .robots import Robots, produkt_token
 from .search.pipeline import ist_blockiert, normalize_domain
 from .storage import Storage
 from .textnorm import braucht_normalisierung, text_normalisieren
@@ -379,10 +379,33 @@ class CrawlErgebnis:
     grund: str | None = None  # gesetzt → Nicht gefunden
     url: str | None = None  # betroffene URL für das Blatt „Nicht gefunden"
     anfragen: int = 0
+    hinweis: str | None = None  # gelesen, aber z. B. robots.txt nicht abrufbar
 
     @property
     def ok(self) -> bool:
         return self.grund is None
+
+
+DNS_GRUND = "Domain nicht erreichbar (DNS)"
+_DNS_MELDUNG = re.compile(
+    r"name or service not known|getaddrinfo|nodename nor servname|no address associated|could not resolve|"
+    r"name resolution|temporary failure in name|errno -[235]\b|errno 11001|errno 11004|no such host",
+    re.I,
+)
+
+
+def ist_dns_fehler(e: BaseException) -> bool:
+    """Domain existiert nicht (mehr): DNS-Auflösung gescheitert – keine robots-Sperre."""
+    return isinstance(e, httpx.ConnectError) and bool(_DNS_MELDUNG.search(f"{e} {e.__cause__ or ''}"))
+
+
+def _robots_varianten(host: str) -> list[str]:
+    """https://x.de → [https://x.de, http://x.de, https://www.x.de, http://www.x.de] (bzw. ohne www)."""
+    teile = urlsplit(host)
+    netloc = teile.netloc
+    anders = netloc[4:] if netloc.startswith("www.") else f"www.{netloc}"
+    schema2 = "http" if teile.scheme == "https" else "https"
+    return list(dict.fromkeys([host, f"{schema2}://{netloc}", f"{teile.scheme}://{anders}", f"{schema2}://{anders}"]))
 
 
 class Crawler:
@@ -404,7 +427,8 @@ class Crawler:
         self._renderer = renderer
         self._sleep = sleep
         self.drossel = DomainDrossel(1.0 / max(cfg.requests_per_second_per_domain, 0.01), clock, sleep)
-        self._robots: dict[str, Robots | bool | str] = {}  # str = robots.txt nicht erreichbar (Grund)
+        # str = robots.txt nicht abrufbar (Grund); DNS_GRUND = Domain existiert nicht
+        self._robots: dict[str, Robots | bool | str] = {}
         self.gruendlich = gruendlich  # crawl --wiederholen: mehr Impressum-Pfade raten
         self.anfragen = 0
 
@@ -415,7 +439,11 @@ class Crawler:
             self._client = httpx.AsyncClient(
                 timeout=self.cfg.timeout_s,
                 follow_redirects=False,
-                headers={"User-Agent": self.cfg.user_agent, "Accept-Language": "de-DE,de;q=0.9"},
+                # vollständiger Kopfsatz wie ein Browser (manche Hoster lehnen Minimal-Anfragen ab);
+                # der User-Agent bleibt ehrlich
+                headers={"User-Agent": self.cfg.user_agent, "Accept-Language": "de-DE,de;q=0.9,en;q=0.5",
+                         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8,*/*;q=0.5",
+                         "Accept-Encoding": "gzip, deflate"},
             )
         return self._client
 
@@ -426,19 +454,26 @@ class Crawler:
     # -------------------------------------------------------------- robots.txt
 
     async def erlaubt(self, url: str) -> bool:
+        """Nur echte Regeln sperren. Ist die robots.txt nach allen Varianten (http/https, mit/ohne www)
+        nicht abrufbar (5xx, Timeout, Verbindungsfehler), wird die Seite trotzdem gelesen und markiert –
+        RFC 9309 sieht die Sperre dann nur vorübergehend vor. Existiert die Domain nicht (DNS), nein."""
         if not self.cfg.respect_robots:
             return True
         regeln = await self._regeln(url)
         if isinstance(regeln, Robots):
             return regeln.erlaubt(self.cfg.user_agent, url)
-        return regeln is True
+        return regeln is True or (isinstance(regeln, str) and regeln != DNS_GRUND)
 
     async def robots_meldung(self, url: str) -> str:
-        """Grund fürs Blatt „Nicht gefunden": echte Sperre oder nicht erreichbare robots.txt."""
-        regeln = await self._regeln(url)
-        if isinstance(regeln, str):
-            return f"robots.txt nicht erreichbar ({regeln}) – nach RFC 9309 gesperrt"
+        """Grund fürs Blatt „Nicht gefunden": echte Sperre oder tote Domain."""
+        if (regeln := await self._regeln(url)) == DNS_GRUND:
+            return DNS_GRUND
         return "robots.txt verbietet den Zugriff"
+
+    async def robots_hinweis(self, url: str) -> str | None:
+        """„robots.txt nicht abrufbar (HTTP 500)", wenn trotzdem gelesen wurde."""
+        regeln = await self._regeln(url) if self.cfg.respect_robots else True
+        return f"robots.txt nicht abrufbar ({regeln}), Seite gelesen" if isinstance(regeln, str) and regeln != DNS_GRUND else None
 
     async def _regeln(self, url: str) -> Robots | bool | str:
         teile = urlsplit(url)
@@ -447,26 +482,39 @@ class Crawler:
             self._robots[host] = await self._lade_robots(host)
         return self._robots[host]
 
+    async def _robots_abrufen(self, url: str) -> dict:
+        """Ein Abruf von <url>/robots.txt → {status, text, fehler, url} (Weiterleitungen folgen)."""
+        await self.drossel.warten(normalize_domain(url) or url)
+        self.anfragen += 1
+        try:
+            resp = await self.client.get(f"{url}/robots.txt", follow_redirects=True)
+            return {"status": resp.status_code, "text": resp.text if resp.status_code == 200 else "", "url": url}
+        except httpx.TimeoutException:
+            return {"status": None, "text": "", "fehler": "Timeout", "url": url}
+        except httpx.HTTPError as e:
+            return {"status": None, "text": "", "fehler": "DNS" if ist_dns_fehler(e) else type(e).__name__, "url": url}
+
     async def _lade_robots(self, host: str) -> Robots | bool | str:
-        """RFC 9309: 4xx → alles erlaubt; 5xx oder nicht erreichbar → alles verboten (als Grund-Text
-        zurückgegeben); Weiterleitungen bis zu fünf Mal folgen."""
+        """RFC 9309: 200 → Regeln; 4xx → alles erlaubt; Weiterleitungen folgen. Bei 5xx, Timeout oder
+        Verbindungsfehler werden http/https und mit/ohne www probiert; bleibt sie unerreichbar → Grund-Text
+        (Seite wird mit Hinweis gelesen); scheitert überall DNS → DNS_GRUND. Fehler werden gecacht,
+        bei `crawl --wiederholen` aber neu versucht."""
         gecacht = self.storage.cache_get("robots", host)
-        if gecacht is None:
-            domain = normalize_domain(host) or host
-            await self.drossel.warten(domain)
-            self.anfragen += 1
-            try:
-                resp = await self.client.get(f"{host}/robots.txt", follow_redirects=True)
-                gecacht = {"status": resp.status_code, "text": resp.text if resp.status_code == 200 else ""}
-            except httpx.TimeoutException:
-                gecacht = {"status": None, "text": "", "fehler": "Timeout"}
-            except httpx.HTTPError as e:
-                gecacht = {"status": None, "text": "", "fehler": type(e).__name__}
-            if gecacht["status"] is not None and gecacht["status"] < 500:
-                self.storage.cache_put("robots", host, gecacht)  # vorübergehende Fehler nicht dauerhaft merken
+        neu_versuchen = gecacht is not None and self.gruendlich and (gecacht["status"] is None or gecacht["status"] >= 500)
+        if gecacht is None or neu_versuchen:
+            versuche = []
+            for url in _robots_varianten(host):
+                versuche.append(v := await self._robots_abrufen(url))
+                if v["status"] is not None and v["status"] < 500:
+                    break
+            gecacht = versuche[-1] if versuche[-1]["status"] is not None and versuche[-1]["status"] < 500 else (
+                next((v for v in versuche if v.get("fehler") != "DNS"), versuche[0]))
+            gecacht["versuche"] = [f"{v['url']}: {v.get('fehler') or 'HTTP ' + str(v['status'])}" for v in versuche]
+            self.storage.cache_put("robots", host, gecacht)
         status = gecacht["status"]
         if status is None:
-            return gecacht.get("fehler") or "nicht erreichbar"
+            fehler = gecacht.get("fehler") or "nicht erreichbar"
+            return DNS_GRUND if fehler == "DNS" else fehler
         if status >= 500:
             return f"HTTP {status}"
         if status != 200:
@@ -508,6 +556,8 @@ class Crawler:
             except httpx.TimeoutException:
                 abruf = Abruf(url, fehler=f"Timeout nach {self.cfg.timeout_s:.0f} s")
             except httpx.HTTPError as e:
+                if ist_dns_fehler(e):
+                    return Abruf(url, fehler=DNS_GRUND)  # kein Retry: die Domain gibt es nicht
                 abruf = Abruf(url, fehler=f"nicht erreichbar ({type(e).__name__})")
             except _Verboten:
                 return Abruf(url, fehler="robots.txt verbietet den Zugriff (nach Weiterleitung)")
@@ -611,13 +661,14 @@ class Crawler:
                 start = abruf
                 break
             start = start or abruf
-            if abruf.fehler and "robots.txt" in abruf.fehler:
+            if abruf.fehler and ("robots.txt" in abruf.fehler or abruf.fehler == DNS_GRUND):
                 break
         if start is None or not start.ok:
             erg.grund = f"Startseite: {start.fehler if start else 'nicht erreichbar'}"
             erg.url = startkandidaten[0]
             return
         erg.seiten[Seitentyp.START] = start
+        erg.hinweis = await self.robots_hinweis(start.url)
         ziel = normalize_domain(start.final_url or start.url) or domain
         if ziel != domain and not ziel.endswith("." + domain) and ist_blockiert(ziel, self.blocklist):
             erg.grund, erg.url = f"Weiterleitung auf Portal ({ziel})", start.final_url
@@ -684,7 +735,8 @@ class Crawler:
             self.speichern(k, erg, bundesland)
             stat.zaehlen(erg)
             if fortschritt:
-                fortschritt(f"{erg.domain}: {'ok' if erg.ok else erg.grund} ({len(erg.seiten)} Seiten)")
+                zusatz = f", {erg.hinweis}" if erg.hinweis else ""
+                fortschritt(f"{erg.domain}: {'ok' if erg.ok else erg.grund} ({len(erg.seiten)} Seiten{zusatz})")
 
         await asyncio.gather(*(einer(k) for k in kandidaten))
         stat.anfragen = self.anfragen
@@ -721,11 +773,15 @@ class CrawlStatistik:
     nicht_gefunden: int = 0
     gruende: dict[str, int] = field(default_factory=dict)
     anfragen: int = 0
+    trotz_robots: int = 0  # gelesen, obwohl robots.txt nicht abrufbar war
+    dns: int = 0  # tote Domains
 
     def zaehlen(self, erg: CrawlErgebnis) -> None:
         if erg.ok:
             self.fertig += 1
+            self.trotz_robots += erg.hinweis is not None
             return
+        self.dns += erg.grund is not None and DNS_GRUND in erg.grund
         self.nicht_gefunden += 1
         kurz = re.sub(r"\s*\(.*\)$", "", erg.grund or "")
         self.gruende[kurz] = self.gruende.get(kurz, 0) + 1
@@ -756,3 +812,68 @@ def run_crawl(
             await crawler.schliessen()
 
     return asyncio.run(lauf())
+
+
+# ---------------------------------------------------------------------- Diagnose
+
+
+async def robots_check(cfg: CrawlConfig, domain: str, client: httpx.AsyncClient | None = None) -> list[str]:
+    """`recherche robots-check --domain X`: robots.txt aller Varianten roh abrufen (Status, Fehler,
+    Weiterleitungskette), Gruppe und entscheidende Regel für die Startseite, dann die Startseite selbst.
+    Ohne Cache und ohne Drossel-Wartezeit über mehrere Domains – nur zur Diagnose einer Domain."""
+    zeilen: list[str] = []
+    eigener = client is None
+    client = client or httpx.AsyncClient(timeout=cfg.timeout_s, follow_redirects=False, headers={
+        "User-Agent": cfg.user_agent, "Accept-Language": "de-DE,de;q=0.9,en;q=0.5",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8,*/*;q=0.5"})
+
+    async def abrufen(url: str) -> tuple[httpx.Response | None, list[str], str | None]:
+        kette: list[str] = []
+        try:
+            for _ in range(6):
+                resp = await client.get(url)
+                kette.append(f"{resp.status_code} {url}")
+                if resp.status_code in (301, 302, 303, 307, 308) and resp.headers.get("location"):
+                    url = urljoin(url, resp.headers["location"])
+                    continue
+                return resp, kette, None
+            return None, kette, "zu viele Weiterleitungen"
+        except httpx.HTTPError as e:
+            art = "DNS – Domain existiert nicht" if ist_dns_fehler(e) else type(e).__name__
+            return None, kette, f"{art}: {e}"
+
+    try:
+        domain = normalize_domain(domain) or domain
+        entscheidung = None
+        for host in _robots_varianten(f"https://{domain}"):
+            resp, kette, fehler = await abrufen(f"{host}/robots.txt")
+            zeilen.append(f"robots.txt {host}:")
+            zeilen += [f"    {k}" for k in kette]
+            if fehler:
+                zeilen.append(f"    Fehler: {fehler}")
+                continue
+            if resp.status_code != 200:
+                zeilen.append(f"    HTTP {resp.status_code} → {'alles erlaubt (4xx)' if resp.status_code < 500 else 'nicht abrufbar (5xx)'}")
+                if resp.status_code < 500 and entscheidung is None:
+                    entscheidung = f"erlaubt (robots.txt {host}: HTTP {resp.status_code})"
+                continue
+            robots = Robots.parse(resp.text)
+            ok, regel = robots.entscheidung(cfg.user_agent, f"{host}/")
+            token = produkt_token(cfg.user_agent)
+            zeilen.append(f"    {len(resp.text)} Zeichen, {len(robots.gruppen)} Gruppen; für „{token}\" gilt Gruppe "
+                          f"„{robots.gruppe_fuer(token)}\"; Startseite: {'erlaubt' if ok else 'VERBOTEN'}"
+                          f"{f' durch {regel}' if regel else ' (keine passende Regel)'}")
+            if entscheidung is None:
+                entscheidung = f"{'erlaubt' if ok else 'verboten'} (robots.txt {host}{f', {regel}' if regel else ''})"
+        zeilen.append(f"Entscheidung: {entscheidung or 'robots.txt nirgends abrufbar → Seite wird mit Hinweis gelesen (außer bei DNS-Fehler)'}")
+        resp, kette, fehler = await abrufen(f"https://{domain}/")
+        zeilen.append(f"Startseite https://{domain}/:")
+        zeilen += [f"    {k}" for k in kette]
+        if fehler:
+            zeilen.append(f"    Fehler: {fehler}")
+        elif resp is not None:
+            zeilen.append(f"    HTTP {resp.status_code}, {len(resp.text)} Zeichen, {resp.headers.get('content-type', '?')}")
+    finally:
+        if eigener:
+            await client.aclose()
+    return zeilen

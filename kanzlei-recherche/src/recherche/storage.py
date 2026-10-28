@@ -442,13 +442,17 @@ class Storage:
                 (status.value, fehler, kid),
             )
 
-    def fehler_zuruecksetzen(self, bundesland: str, schritt: str) -> int:
-        """Setzt Kandidaten mit Status „fehler" im Schritt crawl/extract wieder auf „offen"."""
+    def fehler_zuruecksetzen(self, bundesland: str, schritt: str, ausser: str | None = None) -> int:
+        """Setzt Kandidaten mit Status „fehler" im Schritt crawl/extract wieder auf „offen" –
+        außer denen, deren Fehler `ausser` enthält (z. B. tote Domains)."""
         spalte = {"crawl": "crawl_status", "extract": "extract_status"}[schritt]
+        bedingung, werte = "", [bundesland]
+        if ausser:
+            bedingung, werte = " AND (fehler IS NULL OR instr(fehler, ?) = 0)", [bundesland, ausser]
         with self.conn:
             cur = self.conn.execute(
-                f"UPDATE kandidaten SET {spalte} = 'offen', fehler = NULL WHERE bundesland = ? AND {spalte} = 'fehler'",
-                (bundesland,),
+                f"UPDATE kandidaten SET {spalte} = 'offen', fehler = NULL WHERE bundesland = ? AND {spalte} = 'fehler'"
+                + bedingung, werte,
             )
         return cur.rowcount
 

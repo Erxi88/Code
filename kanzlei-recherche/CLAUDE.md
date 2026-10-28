@@ -146,8 +146,15 @@ der nächsten Quelle füllen.**
   deren User-Agent unser Produkt-Token genau trifft, sonst `*`; längste Regel gewinnt, bei
   Gleichstand Allow; `*`/`$`; leeres Disallow sperrt nichts; Weiterleitungen werden gefolgt.
   Sperren nur für GPTBot/ClaudeBot/CCBot oder nur für Pfade (`/wp-admin/`) betreffen die
-  Startseite nicht. 4xx → alles erlaubt; 5xx/nicht erreichbar → alles verboten, im Blatt als
-  „robots.txt nicht erreichbar (HTTP 503 | Timeout | …)" statt „robots.txt verbietet".
+  Startseite nicht. 4xx → alles erlaubt. Bei 5xx, Timeout oder Verbindungsfehler werden http/https
+  und mit/ohne www probiert; bleibt sie unerreichbar, wird die Seite trotzdem gelesen (RFC 9309 sieht
+  die Sperre dann nur vorübergehend vor) – Hinweis „robots.txt nicht abrufbar (HTTP 500), Seite
+  gelesen" in der Crawl-Ausgabe und in „Abweichung". Fehler werden gecacht, mit `--wiederholen` neu
+  versucht. **DNS-Fehler** (Domain existiert nicht) → „Domain nicht erreichbar (DNS)", nie als
+  robots-Sperre; diese Domains überspringt `crawl --wiederholen`. Anfragen mit vollständigem
+  Kopfsatz (Accept, Accept-Language, Accept-Encoding), User-Agent bleibt unserer.
+- `recherche robots-check --domain X`: Diagnose live ohne Cache – robots.txt aller Varianten roh
+  (Status, Fehlermeldung, Weiterleitungskette), geltende Gruppe und entscheidende Regel, Startseite.
 - `recherche blocklist-vorschlag [--mindestens N] [--out datei.csv]`: Domains aus „Nicht
   gefunden" mit Grund robots.txt/HTTP 403 und gelesene Domains mit Status „keine Kanzlei", nach
   Stammdomain zusammengefasst und nach Zahl der Suchorte sortiert (ab 5 Suchorten als „Portal"
@@ -381,7 +388,7 @@ der nächsten Quelle füllen.**
 ### CLI (`cli.py`)
 
 `recherche search | fill | coverage | crawl | extract | export | run | search-compare | orte |
-blocklist-vorschlag | kanzlei-pruefung | fixture-add | fixture-eval | fixture-prompt`,
+blocklist-vorschlag | kanzlei-pruefung | robots-check | fixture-add | fixture-eval | fixture-prompt`,
 jeweils mit `--bundesland` und `--db`. **Jeder Schritt muss nach Abbruch
 wiederaufnehmbar sein**: Fortschritt steht in SQLite (Status je Domain und
 Schritt, erledigte Queries im Lauf-Protokoll); ein erneuter Aufruf macht nur das,

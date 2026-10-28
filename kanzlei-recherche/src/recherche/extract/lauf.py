@@ -13,6 +13,7 @@ import logging
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from urllib.parse import urlsplit
 
 from ..crawl import links, meta_texte
 from ..models import Kandidat, LaufEintrag, SchrittStatus, Seitentyp, Status
@@ -149,4 +150,18 @@ def _eine(storage: Storage, k: Kandidat, extractor, pruefer, ausschluss, stat: E
         stat.kontext_voll += antwort.kontext_voll
         if antwort.kuerzung or antwort.kontext_voll:
             log.info("%s: Prompt gekürzt (%s)%s", k.domain, antwort.kuerzung, ", Kontext fast voll" if antwort.kontext_voll else "")
-    return zusammenfuehren(k, funde, seiten, regel, llm, pruefer.pruefe if pruefer else None, ausschluss)
+    kanzlei = zusammenfuehren(k, funde, seiten, regel, llm, pruefer.pruefe if pruefer else None, ausschluss)
+    if hinweis := _robots_hinweis(storage, seiten):
+        kanzlei.abweichung = "; ".join(x for x in (kanzlei.abweichung, hinweis) if x)
+    return kanzlei
+
+
+def _robots_hinweis(storage: Storage, seiten) -> str | None:
+    """Gelesen, obwohl die robots.txt nicht abrufbar war (5xx, Timeout) – aus dem robots-Cache."""
+    if (start := seiten.get(Seitentyp.START)) is None:
+        return None
+    teile = urlsplit(start.url)
+    c = storage.cache_get("robots", f"{teile.scheme}://{teile.netloc}")
+    if not c or (c.get("status") is not None and c["status"] < 500):
+        return None
+    return f"robots.txt nicht abrufbar ({c.get('fehler') or 'HTTP ' + str(c['status'])}), Seite gelesen"

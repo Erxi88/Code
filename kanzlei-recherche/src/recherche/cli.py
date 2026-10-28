@@ -17,7 +17,7 @@ from rich.table import Table
 
 from .config import Settings, load_settings
 from .coverage import CoverageErgebnis, als_excel, berechne, load_referenz
-from .crawl import run_crawl
+from .crawl import DNS_GRUND, run_crawl
 from .export import export_excel
 from .extract.base import AnbieterNichtErreichbar, ExtraktionFehler
 from .extract.lauf import run_extract
@@ -174,7 +174,8 @@ def _search(ctx: Kontext, orte: str | None, adapter_name: str | None, lauf_id: s
 def _crawl(ctx: Kontext, limit: int | None = None, wiederholen: bool = False) -> None:
     with ctx.storage() as st:
         if wiederholen:
-            console.print(f"{st.fehler_zuruecksetzen(ctx.bundesland, 'crawl')} fehlgeschlagene Kandidaten wieder offen.")
+            n = st.fehler_zuruecksetzen(ctx.bundesland, "crawl", ausser=DNS_GRUND)
+            console.print(f"{n} fehlgeschlagene Kandidaten wieder offen (tote Domains – {DNS_GRUND} – bleiben übersprungen).")
         offen = len(st.kandidaten(ctx.bundesland, crawl_status=SchrittStatus.OFFEN, nur_mit_website=True))
         if not offen:
             console.print("crawl: keine offenen Kandidaten mit Website.")
@@ -195,6 +196,10 @@ def _crawl(ctx: Kontext, limit: int | None = None, wiederholen: bool = False) ->
                         laufzeit_s=round(time.monotonic() - start, 2))
         )  # fmt: skip
     console.print(f"Fertig: {stat.fertig} Websites gelesen, {stat.nicht_gefunden} nicht gefunden, {stat.anfragen} Anfragen.")
+    if stat.trotz_robots:
+        console.print(f"  davon {stat.trotz_robots} gelesen, obwohl die robots.txt nicht abrufbar war (Hinweis in „Abweichung\")")
+    if stat.dns:
+        console.print(f"  {stat.dns} tote Domains ({DNS_GRUND}) – werden bei --wiederholen übersprungen")
     for grund, n in sorted(stat.gruende.items(), key=lambda x: -x[1]):
         console.print(f"  {n:4d} × {grund}")
 
@@ -435,6 +440,22 @@ def blocklist_vorschlag(
                   f"Ab {PORTAL_AB_ORTEN} Suchorten ist es fast sicher ein Portal.")
     if out:
         console.print(f"CSV geschrieben: {als_csv(liste, out)}")
+
+
+@app.command("robots-check")
+def robots_check_cmd(
+    domain: Annotated[str, typer.Option("--domain", "-d", help="Domain, z. B. obh-partner.de")],
+    config: ConfigOpt = None,
+) -> None:
+    """Diagnose einer Domain: robots.txt aller Varianten roh (Status, Fehler, Weiterleitungen), Gruppe und
+    entscheidende Regel für die Startseite, dann die Startseite selbst. Live, ohne Cache."""
+    import asyncio
+
+    from .crawl import robots_check
+
+    s = load_settings(config)
+    for zeile in asyncio.run(robots_check(s.crawl, domain)):
+        console.print(zeile, markup=False, highlight=False)
 
 
 @app.command("kanzlei-pruefung")

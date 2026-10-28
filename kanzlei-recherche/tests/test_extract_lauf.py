@@ -132,3 +132,12 @@ def test_kanzlei_pruefung_laesst_alle_beispielkanzleien_stehen(storage, ausschlu
     run_extract(storage, "SH", AufzeichnungsExtractor(), _pruefer(), ausschluss, "l1",
                 kanzlei_rechtsformen=["PartG mbB", "PartG", "Einzelkanzlei"])
     assert {k.domain: k.status for k in storage.kanzleien("SH")} == dict.fromkeys(domains, Status.NEU)
+
+
+def test_hinweis_robots_nicht_abrufbar_in_abweichung(storage, ausschluss):
+    kid = _kandidat_mit_seiten(storage, "foerde-steuer.example")
+    start = storage.kandidat_seiten(kid)[__import__("recherche.models", fromlist=["Seitentyp"]).Seitentyp.START]
+    host = "/".join(start.url.split("/")[:3])
+    storage.cache_put("robots", host, {"status": 500, "text": "", "url": host})
+    run_extract(storage, "SH", AufzeichnungsExtractor(), None, ausschluss, "l1")
+    assert "robots.txt nicht abrufbar (HTTP 500), Seite gelesen" in storage.kanzlei_fuer_kandidat(kid).abweichung
