@@ -247,6 +247,18 @@ def _fremde_institution(zeilen: list[str], i: int, name: str) -> bool:
     return bool(woerter) and any(w in umgebung for w in woerter[:2])
 
 
+def telefon_kandidaten(text: str, ausschluss: Ausschluss | None = None, impressum: bool = False) -> list[tuple[str, str]]:
+    """(Nummer, Art) aller Telefonkandidaten einer Seite – für die Diagnose (fixture-prompt)."""
+    zeilen = (text_normalisieren(text) or "").splitlines()
+    fremd = (ausschluss or Ausschluss()).fremd_zeilen(zeilen)
+    ergebnis = [(n, "beschriftet" + (", Fremd-Abschnitt" if i in fremd else "")) for n, i in telefone(zeilen)]
+    if impressum:
+        for i, z in enumerate(zeilen):
+            if _NUMMER_ALLEIN.match(z.strip()) and (n := normalize_telefon(z)):
+                ergebnis.append((n, "unbeschriftet" + (", Fremd-Abschnitt" if i in fremd else "")))
+    return [(n, art + (", mobil" if ist_mobil(n) else "")) for n, art in ergebnis]
+
+
 def extract_impressum(
     text: str,
     ausschluss: Ausschluss | None = None,

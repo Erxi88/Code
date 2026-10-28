@@ -660,3 +660,22 @@ def test_abschnittsueberschrift_gilt_fuer_alle_kacheln():
 def test_firmenzeile_ist_keine_funktion():
     p = erkenne_personen("Tim Jensen\nAuszubildender\nHansen & Petersen Steuerberater PartG mbB · Holstenstraße 42 · 24103 Kiel")
     assert p[0].funktion == "Auszubildender"
+
+
+@pytest.mark.parametrize("name,impressum,form", [
+    ("Die Steuerfüchse", "Die Steuerfüchse\nInhaber: Max Fuchs\nRegistergericht: AG Kiel", None),  # AG = Amtsgericht
+    ("Die Steuerfüchse", "Die Steuerfüchse\nAG Kiel, HRB 123", None),
+    ("Nord Treuhand", "Nord Treuhand AG\nVorstand: Max Muster", "AG"),  # Kurzform in der Namenszeile
+    ("Kanzlei Nord", "Kanzlei Nord\nEin Mandant der Muster KG", None),  # Kurzform ohne Namensbezug
+])  # fmt: skip
+def test_kurzformen_nur_in_der_namenszeile(name, impressum, form):
+    from recherche.extract.merge import rechtsform_aus_seiten
+
+    assert rechtsform_aus_seiten(name, impressum) == form
+
+
+def test_llm_rechtsform_nur_wenn_belegt():
+    from recherche.extract.merge import rechtsform_belegt
+
+    assert not rechtsform_belegt("AG", "Die Steuerfüchse", "Die Steuerfüchse\nRegistergericht: AG Kiel")
+    assert rechtsform_belegt("GmbH", "Kanzlei Nord", "Kanzlei Nord Steuerberatungsgesellschaft mbH")

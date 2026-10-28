@@ -512,6 +512,14 @@ def fixture_prompt(
         console.print(f"Alle Personen nach Zusammenführung ({len(d.personen)}): Name | Funktion | Herkunft | Berufsträger")
         for name_, funktion, hs, bt in d.personen:
             console.print(f"  {name_} | {funktion or '–'} | {hs} | {'ja' if bt else 'nein'}")
+        console.print(f"Kanzleiname: LLM „{d.name_llm or '–'}“ → Ergebnis „{d.name_regel or '–'}“")
+        console.print(f"Rechtsform: Regel {d.rechtsform_regel or '–'}, LLM {d.rechtsform_llm or '–'}")
+        console.print(f"Telefon (Regel): {d.regel_telefon or '–'}; Kandidaten:")
+        for seite, nummer, art in d.telefone:
+            console.print(f"  {seite}: {nummer} ({art})")
+        console.print("Impressum-Kopf (ohne Navigation/Fremd-Abschnitte):")
+        for zeile in d.impressum_kopf:
+            console.print(f"  {zeile[:100]}")
         if d.umfeld:
             console.print("Teamseite – Zeilen ab dem Namen (⏎ = Zeilenumbruch):")
             for name_, zeilen in d.umfeld.items():

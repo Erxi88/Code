@@ -559,6 +559,8 @@ def name_vervollstaendigen(name: str | None, impressum: str | None) -> str | Non
 
 # nur ein echter Registereintrag – „Eine Eintragung im Handelsregister besteht nicht" zählt nicht
 _REGISTER = re.compile(r"\b(?:HR\s?[AB]|PR|GnR|VR)\s?\d|registernummer\s*:?\s*\w*\d", re.I)
+_REGISTERGERICHT = re.compile(r"amtsgericht|registergericht|\bAG\s+[A-ZÄÖÜ][a-zäöü]+\s*(?:,|\b(?:HR|PR))", re.I)
+_KURZFORMEN = {"AG", "KG", "UG (haftungsbeschränkt)", "OHG", "GbR"}
 _NAME_VORSILBE = re.compile(r"^(?:steuerbüro|steuerkanzlei|kanzlei|steuerberatung|büro)\s+", re.I)
 _GESELLSCHAFT_HINWEIS = re.compile(r"&|\bund\b|\+|partner|gesellschaft|\|", re.I)
 
@@ -578,10 +580,27 @@ def rechtsform_aus_seiten(name: str | None, impressum: str | None, fremd: set[in
     („Partnerschaft mbB", „GmbH"; Fremd-Abschnitte wie Hoster und Kammer zählen nicht)."""
     if form := rechtsform_aus_text(name):
         return form
-    for z in _impressum_kopf(impressum, fremd, rahmen):
-        if len(z) <= 160 and (form := rechtsform_aus_text(z)) and form != "Einzelkanzlei":
-            return form
+    namens_woerter = {w for w in _woerter(name or "") if len(w) >= 4}
+    kopf = _impressum_kopf(impressum, fremd, rahmen)
+    for k, z in enumerate(kopf):
+        if len(z) > 160 or _REGISTERGERICHT.search(z) or not (form := rechtsform_aus_text(z)) or form == "Einzelkanzlei":
+            continue
+        # Kurzformen („AG", „KG" …) nur in der Namenszeile oder direkt darunter – „AG" ist oft das Amtsgericht
+        if form in _KURZFORMEN:
+            nachbarn = " ".join(kopf[max(0, k - 1): k + 1]).lower()
+            if not (namens_woerter and any(w in nachbarn for w in namens_woerter)):
+                continue
+        return form
     return None
+
+
+def rechtsform_belegt(form: str | None, name: str | None, impressum: str | None, fremd: set[int] | None = None,
+                      rahmen: set[str] | None = None) -> bool:
+    """Steht die vom LLM genannte Rechtsform irgendwo in Name oder Impressum? Sonst nicht übernehmen (nie raten)."""
+    if not form:
+        return False
+    texte = [name or "", *_impressum_kopf(impressum, fremd, rahmen, 400)]
+    return any(normalize_rechtsform(rechtsform_aus_text(z)) == form for z in texte if not _REGISTERGERICHT.search(z))
 
 
 def ist_einzelkanzlei(name: str | None, impressum: str | None, vertreter: list[str]) -> bool:
@@ -721,8 +740,9 @@ def zusammenfuehren(
 
     email = regel.email or ((llm.email or "").strip().lower() or None if llm else None)
     # Rechtsform: Regel aus Name und Impressum vor dem LLM; Einzelkanzlei nur, wenn sonst nichts passt
-    rechtsform = rechtsform_aus_seiten(name, impressum_text, fremd, rahmen) or normalize_rechtsform(
-        llm.rechtsform if llm else None)
+    llm_form = normalize_rechtsform(llm.rechtsform if llm else None)
+    rechtsform = rechtsform_aus_seiten(name, impressum_text, fremd, rahmen) or (
+        llm_form if rechtsform_belegt(llm_form, name, impressum_text, fremd, rahmen) else None)
 
     # ---- Personen und Teamgröße: Regel-Erkennung auf den Teamseiten + LLM + Impressum
     team_seiten = [seiten[t] for t in (Seitentyp.TEAM, Seitentyp.TEAM2) if t in seiten]

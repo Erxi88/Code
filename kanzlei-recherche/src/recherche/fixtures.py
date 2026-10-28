@@ -28,7 +28,7 @@ from .crawl import Crawler, html_zu_text
 from .extract.base import Extractor, ExtraktionsAntwort, LlmPerson
 from .extract.lauf import regeln_fuer
 from .extract.merge import gleiche_person, zusammenfuehren
-from .extract.rules import Ausschluss
+from .extract.rules import Ausschluss, telefon_kandidaten
 from .models import Kandidat, Kanzlei, Seite, Seitentyp
 from .normalize import _ortsname, normalize_rechtsform
 from .search.dedupe import adresse_key, telefon_key
@@ -352,6 +352,13 @@ class PromptDiagnose:
     personen: list[tuple[str, str, str, bool]] = field(default_factory=list)
     nur_im_rahmen: list[str] = field(default_factory=list)  # Personen, die nur in Navigation/Fußzeile stehen
     umfeld: dict[str, str] = field(default_factory=dict)  # Name → Zeilen rund um den Namen auf der Teamseite
+    impressum_kopf: list[str] = field(default_factory=list)  # erste Inhaltszeilen ohne Navigation/Fremd-Abschnitte
+    name_llm: str | None = None
+    name_regel: str | None = None  # nach Impressum-Vorrang und Ergänzung
+    rechtsform_regel: str | None = None
+    rechtsform_llm: str | None = None
+    telefone: list[tuple[str, str, str]] = field(default_factory=list)  # (Seite, Nummer, Art)
+    regel_telefon: str | None = None
     playwright: dict = field(default_factory=dict)  # meta.json: Ergebnis des Playwright-Nachlaufs je Seite
 
     @property
@@ -371,6 +378,7 @@ def prompt_diagnose(fx: Fixture, llm_cfg, ausschluss: Ausschluss, modell: str | 
 
     from .crawl import link_kandidaten
     from .extract.merge import (
+        _impressum_kopf,
         _text,
         ansprechpartner,
         erkannte_personen,
@@ -380,6 +388,7 @@ def prompt_diagnose(fx: Fixture, llm_cfg, ausschluss: Ausschluss, modell: str | 
         name_aus_impressum,
         name_vervollstaendigen,
         personen_vereinigen,
+        rechtsform_aus_seiten,
         vertretung,
     )
     from .extract.ollama import SYSTEM_PROMPT
@@ -464,4 +473,10 @@ def prompt_diagnose(fx: Fixture, llm_cfg, ausschluss: Ausschluss, modell: str | 
         angabe.beleg if angabe else None, felder, aufzeichnung, vertreter, berufstraeger,
         aps[0].name if aps else None, versteckt, v.protokoll, personen, nur_im_rahmen,
         playwright=fx.meta.get("playwright") or {}, umfeld=umfeld,
+        impressum_kopf=_impressum_kopf(impressum, fremd, rahmen, 15), name_llm=llm.kanzleiname if llm else None,
+        name_regel=name, rechtsform_regel=rechtsform_aus_seiten(name, impressum or None, fremd, rahmen),
+        rechtsform_llm=llm.rechtsform if llm else None, regel_telefon=regel.telefon if regel else None,
+        telefone=[(s.seitentyp.value, n, art) for s in (fx.seiten.get(typ) for typ in
+                  (Seitentyp.IMPRESSUM, Seitentyp.KONTAKT, Seitentyp.START)) if s is not None
+                  for n, art in telefon_kandidaten(_text(s), ausschluss, s.seitentyp == Seitentyp.IMPRESSUM)],
     )  # fmt: skip
