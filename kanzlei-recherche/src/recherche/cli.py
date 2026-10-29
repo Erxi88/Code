@@ -523,7 +523,7 @@ def kanzlei_pruefung(
                             plz_pruefen=PlzPruefer(ctx.settings.openplz.url, cache=st).pruefe)
     console.print(f"Geprüft: {stat.geprueft} Kanzleien – {stat.keine_kanzlei} keine Kanzlei, {stat.ausserhalb} außerhalb "
                   f"{ctx.bl_cfg.name}, {stat.wieder_kanzlei} wieder Kanzlei, {stat.herabgestuft} von Konfidenz „hoch\" "
-                  "herabgestuft.")
+                  f"herabgestuft, {stat.dubletten} Dubletten-Verdacht (Telefon + Ansprechpartner).")
     if not ctx.settings.extract.kanzlei_pruefung:
         console.print("[yellow]Für neue Extraktionen extract.kanzlei_pruefung: true in settings.yaml setzen.[/yellow]")
 

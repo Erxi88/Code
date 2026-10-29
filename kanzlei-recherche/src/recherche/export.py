@@ -14,6 +14,7 @@ from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.worksheet.worksheet import Worksheet
 
 from .extract.kanzlei import grund_aus_abweichung
+from .extract.standorte import standort_spalte
 from .models import Dublette, Kanzlei, LaufEintrag, NichtGefunden, Status
 from .storage import Storage
 
@@ -136,6 +137,13 @@ def _blatt(ws: Worksheet, spalten: Sequence[Spalte], zeilen: Sequence[Any]) -> N
     ws.freeze_panes = "A2"
 
 
+def _mit_standort(spalten: list[Spalte], standorte: dict[str, str]) -> list[Spalte]:
+    """Spalte „Zentrale/Standort" hinter dem Kanzleinamen (Niederlassungen einer Kanzlei, extract/standorte.py)."""
+    neu: Spalte = ("Zentrale/Standort", 26, lambda k: standorte.get(k.domain or f"id:{k.id}"))
+    i = [s[0] for s in spalten].index("Kanzleiname") + 1
+    return [*spalten[:i], neu, *spalten[i:]]
+
+
 def _status_dropdown(ws: Worksheet, spalten: Sequence[Spalte], anzahl: int) -> DataValidation:
     index = [s[0] for s in spalten].index("Status") + 1
     buchstabe = get_column_letter(index)
@@ -159,19 +167,21 @@ def build_workbook(
     dubletten: Sequence[Dublette],
     protokoll: Sequence[LaufEintrag],
 ) -> Workbook:
+    standorte = standort_spalte(list(kanzleien))
+    spalten = _mit_standort(KANZLEI_SPALTEN, standorte)
     keine = [k for k in kanzleien if k.status == Status.KEINE_KANZLEI]
     aussen = [k for k in kanzleien if k.status == Status.AUSSERHALB]
     kanzleien = [k for k in kanzleien if k.status not in (Status.KEINE_KANZLEI, Status.AUSSERHALB)]
     wb = Workbook()
     ws = wb.active
     ws.title = BLATT_KANZLEIEN
-    _blatt(ws, KANZLEI_SPALTEN, kanzleien)
-    _status_dropdown(ws, KANZLEI_SPALTEN, len(kanzleien))
+    _blatt(ws, spalten, kanzleien)
+    _status_dropdown(ws, spalten, len(kanzleien))
     _blatt(wb.create_sheet(BLATT_NICHT_GEFUNDEN), NICHT_GEFUNDEN_SPALTEN, nicht_gefunden)
     if keine:
         _blatt(wb.create_sheet(BLATT_KEINE_KANZLEI), KEINE_KANZLEI_SPALTEN, keine)
     if aussen:  # bei bundesweitem Lauf später für ihr eigenes Bundesland richtig – nichts wird gelöscht
-        _blatt(wb.create_sheet(BLATT_AUSSERHALB), KANZLEI_SPALTEN, aussen)
+        _blatt(wb.create_sheet(BLATT_AUSSERHALB), spalten, aussen)
     _blatt(wb.create_sheet(BLATT_DUBLETTEN), DUBLETTEN_SPALTEN, dubletten)
     _blatt(wb.create_sheet(BLATT_PROTOKOLL), PROTOKOLL_SPALTEN, protokoll)
     return wb

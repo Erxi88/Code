@@ -149,6 +149,7 @@ class PruefStatistik:
     ausserhalb: int = 0
     wieder_kanzlei: int = 0
     herabgestuft: int = 0  # Konfidenz hoch → mittel/niedrig
+    dubletten: int = 0  # Verdacht: gleiches Telefon + gleicher Ansprechpartner
 
 
 def run_pruefung(storage: Storage, bundesland: str, rechtsformen=STANDARD_RECHTSFORMEN,
@@ -181,4 +182,11 @@ def run_pruefung(storage: Storage, bundesland: str, rechtsformen=STANDARD_RECHTS
             stat.wieder_kanzlei += 1
         stat.herabgestuft += vorher_konf == Konfidenz.HOCH and k.konfidenz != Konfidenz.HOCH
         storage.upsert_kanzlei(k)
+    # Dubletten-Verdacht: gleiches Telefon + gleicher Ansprechpartner auf verschiedenen Domains (SHBB)
+    from .standorte import dubletten_verdacht
+
+    kanzleien = [k for k in storage.kanzleien(bundesland) if k.status not in (Status.KEINE_KANZLEI,)]
+    for d in dubletten_verdacht(kanzleien, bundesland):
+        storage.add_dublette(d)
+        stat.dubletten += 1
     return stat
