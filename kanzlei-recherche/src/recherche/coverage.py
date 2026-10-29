@@ -1,7 +1,11 @@
 """Coverage: gefundene Kanzleien je Kreis, Ort und Quelle gegen Referenzzahlen.
 
-Zuordnung eines Kandidaten zu Ort/Kreis (beste verfügbare Angabe):
-Ort des Kandidaten (Adresse) → PLZ des Kandidaten → Suchort → „unbekannt".
+Gezählt werden – sobald extrahiert ist – nur Kanzleien mit Status „Kanzlei" (nicht „keine Kanzlei",
+nicht „außerhalb Bundesland") und Bundesland laut PLZ = Bundesland des Laufs; Kreis und Ort aus der
+extrahierten Adresse. Kandidaten ohne Kanzlei-Zeile (nicht gelesen) stehen getrennt als „offen".
+Vor der ersten Extraktion (nach `search`, für `fill --luecken`) zählen die Kandidaten selbst.
+
+Zuordnung zu Ort/Kreis (beste verfügbare Angabe): Ort (Adresse) → PLZ → Suchort → „unbekannt".
 Vor dem Crawl haben reine Websuche-Treffer keine Adresse; dann zählt der Suchort,
 was unscharf ist (die Suche „Steuerberater Kiel" findet auch Umlandkanzleien).
 
@@ -22,6 +26,7 @@ import yaml
 from openpyxl import Workbook
 from openpyxl.styles import Font
 
+from .models import Status
 from .search.pipeline import Ort
 from .storage import Storage
 
@@ -125,6 +130,11 @@ class CoverageErgebnis:
     quellen: list[QuellenZeile]
     nur_eine_quelle: int
     referenz: Referenz | None = None
+    modus: str = "kandidaten"  # kanzleien (nach der Extraktion) | kandidaten (vorher)
+    offen: int = 0  # Kandidaten ohne Kanzlei-Zeile (noch nicht oder nicht lesbar)
+    keine_kanzlei: int = 0
+    ausserhalb: int = 0
+    ohne_bundesland: int = 0  # PLZ nicht geprüft/unbekannt – nicht gezählt
 
     @property
     def anteil_nur_eine_quelle(self) -> float:
@@ -153,9 +163,10 @@ class CoverageErgebnis:
         return [o for _, o in sorted(mit, reverse=True)] + [o for _, o in sorted(ohne, reverse=True)]
 
 
-def _zuordnen(storage: Storage, bundesland: str, orte: list[Ort]) -> dict[int, Ort | None]:
+def _zuordnen(storage: Storage, bundesland: str, orte: list[Ort],
+              eintraege: list[tuple[int, str | None, str | None, str | None]] | None = None) -> dict[int, Ort | None]:
     """Kandidat → Gemeinde. Zusatz-Suchorte (PLZ-Bezirke großer Städte) und Neben-PLZ
-    werden ihrer Gemeinde zugeordnet."""
+    werden ihrer Gemeinde zugeordnet. `eintraege`: (Kandidat-ID, Ort, PLZ, Suchort) statt der Kandidaten."""
     gemeinden = [o for o in orte if not o.ist_zusatz]
     nach_name = {o.name.casefold(): o for o in gemeinden}
     for z in orte:
@@ -165,23 +176,45 @@ def _zuordnen(storage: Storage, bundesland: str, orte: list[Ort]) -> dict[int, O
     for o in gemeinden:
         for plz in o.alle_plz:
             nach_plz.setdefault(plz, o)
+    if eintraege is None:
+        eintraege = [(k.id, k.ort, k.plz, k.suchort) for k in storage.kandidaten(bundesland)]
     zuordnung: dict[int, Ort | None] = {}
-    for k in storage.kandidaten(bundesland):
+    for kid, k_ort, k_plz, suchort in eintraege:
         ort = None
-        if k.ort:
-            ort = nach_name.get(k.ort.casefold())
-        if ort is None and k.plz:
-            ort = nach_plz.get(k.plz)
-        if ort is None and k.ort is None and k.plz is None and k.suchort:
-            ort = nach_name.get(k.suchort.casefold())
-        zuordnung[k.id] = ort
+        if k_ort:
+            ort = nach_name.get(k_ort.casefold())
+        if ort is None and k_plz:
+            ort = nach_plz.get(k_plz)
+        if ort is None and k_ort is None and k_plz is None and suchort:
+            ort = nach_name.get(suchort.casefold())
+        zuordnung[kid] = ort
     return zuordnung
 
 
 def berechne(
-    storage: Storage, bundesland: str, orte: list[Ort], referenz: Referenz | None = None
+    storage: Storage, bundesland: str, orte: list[Ort], referenz: Referenz | None = None,
+    ziel_land: str | None = None,
 ) -> CoverageErgebnis:
-    zuordnung = _zuordnen(storage, bundesland, orte)
+    """`ziel_land` („Schleswig-Holstein") gesetzt und schon extrahiert → nur echte Kanzleien im Land zählen."""
+    kanzleien = storage.kanzleien(bundesland) if ziel_land else []
+    zusatz: dict[str, int] = {}
+    if kanzleien:
+        gezaehlt = [k for k in kanzleien if k.kandidat_id is not None and k.status not in
+                    (Status.KEINE_KANZLEI, Status.AUSSERHALB) and k.bundesland == ziel_land]
+        mit_zeile = {k.kandidat_id for k in kanzleien}
+        zusatz = dict(
+            modus="kanzleien",
+            offen=sum(1 for k in storage.kandidaten(bundesland) if k.id not in mit_zeile),
+            keine_kanzlei=sum(1 for k in kanzleien if k.status == Status.KEINE_KANZLEI),
+            ausserhalb=sum(1 for k in kanzleien if k.status == Status.AUSSERHALB),
+            ohne_bundesland=sum(1 for k in kanzleien if k.status not in (Status.KEINE_KANZLEI, Status.AUSSERHALB)
+                                and k.bundesland != ziel_land),
+        )
+        suchorte = {k.id: k.suchort for k in storage.kandidaten(bundesland)}
+        zuordnung = _zuordnen(storage, bundesland, orte,
+                              [(k.kandidat_id, k.ort, k.plz, suchorte.get(k.kandidat_id)) for k in gezaehlt])
+    else:
+        zuordnung = _zuordnen(storage, bundesland, orte)
     orte = [o for o in orte if not o.ist_zusatz]  # Erwartung und Lücken nur je Gemeinde
 
     # ---- gefunden je Kreis und Ort
@@ -195,7 +228,8 @@ def berechne(
     # ---- Quellen
     quellen_je_kandidat: dict[int, set[str]] = defaultdict(set)
     for f in storage.funde(bundesland):
-        quellen_je_kandidat[f.kandidat_id].add(f.quelle)
+        if f.kandidat_id in zuordnung:
+            quellen_je_kandidat[f.kandidat_id].add(f.quelle)
     alle_quellen = sorted({q for qs in quellen_je_kandidat.values() for q in qs})
     quellen = [
         QuellenZeile(
@@ -248,6 +282,7 @@ def berechne(
         quellen=quellen,
         nur_eine_quelle=nur_eine,
         referenz=referenz,
+        **zusatz,
     )
 
 
@@ -262,6 +297,10 @@ def als_excel(erg: CoverageErgebnis, pfad: str | Path) -> Path:
          [[o.ort, o.kreis, o.einwohner, o.gefunden, _r(o.erwartet), _r(o.luecke)] for o in erg.orte]),
         ("Quellen", ["Quelle", "Kanzleien", "Nur in dieser Quelle", "Anteil nur diese"],
          [[q.quelle, q.kanzleien, q.nur_diese, _r(q.anteil_nur_diese, 3)] for q in erg.quellen]),
+        ("Zählung", ["Kennzahl", "Anzahl"],
+         [["gezählt als", erg.modus], ["gefunden (gezählt)", erg.gefunden], ["erwartet", _r(erg.erwartet)],
+          ["keine Kanzlei", erg.keine_kanzlei], ["außerhalb Bundesland", erg.ausserhalb],
+          ["ohne geprüfte PLZ", erg.ohne_bundesland], ["offen (nicht gelesen)", erg.offen]]),
     ]  # fmt: skip
     wb.remove(wb.active)
     for titel, kopf, zeilen in blaetter:

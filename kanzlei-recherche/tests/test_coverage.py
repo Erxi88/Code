@@ -5,7 +5,7 @@ from conftest import FIXTURES
 from openpyxl import load_workbook
 
 from recherche.coverage import UNBEKANNT, als_excel, berechne, load_referenz
-from recherche.models import Fund, Kandidat
+from recherche.models import Fund, Kandidat, Kanzlei, Status
 from recherche.search.pipeline import load_orte
 
 COV = FIXTURES / "coverage"
@@ -41,11 +41,10 @@ def test_referenz_laden(referenz):
     assert referenz.kreise[RD] is None
 
 
-def test_referenz_projektdatei_ist_leer_aber_gueltig(settings):
+def test_referenz_projektdatei_ist_gueltig(settings):
+    # lokal mit echten Zahlen gefüllt – hier nur prüfen, dass die Datei lesbar ist
     r = load_referenz(settings.pfad(settings.pfade.referenz), "SH")
-    assert r is not None and r.erwartet_gesamt is None
-    assert len(r.kreise) == 15
-    assert load_referenz(settings.pfad(settings.pfade.referenz), "HH") is None
+    assert r is not None and r.einheit in ("kanzleien", "mitglieder")
 
 
 def test_referenz_ungueltige_einheit(tmp_path):
@@ -114,7 +113,7 @@ def test_nur_kreiswerte_ohne_gesamt(daten, orte, tmp_path):
 def test_excel(daten, orte, referenz, tmp_path):
     pfad = als_excel(berechne(daten, "SH", orte, referenz), tmp_path / "cov.xlsx")
     wb = load_workbook(pfad)
-    assert wb.sheetnames == ["Kreise", "Orte", "Quellen"]
+    assert wb.sheetnames == ["Kreise", "Orte", "Quellen", "Zählung"]
     assert wb["Kreise"]["A1"].value == "Kreis"
     assert wb["Orte"].max_row == 8
     assert wb["Quellen"].max_row == 4
@@ -132,3 +131,27 @@ def test_neben_plz_und_zusatz_suchorte_zaehlen_zur_gemeinde(storage):
     erg = berechne(storage, "SH", orte, None)
     assert {o.ort: o.gefunden for o in erg.orte} == {"Kiel": 2, "Heide": 1}  # Zusatzort keine eigene Zeile
     assert erg.kreis(KIEL).gefunden == 2 and UNBEKANNT not in {k.kreis for k in erg.kreise}
+
+
+def test_nach_extraktion_nur_kanzleien_im_land(storage):
+    """Pilot: 1.169 Kandidaten, aber nur echte SH-Kanzleien zählen; Kreis aus der extrahierten PLZ."""
+    from recherche.search.pipeline import Ort
+
+    orte = [Ort("Kiel", "24103", "Kreisfreie Stadt Kiel", 247717), Ort("Heide", "25746", "Kreis Dithmarschen", 21540)]
+    ids = [storage.add_kandidat(Kandidat(bundesland="SH", domain=f"k{i}.example", suchort="Kiel")) for i in range(6)]
+    for i, (status, land, plz, ort) in enumerate([
+        (Status.NEU, "Schleswig-Holstein", "25746", "Heide"),  # Suchort Kiel, Kanzlei aber in Heide
+        (Status.GEPRUEFT, "Schleswig-Holstein", "24103", "Kiel"),
+        (Status.KEINE_KANZLEI, "Schleswig-Holstein", "24103", "Kiel"),
+        (Status.AUSSERHALB, "Sachsen", "01067", "Dresden"),
+        (Status.NEU, None, None, None),  # PLZ nicht geprüft
+    ]):  # fmt: skip
+        storage.upsert_kanzlei(Kanzlei(kandidat_id=ids[i], domain=f"k{i}.example", lauf_bundesland="SH",
+                                       status=status, bundesland=land, plz=plz, ort=ort))
+    erg = berechne(storage, "SH", orte, None, ziel_land="Schleswig-Holstein")
+    assert (erg.modus, erg.gefunden, erg.offen) == ("kanzleien", 2, 1)  # k5 ohne Kanzlei-Zeile = offen
+    assert (erg.keine_kanzlei, erg.ausserhalb, erg.ohne_bundesland) == (1, 1, 1)
+    assert {o.ort: o.gefunden for o in erg.orte} == {"Kiel": 1, "Heide": 1}
+    # vor der Extraktion: Kandidaten zählen (fill --luecken nach search)
+    leer_storage_erg = berechne(storage, "HH", orte, None, ziel_land="Hamburg")
+    assert leer_storage_erg.modus == "kandidaten"

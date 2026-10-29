@@ -69,7 +69,10 @@ der nächsten Quelle füllen.**
   (`stadtteil_vorlagen` in `queries.yaml`). OpenPLZ führt je PLZ meist nur den Postort
   („Kiel"), echte Stadtteilnamen gibt es nur, wo OpenPLZ einen eigenen Ortsnamen hat.
   Coverage und Lückenfüller arbeiten weiter je Gemeinde.
-- **Danach `recherche coverage`**: gefundene Kanzleien je Kreis gegen
+- **Danach `recherche coverage`** (nach der Extraktion zählen nur Kanzleien mit Status Kanzlei und
+  Bundesland laut PLZ = Lauf-Bundesland, Kreis aus der extrahierten PLZ; „keine Kanzlei", „außerhalb",
+  „ohne geprüfte PLZ" und „offen" (nicht gelesen) stehen getrennt; vorher zählen die Kandidaten):
+  gefundene Kanzleien je Kreis gegen
   `config/referenz_kammern.yaml` (Einheit `kanzleien` oder `mitglieder` × `faktor`, Land
   gesamt und optional je Kreis; Rest nach Einwohnern verteilt), Anteil je Quelle und
   „nur in einer Quelle", Kreise und Orte mit der größten Lücke.

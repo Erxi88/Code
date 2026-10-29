@@ -289,7 +289,7 @@ def _export(ctx: Kontext, out: Path | None) -> Path:
 
 def _coverage(ctx: Kontext, st: Storage) -> CoverageErgebnis:
     referenz = load_referenz(ctx.settings.pfad(ctx.settings.pfade.referenz), ctx.bundesland)
-    return berechne(st, ctx.bundesland, ctx.orte(None), referenz)
+    return berechne(st, ctx.bundesland, ctx.orte(None), referenz, ziel_land=ctx.bl_cfg.name)
 
 
 # ---------------------------------------------------------------------- Befehle
@@ -370,6 +370,12 @@ def zeige_coverage(erg: CoverageErgebnis, top: int, quote_ziel: float) -> None:
         f"[bold]{erg.bundesland}[/bold]: {erg.gefunden} Kanzleien gefunden, erwartet {_zahl(erg.erwartet)}; "
         f"nur in einer Quelle: {erg.nur_eine_quelle} ({erg.anteil_nur_eine_quelle:.0%})"
     )
+    if erg.modus == "kanzleien":
+        console.print(f"  gezählt: nur Kanzleien im Land (Kreis aus der extrahierten PLZ); nicht gezählt: "
+                      f"{erg.keine_kanzlei} keine Kanzlei, {erg.ausserhalb} außerhalb, {erg.ohne_bundesland} ohne "
+                      f"geprüfte PLZ; offen (nicht gelesen): {erg.offen}")
+    else:
+        console.print("  gezählt: Kandidaten (noch keine Extraktion) – nach extract zählen nur echte Kanzleien im Land")
 
     t = Table(title="Je Kreis (größte Lücke zuerst)")
     for col in ("Kreis", "Gefunden", "Erwartet", "Basis", "Quote", "Lücke"):
