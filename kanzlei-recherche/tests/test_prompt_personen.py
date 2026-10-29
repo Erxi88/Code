@@ -854,3 +854,40 @@ def test_teamgroesse_nie_kleiner_als_berufstraeger():
     k = zusammenfuehren(Kandidat(id=1, bundesland="SH", domain="d.example"), [], seiten, None, llm)
     assert (k.berufstraeger_anzahl, k.teamgroesse, k.teamgroesse_klasse) == (7, None, "6-10")
     assert k.teamgroesse_basis.startswith("mindestens 7 Berufsträger")
+
+
+@pytest.mark.parametrize("impressum, llm_name, erwartet", [
+    # bethune.de: Einzelkanzlei, Inhaber ohne Berufsangabe → Berufsträger abgeleitet
+    ("Impressum\nSven Bethune\nMarktstr. 3\n24534 Neumünster\nInhaber: Sven Bethune", "Steuerbüro Bethune", 1),
+    # cora-stb.de: Steuerberatungsgesellschaft, ein Geschäftsführer ohne Berufsangabe
+    ("Impressum\nCora Steuerberatungsgesellschaft mbH\nHolstenstr. 1\n24103 Kiel\nGeschäftsführer: Cora Lund\n"
+     "Registergericht: Amtsgericht Kiel HRB 1", "Cora Steuerberatungsgesellschaft mbH", 1),
+    # Verlag mit einem Geschäftsführer: keine Ableitung
+    ("Impressum\nNord Verlag GmbH\nHolstenstr. 1\n24103 Kiel\nGeschäftsführer: Max Muster\n"
+     "Registergericht: Amtsgericht Kiel HRB 1", "Nord Verlag GmbH", 0),
+])  # fmt: skip
+def test_berufstraeger_abgeleitet(impressum, llm_name, erwartet):
+    from recherche.extract.merge import zusammenfuehren
+    from recherche.models import Kandidat
+
+    html = "".join(f"<p>{z}</p>" for z in impressum.splitlines())
+    seiten = {Seitentyp.IMPRESSUM: _seite(Seitentyp.IMPRESSUM, "https://b.example/impressum", html)}
+    k = zusammenfuehren(Kandidat(id=1, bundesland="SH", domain="b.example"), [], seiten, None,
+                        LlmErgebnis(kanzleiname=llm_name))
+    assert k.berufstraeger_anzahl == erwartet
+    assert ("Berufsträger abgeleitet" in (k.abweichung or "")) is bool(erwartet)
+
+
+def test_name_aus_ansprechpartner_wenn_kein_kanzleiname():
+    """steuerberatung-slawik.de u. a.: Adresse und Ansprechpartner, aber kein Kanzleiname."""
+    from recherche.extract.merge import name_aus_ansprechpartner, zusammenfuehren
+    from recherche.models import Ansprechpartner, Kandidat
+
+    html = ("<p>Impressum</p><p>Angelika Just</p><p>Steuerberaterin</p><p>Marktstr. 3</p><p>25421 Pinneberg</p>"
+            "<p>Inhaberin: Angelika Just, Steuerberaterin</p>")
+    seiten = {Seitentyp.IMPRESSUM: _seite(Seitentyp.IMPRESSUM, "https://j.example/impressum", html)}
+    k = zusammenfuehren(Kandidat(id=1, bundesland="SH", domain="j.example"), [], seiten, None, LlmErgebnis())
+    assert k.kanzleiname == "Steuerberaterin Angelika Just"
+    assert "Name abgeleitet aus Ansprechpartner" in k.abweichung
+    assert name_aus_ansprechpartner(Ansprechpartner(name="Dr. Jens Köhn", funktion="Partner"), 3) == "Steuerkanzlei Köhn"
+    assert name_aus_ansprechpartner(Ansprechpartner(name="Jens Köhn", funktion="Partner"), 1) == "Steuerberater Jens Köhn"

@@ -767,6 +767,32 @@ def erkannte_personen(team_seiten: list[Seite], rahmen: set[str] | None = None) 
     return erkannte
 
 
+_BERUFSTRAEGER_NAME = re.compile(r"steuerberat|steuerkanzlei|steuerbüro|\bstb\b|wirtschaftsprüf|treuhand", re.I)
+
+
+def _berufstraeger_kanzlei(name: str | None, rechtsform: str | None) -> bool:
+    """Einzelkanzlei, Partnerschaft oder Name mit Berufsbezug („Steuerberatungsgesellschaft")."""
+    return rechtsform in ("Einzelkanzlei", "PartG", "PartG mbB") or bool(name and _BERUFSTRAEGER_NAME.search(name))
+
+
+_BERUF_IM_TEXT = re.compile(
+    r"\b(steuerberaterin|steuerberater|wirtschaftsprüferin|wirtschaftsprüfer|rechtsanwältin|rechtsanwalt|"
+    r"steuerbevollmächtigte[r]?)\b", re.I)
+
+
+def name_aus_ansprechpartner(p: Ansprechpartner, berufstraeger: int) -> str:
+    """Rückfall ohne Kanzleinamen: ein Berufsträger → „Steuerberaterin Angelika Just" (Berufsbezeichnung
+    aus Funktion/Titel, sonst „Steuerberater"); mehrere → „Steuerkanzlei Just"."""
+    teile = _name_teile(p.name)
+    nachname = (p.name.split()[-1] if not teile else next(
+        (w for w in reversed(p.name.split()) if w.lower().strip(".,") == teile[1]), teile[1].title()))
+    if berufstraeger > 1:
+        return f"Steuerkanzlei {nachname}"
+    m = _BERUF_IM_TEXT.search(" ".join(x for x in (p.funktion, p.titel) if x))
+    beruf = m.group(1)[0].upper() + m.group(1)[1:].lower() if m else "Steuerberater"
+    return f"{beruf} {p.name}"
+
+
 def _adresse_text(strasse: str | None, plz: str | None, ort: str | None) -> str:
     return ", ".join(x for x in (strasse, " ".join(y for y in (plz, ort) if y)) if x)
 
@@ -854,6 +880,15 @@ def zusammenfuehren(
     angabe = mitarbeiterzahl([_text(s) for s in seiten.values()])
     zahl, klasse, basis = teamgroesse(llm, team_seiten, erkannte, angabe)
     berufstraeger = sum(1 for p in personen if ist_berufstraeger(p))
+    if berufstraeger == 0 and len(personen) == 1 and _berufstraeger_kanzlei(name, rechtsform):
+        # bethune.de, cora-stb.de: Einzelkanzlei bzw. Steuerberatungsgesellschaft mit genau einer Person ohne
+        # erkannte Berufsangabe – die Person ist der Berufsträger (§ 50 StBerG), Basis „abgeleitet"
+        berufstraeger = 1
+        abweichungen.append(f"Berufsträger abgeleitet: {personen[0].name} ({rechtsform or name})")
+    if not name and personen and berufstraeger >= 1:
+        # kein Kanzleiname gefunden (Logo als Bild, Name nur im Seitentitel): aus dem Hauptansprechpartner
+        name = name_aus_ansprechpartner(personen[0], berufstraeger)
+        abweichungen.append(f"Name abgeleitet aus Ansprechpartner {personen[0].name} – kein Kanzleiname gefunden")
     if zahl is not None and berufstraeger > zahl:
         # danrevision: 2 Personen auf der Teamseite eines Standorts, aber 7 Berufsträger – Zahl unplausibel,
         # Untergrenze als Klasse

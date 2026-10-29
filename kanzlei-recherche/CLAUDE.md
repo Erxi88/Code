@@ -296,6 +296,12 @@ der nächsten Quelle füllen.**
     Vertretungsberechtigte zählen, wenn im selben Impressum-Abschnitt genau **eine**
     Berufsbezeichnung steht – oder, bei einer Partnerschaft, wenn ihr Name genau einen
     Beruf nennt („Brandenburg und Partner mbB Steuerberater"; § 2 PartGG).
+    Einzelkanzlei, Partnerschaft oder Name mit Berufsbezug („Steuerberatungsgesellschaft", „Steuerbüro")
+    mit genau einem Ansprechpartner ohne erkannte Berufsangabe → 1 Berufsträger, Hinweis „Berufsträger
+    abgeleitet" in „Abweichung".
+  - Kein Kanzleiname gefunden, aber Ansprechpartner und ≥ 1 Berufsträger → Name aus dem
+    Hauptansprechpartner: ein Berufsträger „Steuerberaterin Angelika Just" (Berufsbezeichnung aus
+    Funktion/Titel), mehrere „Steuerkanzlei Köhn"; Hinweis „Name abgeleitet" in „Abweichung".
   - Vertretungsberechtigte im Impressum: „vertretungsberechtigt" (auch der Tippfehler
     „vertretungberechtigt" und Gender-Klammern wie „(r)"), „vertreten durch",
     „Geschäftsführer", „Inhaber" (Namen dürfen direkt folgen); „Partner", „Gesellschafter",
