@@ -33,7 +33,8 @@ def fakes(monkeypatch):
     google = FakeQueryAdapter("google_cse", {}, grund="GOOGLE_CSE_API_KEY fehlt in .env", aktiv=False)
     alle = {"brave": brave, "ddgs": ddgs, "places": places, "google_cse": google}
     monkeypatch.setattr(cli, "build_adapter", lambda name, s, cache=None: alle[name])
-    monkeypatch.setattr(cli, "aktive_adapter", lambda s, cache=None: [brave, ddgs, places, google])
+    monkeypatch.setattr(cli, "aktive_adapter", lambda s, cache=None, stufe=None: [
+        a for a in (brave, ddgs, places, google) if stufe is None or a.stufe == stufe])
     return alle
 
 
@@ -462,7 +463,7 @@ def test_search_compare_alle_aktiven(fakes, db_pfad, tmp_path):
     assert "übersprungen: google_cse – GOOGLE_CSE_API_KEY" in r.output
     assert "Überschneidung je Paar" in r.output
     assert "nur in ddgs: g.example" in r.output
-    assert "nur in places: Kanzlei Ohneweb, Wall 5, 24103 Kiel" in r.output
+    assert "nur in places" not in r.output  # Stufe B nur mit --adapter (kostet je Rasterzelle)
     assert out.exists()
     with Storage(db_pfad) as st:
         assert st.kandidaten("SH") == []  # Vergleich schreibt keine Kandidaten

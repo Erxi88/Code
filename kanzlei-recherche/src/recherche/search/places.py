@@ -1,25 +1,41 @@
-"""Stufe B: Google Places API (New), Text Search + Raster – Platzhalter mit fertigem Raster.
+"""Stufe B: Google Places API (New), Text Search über ein adaptives Rechteck-Raster.
 
-Vorgesehen (Places-Sitzung):
-- POST places:searchText mit textQuery „Steuerberater", includedType „accounting",
-  locationRestriction = Rechteck einer Rasterzelle, pageSize 20, Paging über pageToken
-- Key aus .env (GOOGLE_PLACES_API_KEY), FieldMask nur mit den benötigten Feldern
-- Ort → Rechteck (Begrenzung aus PLZ-Geodaten, kommt mit dem Befehl `orte`)
-- Zellen, die das Trefferlimit erreichen, werden geviertelt, bis min_zelle_km erreicht ist
-- Nutzungsbedingungen zum Speichern von Places-Inhalten vor dem Bau klären
-
-Das Raster selbst (lückenlose Zerlegung, adaptive Verfeinerung) ist schon hier gebaut
-und getestet.
+- Gebiet eines Ortes: eine Text Search nach „{PLZ} {Ort}, Deutschland" liefert dessen viewport.
+- Je Rasterzelle POST places:searchText mit textQuery „Steuerberater", includedType „accounting",
+  locationRestriction = Rechteck der Zelle, pageSize 20, bis 3 Seiten über nextPageToken.
+- Zellen, die das Trefferlimit (60) erreichen, werden geviertelt, bis min_zelle_km erreicht ist.
+- Key aus .env (GOOGLE_PLACES_API_KEY). FieldMask **nur** place_id, Name, Adresse, Telefon, Website –
+  keine Bewertungen, Öffnungszeiten oder Fotos. Telefon und Website gehören zur Enterprise-SKU;
+  der Preis je 1.000 Anfragen steht in `discovery.quellen.places.kosten_je_1000`.
+- Jede gesendete Anfrage zählt fürs Budget (`max_anfragen_je_lauf`) und den Kostenlog; Antworten
+  werden in api_cache gespeichert (Wiederaufnahme ohne Doppelkosten).
+- Gespeichert wird je Treffer (Tabelle funde, Quelle „places", Abrufdatum = gefunden_am):
+  place_id (quell_id), Name, Straße, PLZ, Ort, Telefon, Website.
 """
 
 from __future__ import annotations
 
+import json
 import math
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+import httpx
 
 from ..config import PlacesConfig, env
-from .base import Cache, OrtsPlatzhalter, SearchHit
+from .base import (
+    Cache,
+    KontingentErschoepft,
+    OrtsAdapter,
+    SearchError,
+    SearchHit,
+    ZugangVerweigert,
+)
+
+if TYPE_CHECKING:
+    from .pipeline import Ort
 
 ENV_KEY = "GOOGLE_PLACES_API_KEY"
 KM_JE_GRAD_BREITE = 111.32
@@ -110,13 +126,121 @@ def raster_suche(
     return list(gesehen.values())
 
 
-class PlacesAdapter(OrtsPlatzhalter):
+FELDER_RASTER = ("places.id,places.displayName,places.formattedAddress,places.addressComponents,"
+                 "places.nationalPhoneNumber,places.websiteUri,nextPageToken")
+FELDER_GEBIET = "places.id,places.viewport"
+
+
+def _komponente(place: dict, typ: str) -> str | None:
+    for c in place.get("addressComponents") or []:
+        if typ in (c.get("types") or []):
+            return c.get("longText") or c.get("shortText")
+    return None
+
+
+def place_als_hit(place: dict) -> SearchHit | None:
+    """Places-Ergebnis → SearchHit (nur die erlaubten Felder)."""
+    pid = place.get("id")
+    if not pid:
+        return None
+    strasse = " ".join(x for x in (_komponente(place, "route"), _komponente(place, "street_number")) if x) or None
+    return SearchHit(
+        quelle="places", quell_id=pid, name=(place.get("displayName") or {}).get("text"),
+        strasse=strasse, plz=_komponente(place, "postal_code"),
+        ort=_komponente(place, "locality") or _komponente(place, "postal_town"),
+        telefon=place.get("nationalPhoneNumber"), website=place.get("websiteUri"),
+        snippet=place.get("formattedAddress"),
+        roh_url=f"https://www.google.com/maps/place/?q=place_id:{pid}",
+    )  # fmt: skip
+
+
+class PlacesAdapter(OrtsAdapter):
     name = "places"
     cfg: PlacesConfig
 
-    def __init__(self, cfg: PlacesConfig | None = None, cache: Cache | None = None, **_):
+    def __init__(self, cfg: PlacesConfig | None = None, cache: Cache | None = None,
+                 client: httpx.Client | None = None, sleep: Callable[[float], None] = time.sleep, **_):
         super().__init__(cfg or PlacesConfig(), cache)
         self.api_key = env(ENV_KEY)
+        self._client = client
+        self._sleep = sleep
+        self.zellen = 0  # abgefragte Rasterzellen (Statistik)
 
     def fehlende_keys(self) -> list[str]:
         return [] if self.api_key else [ENV_KEY]
+
+    @property
+    def client(self) -> httpx.Client:
+        if self._client is None:
+            self._client = httpx.Client(timeout=self.cfg.timeout_s)
+        return self._client
+
+    # -------------------------------------------------------------- Anfragen
+
+    def _post(self, body: dict, feldmaske: str) -> dict:
+        """Eine Anfrage (gecacht, gedrosselt, mit Retry). Zählt fürs Budget und den Kostenlog."""
+        schluessel = json.dumps({"body": body, "felder": feldmaske}, sort_keys=True, ensure_ascii=False)
+        if self.cache is not None and (gecacht := self.cache.cache_get(self.name, schluessel)) is not None:
+            return gecacht
+        headers = {"X-Goog-Api-Key": self.api_key or "", "X-Goog-FieldMask": feldmaske,
+                   "Content-Type": "application/json"}
+        letzter = ""
+        for versuch in range(1, self.cfg.retries + 2):
+            if self.anfragen:
+                self._sleep(self.cfg.pause_s)
+            self._anfrage_zaehlen()
+            try:
+                resp = self.client.post(self.cfg.url, json=body, headers=headers)
+            except httpx.TransportError as e:
+                letzter = f"{type(e).__name__}: {e}"
+            else:
+                if resp.status_code == 200:
+                    antwort = resp.json()
+                    if self.cache is not None:
+                        self.cache.cache_put(self.name, schluessel, antwort)
+                    return antwort
+                text = resp.text[:200]
+                if resp.status_code in (401, 403):
+                    raise ZugangVerweigert(f"places: Zugang verweigert (HTTP {resp.status_code}): {text}")
+                if resp.status_code == 429 and "quota" in text.lower() and "per day" in text.lower():
+                    raise KontingentErschoepft(f"places: Tageskontingent erschöpft: {text}")
+                letzter = f"HTTP {resp.status_code}: {text}"
+                if resp.status_code < 500 and resp.status_code != 429:
+                    raise SearchError(f"places: {letzter}")
+            if versuch <= self.cfg.retries:
+                self._sleep(self.cfg.backoff_s * 2 ** (versuch - 1))
+        raise SearchError(f"places: nach {self.cfg.retries + 1} Versuchen: {letzter}")
+
+    def gebiet(self, ort: Ort) -> Rechteck | None:
+        """Rechteck des Ortes aus dem viewport einer Text Search („24103 Kiel, Deutschland")."""
+        antwort = self._post({"textQuery": f"{ort.plz} {ort.name}, Deutschland", "languageCode": "de",
+                              "regionCode": "DE", "pageSize": 1}, FELDER_GEBIET)
+        for place in antwort.get("places") or []:
+            v = place.get("viewport") or {}
+            lo, hi = v.get("low") or {}, v.get("high") or {}
+            if {"latitude", "longitude"} <= lo.keys() and {"latitude", "longitude"} <= hi.keys():
+                return Rechteck(lo["latitude"], lo["longitude"], hi["latitude"], hi["longitude"])
+        return None
+
+    def zelle(self, r: Rechteck) -> list[SearchHit]:
+        """Bis zu 3 Seiten à 20 Treffer in einer Rasterzelle."""
+        self.zellen += 1
+        hits: list[SearchHit] = []
+        token = None
+        for _ in range(max(1, self.cfg.max_treffer_je_zelle // 20)):
+            body = {"textQuery": self.cfg.text_query, "includedType": self.cfg.included_type,
+                    "locationRestriction": r.als_location_restriction(), "pageSize": 20,
+                    "languageCode": "de", "regionCode": "DE"}
+            if token:
+                body["pageToken"] = token
+            antwort = self._post(body, FELDER_RASTER)
+            hits += [h for p in antwort.get("places") or [] if (h := place_als_hit(p))]
+            if not (token := antwort.get("nextPageToken")):
+                break
+        return hits
+
+    def search_ort(self, ort: Ort) -> list[SearchHit]:
+        r = self.gebiet(ort)
+        if r is None:
+            raise SearchError(f"places: Gebiet für {ort.plz} {ort.name} nicht gefunden")
+        return raster_suche(r, self.zelle, self.cfg.zelle_km, self.cfg.max_treffer_je_zelle, self.cfg.min_zelle_km)

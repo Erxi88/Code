@@ -89,6 +89,16 @@ der nächsten Quelle füllen.**
   langsam). Ob und welche Stufe-B-Quellen gebaut werden, entscheidet sich nach den
   Coverage-Zahlen aus Stufe A. Nutzungsbedingungen (Speichern von Places-Inhalten,
   automatisierte Abfragen der Verzeichnisse) vor dem Bau klären.
+  - **`places`** (`search/places.py`, gebaut): Gebiet des Ortes aus dem viewport einer Text Search
+    („24103 Kiel, Deutschland"), dann je Rasterzelle POST `places:searchText` („Steuerberater",
+    includedType `accounting`, locationRestriction = Zelle, bis 3 Seiten à 20); volle Zellen werden
+    geviertelt (`zelle_km` 5 → `min_zelle_km` 0,5). FieldMask **nur** id, displayName,
+    formattedAddress, addressComponents, nationalPhoneNumber, websiteUri – keine Bewertungen,
+    Öffnungszeiten, Fotos. Gespeichert als Fund (Quelle „places", quell_id = place_id, gefunden_am =
+    Abrufdatum). Jede Anfrage (auch die Gebietsabfrage) zählt fürs Budget und den Kostenlog
+    (`kosten_je_1000` 35 = Enterprise-SKU wegen Telefon/Website). `fill` meldet die Ausbeute:
+    „X Treffer, davon Y neu, Z bereits bekannt (Telefon/Adresse/Domain), W verworfen".
+    `search-compare` nimmt Stufe-B-Quellen nur mit `--adapter` mit.
 - **Interface** (`search/base.py`): `QueryAdapter.search(query, max_results)` (Stufe A)
   und `OrtsAdapter.search_ort(ort)` (Stufe B). Alle liefern `SearchHit` mit Name,
   Straße, PLZ, Ort, Telefon, Website, Quelle, Quell-ID (+ Snippet, Fundstelle). Jede
@@ -112,7 +122,7 @@ der nächsten Quelle füllen.**
     Verdacht und unsicher landen im Blatt „Dubletten".
   - Beim Zusammenführen werden nur leere Felder ergänzt, nie überschrieben. Jeder Fund
     bleibt mit Quelle in der Tabelle `funde` erhalten.
-- `recherche search-compare --orte …` vergleicht **alle aktiven Adapter** (oder
+- `recherche search-compare --orte …` vergleicht **alle aktiven Websuche-Adapter** (oder
   `--adapter a,b,…`): Kanzleien je Adapter und Ort, Schnittmenge, „nur in diesem
   Adapter", Paar-Matrix. Treffer werden über die Dubletten-Logik zusammengefasst.
 
@@ -478,7 +488,7 @@ Schemaversion über `PRAGMA user_version` (aktuell 4, `adresszusatz`); ältere D
 - Stufe 1 (Gerüst): Modelle, SQLite-Speicher, Excel-Export, CLI.
 - Discovery-Sitzung: Ergebnisformat und Dubletten-Logik über Adresse/Telefon, Brave- und
   Google-CSE-Adapter, `coverage`, `fill`, `search-compare` für alle aktiven Adapter.
-  Platzhalter: `serpapi`, `places` (Raster fertig), `gelbeseiten`, `dasoertliche`,
+  Platzhalter: `serpapi`, `gelbeseiten`, `dasoertliche`,
   `elf880`, `stb_verzeichnis`.
 - Stufe 2 (Lesen und Extrahieren): `crawl`, `extract` (Regeln + Ollama), Zusammenführung
   mit Abweichung und Konfidenz, OpenPLZ-Prüfung, Schema v3, `fixture-add`,

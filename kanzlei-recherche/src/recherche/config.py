@@ -99,7 +99,8 @@ class PlacesConfig(QuelleConfig):
     max_treffer_je_zelle: int = 60  # Text Search (New): bis 3 Seiten à 20
     zelle_km: float = 5.0  # Startgröße der Rasterzellen
     min_zelle_km: float = 0.5  # nicht feiner teilen
-    kosten_je_1000: float = 32.0
+    kosten_je_1000: float = 35.0  # Text Search Enterprise (Telefon, Website); Gebietsabfrage zählt mit
+    pause_s: float = 0.2
 
 
 class VerzeichnisConfig(QuelleConfig):

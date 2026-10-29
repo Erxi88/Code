@@ -376,6 +376,8 @@ class SuchStatistik:
     kosten: float = 0.0
     zusatzseiten: int = 0  # über die Seitenregel hinaus geholt (volle Seite mit vielen Kanzleien)
     stadtteile: int = 0  # automatisch nachgesuchte Zusatz-Suchorte großer Städte
+    bekannt: int = 0  # Treffer, die einem bestehenden Kandidaten zugeordnet wurden (Telefon, Adresse, Domain)
+    verworfen: int = 0  # Blocklist oder schon von dieser Quelle gefunden
     abbruch: str | None = None  # gesetzt, wenn der Lauf wegen LimitErreicht endete
 
 
@@ -468,7 +470,10 @@ def run_search(
             stat.fehler += 1
             log.warning("Suche fehlgeschlagen: %s", fehler)
             continue
-        neu = sum(1 for h in hits if zuordnung.verarbeite(h, adapter, suchbegriff, ort.name))
+        ergebnisse = [zuordnung.verarbeite(h, adapter, suchbegriff, ort.name) for h in hits]
+        neu = sum(1 for e in ergebnisse if e is True)
+        stat.bekannt += sum(1 for e in ergebnisse if e is False)
+        stat.verworfen += sum(1 for e in ergebnisse if e is None)
         eintrag.trefferzahl = len(hits)
         eintrag.neue_kandidaten = neu
         eintrag.laufzeit_s = round(time.monotonic() - start, 2)

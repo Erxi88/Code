@@ -43,8 +43,8 @@ def test_alle_quellen_konfiguriert(settings):
 
 
 def test_aktive_adapter_aus_settings(settings):
-    assert [a.name for a in aktive_adapter(settings)] == ["brave", "ddgs"]
-    assert [a.name for a in aktive_adapter(settings, stufe="B")] == []
+    assert [a.name for a in aktive_adapter(settings)] == ["brave", "ddgs", "places"]
+    assert [a.name for a in aktive_adapter(settings, stufe="B")] == ["places"]
     s = settings.model_copy(deep=True)
     s.discovery.quellen.places.aktiv = True
     s.discovery.quellen.ddgs.aktiv = False
@@ -63,7 +63,7 @@ def test_fehlende_keys(settings, name, key):
     assert key in build_adapter(name, settings).nicht_konfiguriert_grund()
 
 
-@pytest.mark.parametrize("name", ["serpapi", "places", "gelbeseiten", "dasoertliche", "elf880", "stb_verzeichnis"])
+@pytest.mark.parametrize("name", ["serpapi", "gelbeseiten", "dasoertliche", "elf880", "stb_verzeichnis"])
 def test_platzhalter(settings, monkeypatch, name):
     for key in ("SERPAPI_KEY", "GOOGLE_PLACES_API_KEY"):
         monkeypatch.setenv(key, "k")

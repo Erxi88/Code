@@ -156,6 +156,10 @@ def _lauf(ctx: Kontext, st: Storage, adapter: SearchAdapter, orte: list[Ort], la
         + (f", {stat.zusatzseiten} Zusatzseiten wegen voller Kanzlei-Seiten" if stat.zusatzseiten else "")
         + (f", {stat.stadtteile} Stadtteil-Suchorte nachgesucht" if stat.stadtteile else "") + "."
     )
+    if isinstance(adapter, OrtsAdapter):
+        console.print(f"Ausbeute {adapter.name}: {stat.treffer} Treffer, davon {stat.neue_kandidaten} neu, "
+                      f"{stat.bekannt} bereits bekannt (Telefon/Adresse/Domain), {stat.verworfen} verworfen "
+                      "(Blocklist oder schon von dieser Quelle)")
     console.print(
         f"Kostenlog {adapter.name}: {stat.anfragen} Anfragen ≈ {stat.kosten:.2f} "
         f"(kosten_je_1000: {adapter.cfg.kosten_je_1000}, Budget je Lauf: {adapter.max_anfragen or 'unbegrenzt'})"
@@ -825,13 +829,14 @@ def search_compare(
     ] = None,
     out: Annotated[Path | None, typer.Option("--out", "-o", help="CSV mit Kanzlei je Ort und Adapter")] = None,
 ) -> None:
-    """Alle aktiven Adapter vergleichen (schreibt keine Kandidaten, nutzt aber den API-Cache)."""
+    """Aktive Websuche-Adapter vergleichen (Stufe B nur mit --adapter; schreibt keine Kandidaten, nutzt den API-Cache)."""
     ctx = _kontext(config, bundesland, db)
     with ctx.storage() as st:
         if adapter:
             adapters = [build_adapter(n.strip(), ctx.settings, cache=st) for n in adapter.split(",") if n.strip()]
         else:
-            adapters = aktive_adapter(ctx.settings, cache=st)
+            # ohne --adapter nur die Websuche: Stufe-B-Quellen (Places) kosten je Rasterzelle und laufen nur ausdrücklich
+            adapters = aktive_adapter(ctx.settings, cache=st, stufe="A")
         ergebnis = compare_adapters(
             adapters, ctx.orte(orte), ctx.vorlagen(), ctx.blocklist(),
             ctx.settings.discovery.stufe_a.max_results_per_query,
