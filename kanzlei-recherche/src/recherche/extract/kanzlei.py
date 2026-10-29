@@ -153,13 +153,19 @@ class PruefStatistik:
 
 def run_pruefung(storage: Storage, bundesland: str, rechtsformen=STANDARD_RECHTSFORMEN,
                  fortschritt: Callable[[str], None] | None = None, ziel_land: str | None = None,
-                 kanzlei_erkennung: bool = True) -> PruefStatistik:
+                 kanzlei_erkennung: bool = True, plz_pruefen: Callable | None = None) -> PruefStatistik:
     """Kanzlei-Erkennung und Bundesland-Filter auf alle extrahierten Kanzleien anwenden (ohne LLM).
     Ohne Website nur der Bundesland-Filter (Discovery aus Verzeichnissen, keine Seiten zum Prüfen)."""
     stat = PruefStatistik()
     orte = suchorte_je_stammdomain(storage, bundesland)
     for k in storage.kanzleien(bundesland):
         vorher_status, vorher_konf = k.status, k.konfidenz
+        if plz_pruefen and k.plz:
+            # Ort und Bundesland nach der aktuellen Prüfung (OpenPLZ-Schreibweise, „Wyk/Insel Föhr")
+            p = plz_pruefen(k.plz, k.ort)
+            k.ort = p.ort_kanonisch or k.ort
+            k.bundesland = p.bundesland or k.bundesland
+            k.plz_verifiziert = p.verifiziert if p.verifiziert is not None else k.plz_verifiziert
         if kanzlei_erkennung and k.domain and k.kandidat_id is not None:
             pruefen(k, storage.kandidat_seiten(k.kandidat_id), rechtsformen, storage.funde_kandidat(k.kandidat_id),
                     orte.get(stammdomain(k.domain), 0), ziel_land)

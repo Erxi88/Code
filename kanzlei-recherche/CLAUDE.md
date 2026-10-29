@@ -396,6 +396,9 @@ der nächsten Quelle füllen.**
 
 - Telefon ins `+49`-Format, PLZ/Ort-Check gegen OpenPLZ-API (kostenlos, eine Anfrage
   je PLZ, gecacht), Bundesland aus PLZ. OpenPLZ nicht erreichbar → „nicht verifiziert".
+  Ort in OpenPLZ-Schreibweise („AHRENSBURG" → „Ahrensburg"; „Wyk/Insel Föhr" → „Wyk auf Föhr", wenn
+  genau ein Ort zur PLZ mit demselben ersten Wort). Telefonnummern werden beim Laden neu normalisiert
+  (ältere Zeilen); `kanzlei-pruefung` frischt Ort, Bundesland und Verifizierung aus dem OpenPLZ-Cache auf.
 - Dubletten über Domain, Telefon, Adresse und PLZ+Name-Token (`search/dedupe.py`).
 
 ### Excel (`export.py`)

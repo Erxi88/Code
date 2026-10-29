@@ -27,6 +27,7 @@ from .models import (
     Seite,
     Seitentyp,
 )
+from .normalize import normalize_telefon
 
 SCHEMA_VERSION = 4
 
@@ -612,6 +613,9 @@ class Storage:
         d = dict(row)
         d["ansprechpartner"] = [Ansprechpartner(**a) for a in json.loads(d["ansprechpartner"])]
         d["quell_urls"] = json.loads(d["quell_urls"])
+        # Telefon nach der aktuellen Normalisierung (ältere Zeilen: „+494513888100" → „+49 451 3888100")
+        if d.get("telefon"):
+            d["telefon"] = normalize_telefon(d["telefon"]) or d["telefon"]
         # Größenklasse nach der aktuellen Einteilung (settings.yaml) – auch für ältere Zeilen
         d["teamgroesse_klasse"], hinweis = neu_einordnen(d.get("teamgroesse"), d.get("teamgroesse_klasse"),
                                                          d.get("teamgroesse_basis"))

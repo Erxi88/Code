@@ -236,6 +236,11 @@ def _extract(
     wiederholen: bool = False, alle: bool = False, ja: bool = False,
 ) -> None:
     s = ctx.settings
+    try:
+        import phonenumbers  # noqa: F401
+    except ImportError:
+        console.print("[yellow]Paket phonenumbers fehlt – Telefonnummern ohne Trennzeichen bleiben ungetrennt "
+                      "(pip install -e .)[/yellow]")
     with ctx.storage() as st:
         if alle:
             n = sum(1 for k in st.kandidaten(ctx.bundesland)
@@ -514,7 +519,8 @@ def kanzlei_pruefung(
     ctx = _kontext(config, bundesland, db)
     with ctx.storage() as st:
         stat = run_pruefung(st, ctx.bundesland, tuple(ctx.settings.extract.kanzlei_rechtsformen),
-                            fortschritt=lambda m: console.print(f"  {m}"), ziel_land=ctx.bl_cfg.name)
+                            fortschritt=lambda m: console.print(f"  {m}"), ziel_land=ctx.bl_cfg.name,
+                            plz_pruefen=PlzPruefer(ctx.settings.openplz.url, cache=st).pruefe)
     console.print(f"Geprüft: {stat.geprueft} Kanzleien – {stat.keine_kanzlei} keine Kanzlei, {stat.ausserhalb} außerhalb "
                   f"{ctx.bl_cfg.name}, {stat.wieder_kanzlei} wieder Kanzlei, {stat.herabgestuft} von Konfidenz „hoch\" "
                   "herabgestuft.")

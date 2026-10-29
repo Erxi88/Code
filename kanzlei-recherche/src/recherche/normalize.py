@@ -165,7 +165,9 @@ class PlzPruefer:
             return PlzPruefung(None, bundesland, namen, "Ort fehlt")
         soll = _ortsname(ort)
         if any(_ortsname(n) == soll or _ortsname(n).startswith(soll + " ") for n in namen):
-            return PlzPruefung(True, bundesland, namen)
+            # Schreibweise laut OpenPLZ („AHRENSBURG" → „Ahrensburg"), wenn der Ortsname genau passt
+            genau = next((o["name"] for o in orte if o.get("name") and _ortsname(o["name"]) == soll), None)
+            return PlzPruefung(True, bundesland, namen, ort_kanonisch=genau if genau and genau != ort.strip() else None)
         # „Kiel-Holtenau"/„Hamburg Rissen" bei OpenPLZ-Ort „Kiel"/„Hamburg": verifiziert, kanonisch ausgeben
         for o in orte:
             if o.get("name") and soll.startswith(_ortsname(o["name"]) + " "):
@@ -177,6 +179,11 @@ class PlzPruefer:
             for o in orte:
                 if o.get("name") and _ortsname(o["name"]) == kern:
                     return PlzPruefung(True, bundesland, namen, ort_kanonisch=o["name"])
+        # „Wyk/Insel Föhr" → „Wyk auf Föhr": genau ein OpenPLZ-Ort zur PLZ mit demselben ersten Wort
+        erstes = soll.split()[0] if soll else ""
+        gleich = {o["name"] for o in orte if o.get("name") and _ortsname(o["name"]).split()[:1] == [erstes]}
+        if len(erstes) >= 3 and len(gleich) == 1:
+            return PlzPruefung(True, bundesland, namen, ort_kanonisch=gleich.pop())
         return PlzPruefung(False, bundesland, namen, f"Ort {ort!r} passt nicht zu PLZ {plz}")
 
 

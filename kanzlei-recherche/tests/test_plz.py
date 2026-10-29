@@ -60,3 +60,22 @@ def test_eine_anfrage_je_plz_und_cache(storage):
     assert len(anfragen) == 1
     p2, anfragen2 = _pruefer({}, cache=storage)
     assert p2.pruefe("24103", "Kiel").verifiziert and anfragen2 == []
+
+
+def test_schreibweise_laut_openplz():
+    ahrensburg = [{"postalCode": "22926", "name": "Ahrensburg", "federalState": {"name": "Schleswig-Holstein"}}]
+    wyk = [{"postalCode": "25938", "name": "Wyk auf Föhr", "federalState": {"name": "Schleswig-Holstein"}},
+           {"postalCode": "25938", "name": "Nieblum", "federalState": {"name": "Schleswig-Holstein"}}]
+    p, _ = _pruefer({"22926": (200, ahrensburg), "25938": (200, wyk), "24103": (200, KIEL)})
+    assert p.pruefe("22926", "AHRENSBURG").ort_kanonisch == "Ahrensburg"
+    assert p.pruefe("22926", "Ahrensburg").ort_kanonisch is None  # schon richtig
+    e = p.pruefe("25938", "Wyk/Insel Föhr")
+    assert (e.verifiziert, e.ort_kanonisch) == (True, "Wyk auf Föhr")
+    assert p.pruefe("24103", "Kielbrücke").verifiziert is False  # erstes Wort anders („kielbruecke")
+
+
+def test_telefon_wird_beim_laden_neu_normalisiert(storage):
+    from recherche.models import Kanzlei
+
+    storage.upsert_kanzlei(Kanzlei(lauf_bundesland="SH", domain="a.example", telefon="+494513888100"))
+    assert storage.get_kanzlei("a.example").telefon == "+49 451 3888100"
