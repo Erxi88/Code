@@ -384,11 +384,40 @@ def orte_erzeugen(
         erg.orte.append(ort)
         st = stadtteile
         if st and st.aktiv and ort.einwohner and ort.einwohner >= st.ab_einwohner and (kreisfrei or not st.nur_kreisfrei):
-            for plz in ort.alle_plz:
-                eigene = sorted(n for n in g.ortsnamen.get(plz, ()) if _norm(gemeinde_name(n)) != _norm(ort.name))
-                erg.orte.append(Ort(name=f"{ort.name} ({plz})", plz=plz, kreis=ort.kreis, ags=ort.ags,
-                                    gemeinde=ort.name, stadtteil=eigene[0] if eigene else None))  # fmt: skip
+            erg.orte.extend(zusatz_orte(ort, g))
     return erg
+
+
+def zusatz_orte(ort: Ort, g: Gemeinde) -> list[Ort]:
+    """Zusatz-Suchorte je PLZ-Bezirk einer großen Stadt („Kiel (24105)", Stadtteilname laut OpenPLZ)."""
+    ergebnis = []
+    for plz in sorted(set(ort.alle_plz) | set(g.plz)):
+        eigene = sorted(n for n in g.ortsnamen.get(plz, ()) if _norm(gemeinde_name(n)) != _norm(ort.name))
+        ergebnis.append(Ort(name=f"{ort.name} ({plz})", plz=plz, kreis=ort.kreis, ags=ort.ags or g.ags,
+                            gemeinde=ort.name, stadtteil=eigene[0] if eigene else None))  # fmt: skip
+    return ergebnis
+
+
+def stadtteile_nachsuchen(openplz: OpenPlzOrte, land_schluessel: str, cfg: StadtteilConfig) -> Callable[[Ort], list[Ort]]:
+    """Für `search`: Zusatz-Suchorte einer großen Stadt erst bei Bedarf (volle Trefferliste) aus OpenPLZ."""
+    gemeinden: dict[str, Gemeinde] | None = None
+
+    def nachsuchen(ort: Ort) -> list[Ort]:
+        nonlocal gemeinden
+        kreisfrei = (ort.kreis or "").startswith("Kreisfreie Stadt")
+        gross = ort.einwohner >= cfg.ab_einwohner if ort.einwohner else True  # ohne Einwohnerzahl: volle Liste genügt
+        if not cfg.aktiv or not gross or (cfg.nur_kreisfrei and not kreisfrei):
+            return []
+        if gemeinden is None:
+            try:
+                gemeinden = {_norm(g.name): g for g in gemeinden_aus_localities(openplz.localities(land_schluessel)).values()}
+            except OrteFehler as e:  # OpenPLZ nicht erreichbar: ohne Nachsuche weiter
+                log.warning("Stadtteil-Nachsuche ohne OpenPLZ: %s", e)
+                gemeinden = {}
+        g = gemeinden.get(_norm(ort.name))
+        return zusatz_orte(ort, g) if g and len(set(g.plz) | set(ort.alle_plz)) > 1 else []
+
+    return nachsuchen
 
 
 @dataclass

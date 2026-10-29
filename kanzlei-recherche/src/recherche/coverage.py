@@ -18,6 +18,7 @@ Erwartete Zahlen (config/referenz_kammern.yaml):
 
 from __future__ import annotations
 
+import re
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -186,7 +187,8 @@ def _zuordnen(storage: Storage, bundesland: str, orte: list[Ort],
         if ort is None and k_plz:
             ort = nach_plz.get(k_plz)
         if ort is None and k_ort is None and k_plz is None and suchort:
-            ort = nach_name.get(suchort.casefold())
+            # automatisch nachgesuchte Stadtteile („Kiel (24105)") gehören zur Gemeinde
+            ort = nach_name.get(suchort.casefold()) or nach_name.get(re.sub(r"\s*\(\d{5}\)$", "", suchort).casefold())
         zuordnung[kid] = ort
     return zuordnung
 

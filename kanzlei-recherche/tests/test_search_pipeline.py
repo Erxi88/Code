@@ -191,3 +191,55 @@ def test_lueckenfueller_ueberspringen_zusatz_suchorte(storage):
     places = FakeOrtsAdapter("places", {})
     run_search(storage, places, [KIEL, zusatz], VORLAGEN, set(), "SH", "l1", 20)
     assert places.aufrufe == ["Kiel"]
+
+
+def test_volle_trefferliste_sucht_stadtteile_nach(storage):
+    """Pilot: „Steuerberater Kiel" bricht bei 60 ab, die Startliste hat keine Stadtteil-Einträge."""
+    from fakes import FakeQueryAdapter
+
+    from recherche.search.pipeline import Suchplan
+
+    kiel = Ort("Kiel", "24103", "Kreisfreie Stadt Kiel")
+    heide = Ort("Heide", "25746", "Kreis Dithmarschen")
+    voll = [f"https://kanzlei{i}.example/" for i in range(20)]
+    adapter = FakeQueryAdapter("fake", {"Steuerberater Kiel": voll, "Steuerberater Heide": voll[:3],
+                                        "Steuerberater 24105 Kiel": ["https://holtenau-stb.example/"]})
+    aufgerufen = []
+
+    def stadtteile(ort):
+        aufgerufen.append(ort.name)
+        return [Ort(f"Kiel ({p})", p, ort.kreis, gemeinde="Kiel") for p in ("24103", "24105")]
+
+    plan = Suchplan(["Steuerberater {ort}"], ["Steuerberater {plz} {gemeinde}"])
+    stat = run_search(storage, adapter, [kiel, heide], plan, set(), "SH", "l1", 20, stadtteile=stadtteile)
+    assert aufgerufen == ["Kiel"] and stat.stadtteile == 2  # nur die volle Stadt, einmal
+    assert "Steuerberater 24105 Kiel" in adapter.aufrufe
+    assert any(k.domain == "holtenau-stb.example" for k in storage.kandidaten("SH"))
+    # Wiederaufnahme / Pilot-Bestand: Stadt-Query schon erledigt, Stadtteile noch nicht → trotzdem nachsuchen
+    aufgerufen.clear()
+    stat2 = run_search(storage, FakeQueryAdapter("fake", {}), [kiel], plan, set(), "SH", "l2", 20,
+                       stadtteile=lambda o: [Ort("Kiel (24159)", "24159", o.kreis, gemeinde="Kiel")])
+    assert stat2.stadtteile == 1 and stat2.queries == 1
+
+
+def test_stadtteile_nachsuchen_aus_openplz():
+    from recherche.config import StadtteilConfig
+    from recherche.orte import stadtteile_nachsuchen
+
+    class FakeOpenPlz:
+        aufrufe = 0
+
+        def localities(self, land):
+            self.aufrufe += 1
+            m = {"key": "01002000", "name": "Kiel, Landeshauptstadt"}
+            return [{"postalCode": p, "name": n, "municipality": m} for p, n in
+                    (("24103", "Kiel"), ("24105", "Kiel"), ("24159", "Kiel-Holtenau"))]
+
+    openplz = FakeOpenPlz()
+    nachsuchen = stadtteile_nachsuchen(openplz, "01", StadtteilConfig())
+    neue = nachsuchen(Ort("Kiel", "24103", "Kreisfreie Stadt Kiel"))
+    assert [(o.name, o.gemeinde, o.stadtteil) for o in neue] == [
+        ("Kiel (24103)", "Kiel", None), ("Kiel (24105)", "Kiel", None), ("Kiel (24159)", "Kiel", "Kiel-Holtenau")]
+    assert nachsuchen(Ort("Wedel", "22880", "Kreis Pinneberg")) == []  # nicht kreisfrei
+    assert nachsuchen(Ort("Kiel", "24103", "Kreisfreie Stadt Kiel", 5000)) == []  # zu klein laut Einwohnern
+    assert openplz.aufrufe == 1  # einmal geladen

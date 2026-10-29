@@ -43,6 +43,7 @@ from .orte import (
     gv_quelle_laden,
     lade_gv,
     orte_erzeugen,
+    stadtteile_nachsuchen,
     stufen_verteilung,
     vergleichen,
 )
@@ -139,15 +140,21 @@ def _adapter_pruefen(adapter: SearchAdapter, explizit: bool) -> None:
 def _lauf(ctx: Kontext, st: Storage, adapter: SearchAdapter, orte: list[Ort], lauf_id: str) -> SuchStatistik:
     stufe = "Websuche (Stufe A)" if isinstance(adapter, QueryAdapter) else "Lückenfüller (Stufe B)"
     console.print(f"{stufe} mit [bold]{adapter.name}[/bold] in {len(orte)} Orten ({ctx.bundesland}) …")
+    s = ctx.settings
+    nachsuchen = None
+    if isinstance(adapter, QueryAdapter) and s.orte.stadtteile.aktiv:
+        openplz = OpenPlzOrte(s.openplz.url, cache=st, page_size=s.openplz.page_size, pause_s=s.openplz.pause_s)
+        nachsuchen = stadtteile_nachsuchen(openplz, LAND_SCHLUESSEL[ctx.bundesland], s.orte.stadtteile)
     stat = run_search(
         st, adapter, orte, ctx.vorlagen(), ctx.blocklist(), ctx.bundesland, lauf_id,
-        ctx.settings.discovery.stufe_a.max_results_per_query,
-        fortschritt=lambda m: console.print(f"  {m}"),
+        s.discovery.stufe_a.max_results_per_query,
+        fortschritt=lambda m: console.print(f"  {m}"), stadtteile=nachsuchen,
     )  # fmt: skip
     console.print(
         f"Fertig: {stat.queries} Abfragen, {stat.uebersprungen} schon erledigt, {stat.fehler} Fehler, "
         f"{stat.treffer} Treffer, {stat.neue_kandidaten} neue Kandidaten"
-        + (f", {stat.zusatzseiten} Zusatzseiten wegen voller Kanzlei-Seiten." if stat.zusatzseiten else ".")
+        + (f", {stat.zusatzseiten} Zusatzseiten wegen voller Kanzlei-Seiten" if stat.zusatzseiten else "")
+        + (f", {stat.stadtteile} Stadtteil-Suchorte nachgesucht" if stat.stadtteile else "") + "."
     )
     console.print(
         f"Kostenlog {adapter.name}: {stat.anfragen} Anfragen ≈ {stat.kosten:.2f} "

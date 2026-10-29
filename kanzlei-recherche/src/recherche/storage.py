@@ -718,6 +718,15 @@ class Storage:
         ).fetchone()
         return row is not None
 
+    def query_treffer(self, bundesland: str, adapter: str, suchbegriff: str, schritt: str = "search") -> int:
+        """Trefferzahl einer erledigten Query (größte, falls mehrfach) – für die Stadtteil-Nachsuche."""
+        row = self.conn.execute(
+            """SELECT MAX(trefferzahl) FROM lauf_protokoll
+               WHERE bundesland = ? AND schritt = ? AND adapter = ? AND suchbegriff = ? AND fehler IS NULL""",
+            (bundesland, schritt, adapter, suchbegriff),
+        ).fetchone()
+        return (row[0] or 0) if row else 0
+
     def anfragen_summe(self, bundesland: str, lauf_id: str | None = None) -> dict[str, tuple[int, float]]:
         """Kostenlog: (Anfragen, Kosten) je Adapter, optional für einen Lauf."""
         sql = """SELECT adapter, SUM(anfragen), SUM(kosten) FROM lauf_protokoll

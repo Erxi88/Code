@@ -69,6 +69,11 @@ der nächsten Quelle füllen.**
   (`stadtteil_vorlagen` in `queries.yaml`). OpenPLZ führt je PLZ meist nur den Postort
   („Kiel"), echte Stadtteilnamen gibt es nur, wo OpenPLZ einen eigenen Ortsnamen hat.
   Coverage und Lückenfüller arbeiten weiter je Gemeinde.
+  **Automatisch bei voller Trefferliste**: Erreicht eine Query einer kreisfreien Stadt (ab
+  `orte.stadtteile.ab_einwohner`, ohne Einwohnerzahl genügt die volle Liste) das Limit (60 bzw.
+  Seitenregel × 20), werden ihre PLZ-Bezirke aus OpenPLZ als Zusatz-Suchorte nachgesucht – auch ohne
+  Stadtteil-Einträge in der Ortsliste und auch für schon erledigte Queries (Wiederaufnahme, Pilot-
+  Bestand). `recherche orte` legt die Zusatz-Suchorte nur mit Einwohnerzahlen (GV-ISys) an.
 - **Danach `recherche coverage`** (nach der Extraktion zählen nur Kanzleien mit Status Kanzlei und
   Bundesland laut PLZ = Lauf-Bundesland, Kreis aus der extrahierten PLZ; „keine Kanzlei", „außerhalb",
   „ohne geprüfte PLZ" und „offen" (nicht gelesen) stehen getrennt; vorher zählen die Kandidaten):

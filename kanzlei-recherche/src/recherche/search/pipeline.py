@@ -375,6 +375,7 @@ class SuchStatistik:
     anfragen: int = 0
     kosten: float = 0.0
     zusatzseiten: int = 0  # über die Seitenregel hinaus geholt (volle Seite mit vielen Kanzleien)
+    stadtteile: int = 0  # automatisch nachgesuchte Zusatz-Suchorte großer Städte
     abbruch: str | None = None  # gesetzt, wenn der Lauf wegen LimitErreicht endete
 
 
@@ -390,6 +391,11 @@ def _auftraege(adapter: SearchAdapter, orte: list[Ort], plan: Suchplan, max_resu
                 yield ort, query, partial(suche_query, adapter, query, stufe, max_results, blocklist, plan.weiter)
 
 
+def _grenze(adapter: QueryAdapter, stufe: EinwohnerStufe, max_results: int) -> int:
+    """Trefferzahl, ab der eine Liste voll ist (max_results bzw. Seitenregel × Seitengröße)."""
+    return max_results if stufe.seiten is None else min(max_results, stufe.seiten * adapter.seitengroesse)
+
+
 def run_search(
     storage: Storage,
     adapter: SearchAdapter,
@@ -400,8 +406,13 @@ def run_search(
     lauf_id: str,
     max_results: int,
     fortschritt: Callable[[str], None] | None = None,
+    stadtteile: Callable[[Ort], list[Ort]] | None = None,
 ) -> SuchStatistik:
     """Führt einen Adapter für alle Orte aus und speichert Kandidaten und Funde.
+
+    `stadtteile`: liefert für eine große Stadt Zusatz-Suchorte je PLZ-Bezirk. Ist eine Trefferliste der
+    Stadt voll (die Suche bricht ab, „Steuerberater Kiel" bei 60), werden sie automatisch nachgesucht –
+    auch wenn die Ortsliste keine Stadtteil-Einträge hat.
 
     QueryAdapter (Stufe A): je Ort die Query-Vorlagen und Seiten laut Suchplan (Einwohnerregel).
     OrtsAdapter (Stufe B): je Ort ein
@@ -414,9 +425,24 @@ def run_search(
     stat = SuchStatistik()
     start_anfragen = adapter.anfragen
     plan = als_suchplan(vorlagen)
+    orte = list(orte)  # wächst um nachgesuchte Stadtteile (der Generator sieht neue Einträge)
+    def nachsuchen(ort: Ort, trefferzahl: int) -> None:
+        """Volle Trefferliste einer Stadt → Zusatz-Suchorte je PLZ-Bezirk anhängen (einmal je Gemeinde)."""
+        if not stadtteile or not isinstance(adapter, QueryAdapter) or ort.ist_zusatz:
+            return
+        if trefferzahl < _grenze(adapter, plan.stufe(ort), max_results) or any(o.gemeinde == ort.name for o in orte):
+            return
+        neue = stadtteile(ort)
+        orte.extend(neue)
+        stat.stadtteile += len(neue)
+        if neue and fortschritt:
+            fortschritt(f"{ort.name}: Trefferliste voll ({trefferzahl}) – {len(neue)} PLZ-/Stadtteil-Suchorte nachgesucht")
+
     for ort, suchbegriff, aufruf in _auftraege(adapter, orte, plan, max_results, blocklist):
         if storage.query_erledigt(bundesland, adapter.name, suchbegriff, schritt):
             stat.uebersprungen += 1
+            if stadtteile:  # Wiederaufnahme / Pilot-Bestand: auch erledigte volle Queries lösen aus
+                nachsuchen(ort, storage.query_treffer(bundesland, adapter.name, suchbegriff, schritt))
             continue
         start, anfragen_vorher = time.monotonic(), adapter.anfragen
         eintrag = LaufEintrag(
@@ -453,6 +479,7 @@ def run_search(
         if fortschritt:
             zusatz = f", +{extra} Seite(n) wegen voller Kanzlei-Seite" if extra else ""
             fortschritt(f"{suchbegriff}: {len(hits)} Treffer, {neu} neu, {eintrag.anfragen} Anfragen{zusatz}")
+        nachsuchen(ort, len(hits))
     stat.anfragen = adapter.anfragen - start_anfragen
     stat.kosten = adapter.kosten(stat.anfragen)
     return stat
