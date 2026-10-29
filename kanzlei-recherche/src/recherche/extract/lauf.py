@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -115,6 +116,13 @@ def run_extract(
             if fortschritt:
                 fortschritt(f"{k.domain or k.name}: Fehler – {e}")
             continue
+        except Exception as e:  # unerwarteter Fehler eines Kandidaten darf den Lauf nicht anhalten
+            log.exception("Extraktion %s fehlgeschlagen", k.domain or k.name)
+            stat.fehler += 1
+            storage.set_extract_status(k.id, SchrittStatus.FEHLER, f"unerwarteter Fehler: {type(e).__name__}: {e}"[:500])
+            if fortschritt:
+                fortschritt(f"{k.domain or k.name}: unerwarteter Fehler – {type(e).__name__}: {e} (Kandidat übersprungen)")
+            continue
         storage.upsert_kanzlei(kanzlei)
         felder = {"telefon": kanzlei.telefon, "name": kanzlei.kanzleiname}
         if not k.plz:  # Adresse nur als Einheit ergänzen
@@ -124,6 +132,7 @@ def run_extract(
         stat.fertig += 1
         if fortschritt:
             zusatz = f", {kanzlei.status.value}" if kanzlei.status in (Status.KEINE_KANZLEI, Status.AUSSERHALB) else ""
+            zusatz += ", ohne LLM" if "ohne LLM:" in (kanzlei.abweichung or "") else ""
             fortschritt(f"{k.domain or kanzlei.kanzleiname}: {kanzlei.kanzleiname or '–'} ({kanzlei.konfidenz.value}{zusatz})")
     storage.log_lauf(
         LaufEintrag(
@@ -149,10 +158,18 @@ def _eine(storage: Storage, k: Kandidat, extractor, pruefer, ausschluss, stat: E
     if extractor is not None and seiten and ziel_land and pruefer:
         # Vorprüfung ohne LLM: liegt die PLZ (Discovery bzw. Impressum-Regel) außerhalb des Bundeslandes,
         # spart das den LLM-Aufruf (Kleingemeinden: Brave füllt mit bundesweiten Kanzleien auf)
-        vorab = zusammenfuehren(k, funde, seiten, regel, None, pruefer.pruefe, ausschluss)
-        if vorab.bundesland and vorab.bundesland != ziel_land:
+        try:
+            vorab = zusammenfuehren(k, funde, seiten, regel, None, pruefer.pruefe, ausschluss)
+            regel_plz = vorab.plz
+            grund = _ausserhalb_vorab(vorab, seiten, ausschluss, pruefer, ziel_land)
+            log.info("%s: Vorprüfung – Regel-PLZ %s (%s), PLZ im Text %s → %s", k.domain, regel_plz or "keine",
+                     vorab.bundesland or "?", plz_in_seiten(seiten, ausschluss)[:5], grund or "LLM")
+        except Exception:  # Vorprüfung ist nur eine Abkürzung – bei Fehlern normal mit LLM weiter
+            log.exception("%s: Vorprüfung ohne LLM fehlgeschlagen – weiter mit LLM", k.domain)
+            vorab, grund = None, None
+        if vorab is not None and grund:
             stat.ohne_llm_ausserhalb += 1
-            vorab.abweichung = "; ".join(x for x in (vorab.abweichung, f"ohne LLM: PLZ {vorab.plz} liegt in {vorab.bundesland}") if x)
+            vorab.abweichung = "; ".join(x for x in (vorab.abweichung, f"ohne LLM: {grund}") if x)
             return vorab
     if extractor is not None and seiten:
         antwort = extractor.extract(seiten)
@@ -168,6 +185,49 @@ def _eine(storage: Storage, k: Kandidat, extractor, pruefer, ausschluss, stat: E
     if hinweis := _robots_hinweis(storage, seiten):
         kanzlei.abweichung = "; ".join(x for x in (kanzlei.abweichung, hinweis) if x)
     return kanzlei
+
+
+# PLZ + Ort, auch über einen Zeilenumbruch („10115\nBerlin") und ohne Trennzeichen dahinter
+_PLZ_LOSE = re.compile(r"(?<![\d.,/-])(?:D\s*-\s*)?(\d{5})[ \t]*\n?[ \t]*([A-ZÄÖÜ][a-zäöüß]+)")
+_KEINE_PLZ_DAVOR = re.compile(r"(?:HR\s?[AB]|PR|VR|GnR|Nr\.?|Nummer|Konto|IBAN|BLZ|USt|St\.?-?Nr)\W*$", re.I)
+
+
+def plz_in_seiten(seiten, ausschluss: Ausschluss) -> list[str]:
+    return list(_plz_orte_in_seiten(seiten, ausschluss))
+
+
+def _plz_orte_in_seiten(seiten, ausschluss: Ausschluss) -> dict[str, str]:
+    """Alle PLZ mit Ort aus Impressum, Kontakt- und Startseite – ohne Fremd-Abschnitte (Kammer, Versicherung,
+    Hoster) und ohne Register-/Kontonummern. Für die Vorprüfung, unabhängig von der strengen Adressregel."""
+    gefunden: dict[str, str] = {}  # PLZ → Ort
+    for t in (Seitentyp.IMPRESSUM, Seitentyp.KONTAKT, Seitentyp.START):
+        if t not in seiten:
+            continue
+        zeilen = (text_normalisieren(seiten[t].text) or "").splitlines()
+        fremd = ausschluss.fremd_zeilen(zeilen)
+        text = "\n".join("" if i in fremd else z for i, z in enumerate(zeilen))
+        for m in _PLZ_LOSE.finditer(text):
+            if not _KEINE_PLZ_DAVOR.search(text[max(0, m.start() - 20): m.start()]):
+                gefunden.setdefault(m.group(1), m.group(2))
+    return gefunden
+
+
+def _ausserhalb_vorab(vorab, seiten, ausschluss: Ausschluss, pruefer: PlzPruefer, ziel_land: str) -> str | None:
+    """Grund, wenn die Kanzlei sicher außerhalb liegt: Regel-Adresse außerhalb, oder ohne Regel-Adresse alle
+    PLZ der Seiten außerhalb (mindestens eine bekannt). Eine PLZ im Land → None (LLM entscheidet)."""
+    if vorab.plz:
+        if vorab.bundesland and vorab.bundesland != ziel_land:
+            return f"PLZ {vorab.plz} liegt in {vorab.bundesland}"
+        return None
+    orte = _plz_orte_in_seiten(seiten, ausschluss)
+    laender = {plz: pruefer.pruefe(plz, None).bundesland for plz in list(orte)[:8]}
+    bekannt = {p: land for p, land in laender.items() if land}
+    if bekannt and ziel_land not in bekannt.values():
+        p, land = next(iter(bekannt.items()))
+        # PLZ, Ort und Bundesland übernehmen, damit Status und Blatt „Außerhalb Bundesland" stimmen
+        vorab.plz, vorab.ort, vorab.bundesland = p, orte[p], land
+        return f"PLZ {p} (aus dem Seitentext) liegt in {land}"
+    return None
 
 
 def _robots_hinweis(storage: Storage, seiten) -> str | None:

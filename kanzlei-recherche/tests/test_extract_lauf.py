@@ -11,7 +11,7 @@ from recherche.extract.base import (
 from recherche.extract.lauf import run_extract
 from recherche.extract.rules import Ausschluss
 from recherche.fixtures import Fixture
-from recherche.models import Fund, Kandidat, Konfidenz, SchrittStatus, Status
+from recherche.models import Fund, Kandidat, Konfidenz, SchrittStatus, Seitentyp, Status
 from recherche.normalize import PlzPruefer
 
 BSP = FIXTURES / "kanzleiseiten" / "beispiele"
@@ -163,3 +163,83 @@ def test_ausserhalb_ohne_llm_aufruf(storage, ausschluss):
     ex2 = AufzeichnungsExtractor()
     run_extract(storage, "SH", ex2, _pruefer(), ausschluss, "l2", ziel_land="Schleswig-Holstein")
     assert ex2.aufrufe == 1 and storage.kanzlei_fuer_kandidat(kid).status == Status.NEU
+
+
+def test_unerwarteter_fehler_blockiert_den_lauf_nicht(storage, ausschluss, monkeypatch):
+    """Ein Kandidat mit unerwartetem Fehler (z. B. in der Vorprüfung) hielt den ganzen Lauf an; jeder
+    Neustart scheiterte wieder an ihm. Jetzt: Kandidat als Fehler markiert, Lauf geht weiter."""
+    import recherche.extract.lauf as lauf
+
+    kaputt = _kandidat_mit_seiten(storage, "foerde-steuer.example")
+    gut = _kandidat_mit_seiten(storage, "hansen-steuerberatung.example")
+    original = lauf.zusammenfuehren
+
+    def zusammenfuehren(k, *a, **kw):
+        if k.id == kaputt:
+            raise KeyError("seltsame Seite")
+        return original(k, *a, **kw)
+
+    monkeypatch.setattr(lauf, "zusammenfuehren", zusammenfuehren)
+    meldungen = []
+    stat = run_extract(storage, "SH", AufzeichnungsExtractor(), _pruefer(), ausschluss, "l1",
+                       ziel_land="Schleswig-Holstein", fortschritt=meldungen.append)
+    assert (stat.fertig, stat.fehler) == (1, 1)
+    assert storage.kanzlei_fuer_kandidat(gut) is not None
+    assert storage.get_kandidat(kaputt).extract_status == SchrittStatus.FEHLER
+    assert "KeyError" in storage.get_kandidat(kaputt).fehler and any("übersprungen" in m for m in meldungen)
+
+
+def test_fehler_in_der_vorpruefung_faellt_auf_llm_zurueck(storage, ausschluss, monkeypatch):
+    import recherche.extract.lauf as lauf
+
+    kid = _kandidat_mit_seiten(storage, "hansen-steuerberatung.example")
+    original, aufrufe = lauf.zusammenfuehren, []
+
+    def zusammenfuehren(k, funde, seiten, regel, llm, *a, **kw):
+        aufrufe.append(llm is not None)
+        if llm is None:
+            raise ValueError("Vorprüfung kaputt")
+        return original(k, funde, seiten, regel, llm, *a, **kw)
+
+    monkeypatch.setattr(lauf, "zusammenfuehren", zusammenfuehren)
+    ex = AufzeichnungsExtractor()
+    run_extract(storage, "SH", ex, _pruefer(), ausschluss, "l1", ziel_land="Schleswig-Holstein")
+    assert ex.aufrufe == 1 and aufrufe == [False, True]
+    assert storage.kanzlei_fuer_kandidat(kid).kanzleiname
+
+
+@pytest.mark.parametrize("impressum", [
+    # PLZ und Ort in getrennten Zeilen – die strenge Adressregel findet nichts, das LLM schon
+    ["Impressum", "Steuerkanzlei Steusloff", "Musterweg 3", "10115", "Berlin", "Telefon 030 1234567"],
+    ["Impressum", "Steuerkanzlei Steusloff · Musterweg 3 · 10115 Berlin Mitte bei uns"],
+])  # fmt: skip
+def test_ohne_llm_auch_ohne_regel_adresse(storage, ausschluss, impressum):
+    """steusloff.tax: Impressum mit PLZ außerhalb, aber die Regel-Adresse fehlte → bisher immer LLM (10 s)."""
+    from recherche.models import Seite
+
+    kid = storage.add_kandidat(Kandidat(bundesland="SH", domain="steusloff.example", website="https://steusloff.example/",
+                                        crawl_status=SchrittStatus.FERTIG))
+    html = "".join(f"<p>{z}</p>" for z in impressum)
+    s = Seite(url="https://steusloff.example/impressum", domain="steusloff.example", seitentyp=Seitentyp.IMPRESSUM,
+              http_status=200, html=html, text="\n".join(impressum))
+    storage.save_seite(s)
+    storage.setze_kandidat_seite(kid, Seitentyp.IMPRESSUM, s.url)
+    berlin = PlzPruefer(client=httpx.Client(transport=httpx.MockTransport(
+        lambda r: httpx.Response(200, json=[{"name": "Berlin", "federalState": {"name": "Berlin"}}]))))
+    ex, zeilen = AufzeichnungsExtractor(), []
+    stat = run_extract(storage, "SH", ex, berlin, ausschluss, "l1", ziel_land="Schleswig-Holstein",
+                       fortschritt=zeilen.append)
+    k = storage.kanzlei_fuer_kandidat(kid)
+    assert (ex.aufrufe, stat.ohne_llm_ausserhalb, k.status) == (0, 1, Status.AUSSERHALB)
+    assert "ohne LLM: PLZ 10115" in k.abweichung and "ohne LLM" in zeilen[0]
+
+
+def test_versicherung_ausserhalb_reicht_nicht(storage, ausschluss):
+    """SH-Kanzlei, deren eigene Adresse die Regel nicht findet, mit Versicherung in Hannover: LLM entscheidet."""
+    from recherche.extract.lauf import plz_in_seiten
+    from recherche.models import Seite
+
+    zeilen = ["Impressum", "Kanzlei Nord", "24103", "Kiel", "Berufshaftpflichtversicherung:",
+              "HDI Versicherung AG, HDI-Platz 1, 30659 Hannover"]
+    s = Seite(url="https://n.example/impressum", domain="n.example", seitentyp=Seitentyp.IMPRESSUM, text="\n".join(zeilen))
+    assert plz_in_seiten({Seitentyp.IMPRESSUM: s}, ausschluss) == ["24103"]  # Versicherungsabschnitt ist fremd

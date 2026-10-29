@@ -412,9 +412,13 @@ der nächsten Quelle füllen.**
   („außerhalb Schleswig-Holstein laut Suchtreffer (01067 Dresden – Sachsen)" im Blatt „Nicht
   gefunden"); eine PLZ im Land oder keine erkennbare PLZ → crawlen.
 - **Vorprüfung ohne LLM**: Vor dem LLM-Aufruf wird die Adresse per Regel (Discovery, Impressum)
-  zusammengeführt und die PLZ geprüft; liegt sie außerhalb des Bundeslandes, entsteht die Zeile ohne
-  LLM (Status `außerhalb Bundesland`, Hinweis „ohne LLM: PLZ … liegt in …"). Spart bei Kleingemeinden,
-  wo Brave mit bundesweiten Kanzleien auffüllt, den Großteil der Extraktionszeit.
+  zusammengeführt und die PLZ geprüft. Findet die strenge Adressregel nichts (PLZ und Ort in getrennten
+  Zeilen, Fußzeilen mit Trennzeichen – im Gesamtlauf SH der Normalfall), zählen alle PLZ mit Ort aus
+  Impressum, Kontakt- und Startseite ohne Fremd-Abschnitte (Kammer, Versicherung, Hoster) und ohne
+  Register-/Kontonummern: liegen alle bekannten außerhalb, entsteht die Zeile ohne LLM (Status
+  `außerhalb Bundesland`, PLZ/Ort/Bundesland aus dem Text, Hinweis „ohne LLM: …", Konsole „…, ohne LLM").
+  Eine PLZ im Land → LLM entscheidet. `extract -v` protokolliert die Vorprüfung je Kandidat. Ein
+  unerwarteter Fehler eines Kandidaten markiert nur diesen als Fehler, der Lauf geht weiter.
 - `recherche extract --alle [--ja]`: alle Kanzleien neu extrahieren (nach Regeländerungen), mit
   Rückfrage und Zeitschätzung aus dem Lauf-Protokoll (sonst 15 s je Kanzlei); fortsetzbar, gepflegte
   Status bleiben. Erst nach einem Gesamtlauf ausführen.
