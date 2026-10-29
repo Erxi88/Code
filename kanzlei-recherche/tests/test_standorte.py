@@ -66,6 +66,9 @@ def test_export_und_pruefung(storage, tmp_path):
     kopf = [c.value for c in ws[1]]
     werte = {r[kopf.index("Domain")]: r[kopf.index("Zentrale/Standort")] for r in ws.iter_rows(min_row=2, values_only=True)}
     assert werte["shbb.example"] == "Zentrale (4 Standorte)" and werte["andere-kanzlei.example"] is None
+    zentrale = {r[kopf.index("Domain")]: r[kopf.index("Zentrale")] for r in ws.iter_rows(min_row=2, values_only=True)}
+    assert zentrale["heide.shbb.example"] == zentrale["ihre-steuerberater.example"] == "shbb.example"
+    assert zentrale["andere-kanzlei.example"] is None
 
 
 def test_weitere_domains_einer_kanzlei_werden_eine_zeile(storage, tmp_path):

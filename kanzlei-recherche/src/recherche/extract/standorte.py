@@ -123,6 +123,16 @@ def standort_spalte(kanzleien: list[Kanzlei]) -> dict[str, str]:
     return ergebnis
 
 
+def zentrale_spalte(kanzleien: list[Kanzlei]) -> dict[str, str]:
+    """Schlüssel → Hauptdomain der Zentrale für alle Zeilen einer Gruppe (Zentrale selbst eingeschlossen)."""
+    ergebnis = {}
+    for g in gruppen(kanzleien)[0]:
+        z = zentrale(g)
+        for k in g:
+            ergebnis[_schluessel(k)] = z.domain or z.kanzleiname or ""
+    return ergebnis
+
+
 def zusammengefuehrt(kanzleien: list[Kanzlei], bundesland: str) -> list[Dublette]:
     """Weitere Domains einer Kanzlei als „zusammengeführt" fürs Blatt „Dubletten" (ein Eintrag je Kanzlei)."""
     nach_schluessel = {_schluessel(k): k for k in kanzleien}

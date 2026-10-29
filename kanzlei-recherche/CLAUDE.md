@@ -468,7 +468,8 @@ der nächsten Quelle füllen.**
 - Spalte „Zentrale/Standort" (hinter dem Kanzleinamen, `extract/standorte.py`): Zeilen derselben
   Stammdomain (Subdomains je Niederlassung) oder mit gleichem Telefon + Ansprechpartner sind eine
   Kanzlei mit mehreren Standorten; Zentrale ist die Zeile auf der gemeinsamen Stammdomain
-  („Zentrale (21 Standorte)" / „Standort von SHBB …"). Nur beim Export berechnet, kein Schema.
+  („Zentrale (21 Standorte)" / „Standort von SHBB …"). Daneben Spalte „Zentrale" mit der Hauptdomain
+  für alle Zeilen der Gruppe. Nur beim Export berechnet, kein Schema.
   **Weitere Domains** derselben Kanzlei (gleicher Name, Telefon, Hauptansprechpartner und Adresse;
   Knüppel & Partner mit 14 Orts-Domains) sind keine Standorte: In der Versandliste steht nur die
   Zentrale („+ 13 weitere Domains: …"); im Blatt „Dubletten" ein Eintrag „weitere domains /

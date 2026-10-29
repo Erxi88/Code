@@ -14,7 +14,7 @@ from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.worksheet.worksheet import Worksheet
 
 from .extract.kanzlei import grund_aus_abweichung
-from .extract.standorte import spiegel_domains, standort_spalte
+from .extract.standorte import spiegel_domains, standort_spalte, zentrale_spalte
 from .models import Dublette, Kanzlei, LaufEintrag, NichtGefunden, Status
 from .storage import Storage
 
@@ -137,11 +137,13 @@ def _blatt(ws: Worksheet, spalten: Sequence[Spalte], zeilen: Sequence[Any]) -> N
     ws.freeze_panes = "A2"
 
 
-def _mit_standort(spalten: list[Spalte], standorte: dict[str, str]) -> list[Spalte]:
-    """Spalte „Zentrale/Standort" hinter dem Kanzleinamen (Niederlassungen einer Kanzlei, extract/standorte.py)."""
-    neu: Spalte = ("Zentrale/Standort", 26, lambda k: standorte.get(k.domain or f"id:{k.id}"))
+def _mit_standort(spalten: list[Spalte], standorte: dict[str, str], zentralen: dict[str, str] | None = None) -> list[Spalte]:
+    """Spalten „Zentrale/Standort" und „Zentrale" (Hauptdomain) hinter dem Kanzleinamen (extract/standorte.py)."""
+    zentralen = zentralen or {}
+    neu: list[Spalte] = [("Zentrale/Standort", 26, lambda k: standorte.get(k.domain or f"id:{k.id}")),
+                         ("Zentrale", 24, lambda k: zentralen.get(k.domain or f"id:{k.id}"))]
     i = [s[0] for s in spalten].index("Kanzleiname") + 1
-    return [*spalten[:i], neu, *spalten[i:]]
+    return [*spalten[:i], *neu, *spalten[i:]]
 
 
 def _status_dropdown(ws: Worksheet, spalten: Sequence[Spalte], anzahl: int) -> DataValidation:
@@ -168,7 +170,7 @@ def build_workbook(
     protokoll: Sequence[LaufEintrag],
 ) -> Workbook:
     standorte = standort_spalte(list(kanzleien))
-    spalten = _mit_standort(KANZLEI_SPALTEN, standorte)
+    spalten = _mit_standort(KANZLEI_SPALTEN, standorte, zentrale_spalte(list(kanzleien)))
     keine = [k for k in kanzleien if k.status == Status.KEINE_KANZLEI]
     aussen = [k for k in kanzleien if k.status == Status.AUSSERHALB]
     # weitere Domains derselben Kanzlei (gleicher Name, Telefon, Person, Adresse) nur einmal in der Versandliste

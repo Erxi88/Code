@@ -39,7 +39,7 @@ def test_kanzleien_kopf_und_zeilen(wb):
     ws = wb[BLATT_KANZLEIEN]
     kopf = _kopf(ws)
     namen = [s[0] for s in KANZLEI_SPALTEN]
-    assert kopf == [namen[0], "Zentrale/Standort", *namen[1:]]
+    assert kopf == [namen[0], "Zentrale/Standort", "Zentrale", *namen[1:]]
     for pflicht in ("Kanzleiname", "Rechtsform", "Straße", "PLZ", "Ort", "Bundesland", "Telefon",
                     "E-Mail", "Website", "Hauptansprechpartner", "Teamgröße", "Teamgröße-Basis",
                     "Konfidenz", "Quell-URLs", "Abrufdatum", "Status"):
