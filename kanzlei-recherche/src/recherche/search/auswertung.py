@@ -48,30 +48,32 @@ class StufenZeile:
         return self.kanzleien / self.kandidaten if self.kandidaten else None
 
 
-def _stufe_name(plan: Suchplan, ort: Ort | None, name: str) -> str:
+def _stufe_name(plan: Suchplan, ort: Ort | None, name: str, grenzen: list[int] | None = None) -> str:
     if (ort and ort.ist_zusatz) or (ort is None and _ZUSATZ.search(name)):
         return "Stadtteile (PLZ-Bezirke)"
     if ort is None:
         return "nicht in der Ortsliste"
     if ort.einwohner is None:
         return "ohne Einwohnerzahl"
+    unter_grenzen = sorted(grenzen) + [None] if grenzen else [s.unter for s in plan.regel]
     vorher = 0
-    for s in plan.regel:
-        if s.unter is None or ort.einwohner < s.unter:
-            return f"{vorher:,}–{s.unter - 1:,} Einwohner".replace(",", ".") if s.unter else f"ab {vorher:,} Einwohner".replace(",", ".")
-        vorher = s.unter
+    for unter in unter_grenzen:
+        if unter is None or ort.einwohner < unter:
+            return f"{vorher:,}–{unter - 1:,} Einwohner".replace(",", ".") if unter else f"ab {vorher:,} Einwohner".replace(",", ".")
+        vorher = unter
     return f"ab {vorher:,} Einwohner".replace(",", ".")
 
 
 def auswerten(storage: Storage, bundesland: str, orte: list[Ort], plan: Suchplan, adapter: str,
-              ziel_land: str) -> list[StufenZeile]:
+              ziel_land: str, grenzen: list[int] | None = None) -> list[StufenZeile]:
+    """`grenzen` (z. B. [500, 2000, 20000]): eigene Einteilung statt der Einwohnerregel – zum Kalibrieren."""
     nach_name = {o.name: o for o in orte}
     zeilen: dict[str, StufenZeile] = {}
     orte_je_stufe: dict[str, set[str]] = defaultdict(set)
 
     def zeile(name: str | None) -> StufenZeile:
         ort = nach_name.get(name or "")
-        stufe = _stufe_name(plan, ort, name or "")
+        stufe = _stufe_name(plan, ort, name or "", grenzen)
         return zeilen.setdefault(stufe, StufenZeile(stufe))
 
     for e in storage.lauf_protokoll(bundesland):
@@ -103,7 +105,11 @@ def auswerten(storage: Storage, bundesland: str, orte: list[Ort], plan: Suchplan
             z.kanzleien += 1
     for stufe, namen in orte_je_stufe.items():
         zeilen[stufe].orte = len(namen)
-    return sorted(zeilen.values(), key=lambda z: z.stufe)
+    def rang(z: StufenZeile) -> tuple[int, int]:
+        zahl = re.match(r"(?:ab )?([\d.]+)", z.stufe)
+        return (0, int(zahl.group(1).replace(".", ""))) if zahl else (1, 0)
+
+    return sorted(zeilen.values(), key=rang)
 
 
 def als_csv(liste: list[StufenZeile], pfad: Path) -> Path:

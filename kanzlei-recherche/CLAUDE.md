@@ -65,7 +65,8 @@ der nächsten Quelle füllen.**
   geholt. Orte ohne Einwohnerzahl werden vollständig gesucht. Gilt für `search` und
   `search-compare`, nicht für `fill`.
   Je Stufe schaltet `weiter: false` das Weiterblättern ab (Standard für unter 2.000 Einwohner).
-  `recherche suche-auswertung [--out datei.csv]` zeigt je Einwohnerstufe Orte, Queries, Anfragen (davon
+  `varianten: 0` = keine eigene Suche für diese Stufe (Kanzleien dort über Nachbarorte oder Stufe B).
+  `recherche suche-auswertung [--grenzen 500,2000,20000] [--out datei.csv]` zeigt je Einwohnerstufe Orte, Queries, Anfragen (davon
   über der Seitenregel), Kosten, neue Kandidaten und deren Ergebnis (Kanzlei im Land, außerhalb, keine
   Kanzlei, nicht gelesen), Kosten je Kanzlei und Kanzleien je 100 Anfragen – zum Kalibrieren der Regel.
 - **Fremdort-Filter** (`discovery.stufe_a.fremdorte`, `config/grossstaedte.yaml`): Bei Orten unter

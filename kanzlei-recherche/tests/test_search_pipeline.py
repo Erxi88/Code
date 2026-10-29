@@ -320,3 +320,25 @@ def test_suche_auswertung_je_einwohnerstufe(storage):
     assert (klein.anfragen, klein.ueber_regel, klein.kandidaten, klein.kanzleien, klein.ausserhalb) == (3, 2, 2, 1, 1)
     assert (gross.kanzleien, gross.keine_kanzlei, gross.nicht_gelesen, gross.ueber_regel) == (1, 1, 1, 0)
     assert klein.kosten_je_kanzlei == pytest.approx(0.015)
+
+
+def test_suche_auswertung_mit_eigenen_grenzen(storage):
+    from recherche.models import LaufEintrag
+    from recherche.search.auswertung import auswerten
+    from recherche.search.pipeline import Suchplan
+
+    orte = [Ort("Klein", "25882", einwohner=300), Ort("Mittel", "25813", einwohner=1500)]
+    for o in orte:
+        storage.log_lauf(LaufEintrag(lauf_id="l", schritt="search", bundesland="SH", adapter="brave", ort=o.name,
+                                     suchbegriff=f"Steuerberater {o.name}", anfragen=1))
+    stufen = [z.stufe for z in auswerten(storage, "SH", orte, Suchplan([]), "brave", "Schleswig-Holstein", [500, 2000])]
+    assert stufen == ["0–499 Einwohner", "500–1.999 Einwohner"]
+
+
+def test_stufe_ohne_eigene_suche():
+    from recherche.config import EinwohnerStufe
+    from recherche.search.pipeline import Suchplan
+
+    plan = Suchplan(["Steuerberater {ort}"], regel=[EinwohnerStufe(unter=500, varianten=0), EinwohnerStufe(varianten=1)])
+    assert plan.queries(Ort("Winzig", "25882", einwohner=120)) == []
+    assert plan.queries(Ort("Husum", "25813", einwohner=23000)) == ["Steuerberater Husum"]

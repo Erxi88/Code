@@ -562,6 +562,7 @@ def suche_auswertung(
     config: ConfigOpt = None,
     adapter: Annotated[str | None, typer.Option(help="Websuche-Adapter (Standard: discovery.stufe_a.adapter)")] = None,
     out: Annotated[Path | None, typer.Option("--out", "-o", help="Ergebnis als CSV (Semikolon)")] = None,
+    grenzen: Annotated[str | None, typer.Option(help="eigene Einwohnergrenzen, z. B. 500,2000,20000")] = None,
 ) -> None:
     """Ausbeute der Websuche je Einwohnerstufe: Anfragen, Kosten, neue Kandidaten und davon echte Kanzleien
     im Bundesland – zum Kalibrieren der Einwohnerregel (nach extract und kanzlei-pruefung aussagekräftig)."""
@@ -570,7 +571,8 @@ def suche_auswertung(
     ctx = _kontext(config, bundesland, db)
     name = adapter or ctx.settings.discovery.stufe_a.adapter
     with ctx.storage() as st:
-        liste = auswerten(st, ctx.bundesland, ctx.orte(None), ctx.vorlagen(), name, ctx.bl_cfg.name)
+        liste = auswerten(st, ctx.bundesland, ctx.orte(None), ctx.vorlagen(), name, ctx.bl_cfg.name,
+                          [int(g) for g in grenzen.replace(".", "").split(",") if g.strip()] if grenzen else None)
     t = Table(title=f"Websuche {name} je Einwohnerstufe ({ctx.bundesland})")
     for col in ("Stufe", "Orte", "Queries", "Anfragen", "davon über Seitenregel", "Kosten", "Kandidaten",
                 "Kanzleien im Land", "außerhalb", "keine Kanzlei", "nicht gelesen", "Kosten je Kanzlei",
