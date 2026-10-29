@@ -92,11 +92,30 @@ def standort_spalte(kanzleien: list[Kanzlei]) -> dict[str, str]:
 
 
 def dubletten_verdacht(kanzleien: list[Kanzlei], bundesland: str) -> list[Dublette]:
-    """Gleiches Telefon + gleicher Hauptansprechpartner auf verschiedenen Domains → Verdacht fürs Blatt."""
-    return [
-        Dublette(behalten=_schluessel(a), dublette=_schluessel(b), bundesland=bundesland, kriterium=KRITERIUM,
-                 art=DublettenArt.VERDACHT, kanzleiname=a.kanzleiname or b.kanzleiname,
-                 details=f"Telefon {a.telefon}, Ansprechpartner {a.hauptansprechpartner.name}; Adressen "
-                         f"{a.strasse or '–'}, {a.ort or '–'} / {b.strasse or '–'}, {b.ort or '–'}")
-        for a, b in gruppen(kanzleien)[1]
-    ]
+    """Ein Verdacht **je Gruppe**, die über gleiches Telefon + gleichen Hauptansprechpartner mehrere
+    Stammdomains verbindet (egido.de / egido-flensburg.de …; shbb.de / ihre-steuerberater.com).
+    Behalten = Zentrale, Dublette = je fremder Stammdomain eine Domain. Standorte derselben Stammdomain
+    (Subdomains) sind keine Dubletten, sondern stehen in der Spalte „Zentrale/Standort"."""
+    gruppen_liste, paare = gruppen(kanzleien)
+    verbunden = {_schluessel(k) for a, b in paare for k in (a, b)}
+    ergebnis = []
+    for g in gruppen_liste:
+        if not any(_schluessel(k) in verbunden for k in g):
+            continue  # nur über die Stammdomain gruppiert
+        z = zentrale(g)
+        z_stamm = stammdomain(z.domain) if z.domain else None
+        fremd: dict[str, Kanzlei] = {}
+        for k in sorted(g, key=lambda k: len(k.domain or "")):  # je Stammdomain die kürzeste Domain
+            stamm = stammdomain(k.domain) if k.domain else _schluessel(k)
+            if stamm != z_stamm:
+                fremd.setdefault(stamm, k)
+        if not fremd:
+            continue
+        a, b = next((a, b) for a, b in paare if _schluessel(a) in {_schluessel(k) for k in g})
+        orte = sorted({k.ort for k in fremd.values() if k.ort})
+        ergebnis.append(Dublette(
+            behalten=_schluessel(z), dublette=", ".join(_schluessel(k) for k in fremd.values()), bundesland=bundesland,
+            kriterium=KRITERIUM, art=DublettenArt.VERDACHT, kanzleiname=z.kanzleiname,
+            details=f"{len(g)} Zeilen, {len(fremd) + 1} Domains; Telefon {a.telefon}, Ansprechpartner "
+                    f"{a.hauptansprechpartner.name}" + (f"; Orte der Dubletten: {', '.join(orte)}" if orte else "")))
+    return ergebnis

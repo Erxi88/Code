@@ -678,6 +678,11 @@ class Storage:
                 ),
             )  # fmt: skip
 
+    def loesche_dubletten(self, bundesland: str, kriterium: str) -> int:
+        with self.conn:
+            return self.conn.execute(
+                "DELETE FROM dubletten WHERE bundesland = ? AND kriterium = ?", (bundesland, kriterium)).rowcount
+
     def dubletten(self, bundesland: str) -> list[Dublette]:
         rows = self.conn.execute(
             "SELECT * FROM dubletten WHERE bundesland = ? ORDER BY id", (bundesland,)

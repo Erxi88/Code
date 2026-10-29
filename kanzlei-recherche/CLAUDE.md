@@ -425,9 +425,10 @@ der nächsten Quelle füllen.**
 - Blatt „Keine Kanzlei" (nur wenn es solche Zeilen gibt): alle Spalten wie „Kanzleien", Grund
   vorn – zum Zurückholen von Hand. Diese Zeilen fehlen im Blatt „Kanzleien".
 - Blatt „Außerhalb Bundesland" (nur wenn es solche Zeilen gibt): alle Spalten wie „Kanzleien".
-- Blatt „Dubletten". `kanzlei-pruefung` trägt dort zusätzlich einen Verdacht ein, wenn zwei Zeilen
-  verschiedener Domains dasselbe Telefon **und** denselben Hauptansprechpartner haben (SHBB-Niederlassung
-  und Zentrale mit verschiedenen Adressen).
+- Blatt „Dubletten". `kanzlei-pruefung` trägt dort zusätzlich **einen Verdacht je Gruppe** ein, wenn
+  gleiches Telefon **und** gleicher Hauptansprechpartner mehrere Stammdomains verbinden (Behalten =
+  Zentrale, Dublette = je fremder Stammdomain eine Domain; egido.de / egido-flensburg.de …). Standorte
+  derselben Stammdomain (Subdomains) sind keine Dubletten. Die Einträge werden bei jedem Lauf ersetzt.
 - Spalte „Zentrale/Standort" (hinter dem Kanzleinamen, `extract/standorte.py`): Zeilen derselben
   Stammdomain (Subdomains je Niederlassung) oder mit gleichem Telefon + Ansprechpartner sind eine
   Kanzlei mit mehreren Standorten; Zentrale ist die Zeile auf der gemeinsamen Stammdomain
