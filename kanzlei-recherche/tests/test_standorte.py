@@ -42,8 +42,10 @@ def test_dubletten_verdacht_ein_eintrag_je_gruppe():
 
 def test_viele_domains_einer_kanzlei_ein_eintrag():
     """EGIDO: vier Domains, gleiche Nummer und Person – bisher 6 Paare, jetzt ein Eintrag."""
-    egido = [_k(d, "+49 40 524765780", "Eike Giersdorf", name="EGIDO GmbH", n_ap=2 if d == "egido.example" else 1)
-             for d in ("egido.example", "egido-flensburg.example", "egido-neumuenster.example", "egido-norderstedt.example")]
+    egido = [_k(d, "+49 40 524765780", "Eike Giersdorf", name="EGIDO GmbH", n_ap=2 if d == "egido.example" else 1,
+                strasse=f"Straße {i}", plz="24937")  # verschiedene Adressen → Standorte, Verdacht
+             for i, d in enumerate(("egido.example", "egido-flensburg.example", "egido-neumuenster.example",
+                                    "egido-norderstedt.example"))]
     (d,) = dubletten_verdacht(egido, "SH")
     assert d.behalten == "egido.example" and d.dublette.count(",") == 2
 
@@ -64,3 +66,26 @@ def test_export_und_pruefung(storage, tmp_path):
     kopf = [c.value for c in ws[1]]
     werte = {r[kopf.index("Domain")]: r[kopf.index("Zentrale/Standort")] for r in ws.iter_rows(min_row=2, values_only=True)}
     assert werte["shbb.example"] == "Zentrale (4 Standorte)" and werte["andere-kanzlei.example"] is None
+
+
+def test_weitere_domains_einer_kanzlei_werden_eine_zeile(storage, tmp_path):
+    """Knüppel & Partner: 14 Orts-Domains, gleiche Adresse, Telefon, Person, Name → eine Zeile in der Versandliste."""
+    adresse = dict(strasse="Kirchenstraße 5", plz="25335")
+    knueppel = [_k(d, "+49 4121 265830", "Hans-Jürgen Bendt", ort="Elmshorn", name="Knüppel & Partner StBG mbH",
+                   n_ap=3 if d == "knueppel-partner.example" else 1, **adresse)
+                for d in ("knueppel-partner.example", "steuerberater-wedel.example", "steuerberater-elmshorn.example")]
+    for k in [*knueppel, *SHBB]:
+        storage.upsert_kanzlei(k)
+    spalte = standort_spalte(storage.kanzleien("SH"))
+    assert spalte["knueppel-partner.example"].startswith("+ 2 weitere Domains: steuerberater-elmshorn.example")
+    assert spalte["steuerberater-wedel.example"] == "weitere Domain von knueppel-partner.example"
+    assert spalte["shbb.example"] == "Zentrale (4 Standorte)"  # SHBB: eigene Adressen bleiben Standorte
+    run_pruefung(storage, "SH", kanzlei_erkennung=False)
+    arten = {(d.kriterium, d.art.value, d.behalten) for d in storage.dubletten("SH")}
+    assert ("weitere domains", "zusammengeführt", "knueppel-partner.example") in arten
+    assert not any(b == "knueppel-partner.example" for k, a, b in arten if k == "telefon+ansprechpartner")
+    ws = load_workbook(export_excel(storage, "SH", tmp_path / "x.xlsx"))[BLATT_KANZLEIEN]
+    kopf = [c.value for c in ws[1]]
+    domains = [r[kopf.index("Domain")] for r in ws.iter_rows(min_row=2, values_only=True)]
+    assert "knueppel-partner.example" in domains and "steuerberater-wedel.example" not in domains
+    assert "heide.shbb.example" in domains

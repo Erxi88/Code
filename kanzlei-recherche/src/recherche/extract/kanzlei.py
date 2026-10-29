@@ -183,11 +183,17 @@ def run_pruefung(storage: Storage, bundesland: str, rechtsformen=STANDARD_RECHTS
         stat.herabgestuft += vorher_konf == Konfidenz.HOCH and k.konfidenz != Konfidenz.HOCH
         storage.upsert_kanzlei(k)
     # Dubletten-Verdacht: gleiches Telefon + gleicher Ansprechpartner auf verschiedenen Domains (SHBB)
-    from .standorte import KRITERIUM, dubletten_verdacht
+    from .standorte import (
+        KRITERIUM,
+        KRITERIUM_DOMAINS,
+        dubletten_verdacht,
+        zusammengefuehrt,
+    )
 
     kanzleien = [k for k in storage.kanzleien(bundesland) if k.status not in (Status.KEINE_KANZLEI,)]
     storage.loesche_dubletten(bundesland, KRITERIUM)  # bei jedem Lauf neu (auch alte Paar-Einträge)
-    for d in dubletten_verdacht(kanzleien, bundesland):
+    storage.loesche_dubletten(bundesland, KRITERIUM_DOMAINS)
+    for d in [*dubletten_verdacht(kanzleien, bundesland), *zusammengefuehrt(kanzleien, bundesland)]:
         storage.add_dublette(d)
         stat.dubletten += 1
     return stat

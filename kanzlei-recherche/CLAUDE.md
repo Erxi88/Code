@@ -433,6 +433,10 @@ der nächsten Quelle füllen.**
   Stammdomain (Subdomains je Niederlassung) oder mit gleichem Telefon + Ansprechpartner sind eine
   Kanzlei mit mehreren Standorten; Zentrale ist die Zeile auf der gemeinsamen Stammdomain
   („Zentrale (21 Standorte)" / „Standort von SHBB …"). Nur beim Export berechnet, kein Schema.
+  **Weitere Domains** derselben Kanzlei (gleicher Name, Telefon, Hauptansprechpartner und Adresse;
+  Knüppel & Partner mit 14 Orts-Domains) sind keine Standorte: In der Versandliste steht nur die
+  Zentrale („+ 13 weitere Domains: …"); im Blatt „Dubletten" ein Eintrag „weitere domains /
+  zusammengeführt". Standorte mit eigener Adresse (SHBB) bleiben eigene Zeilen.
 - Blatt „Lauf-Protokoll": Suchbegriff, Trefferzahl, neue Kandidaten, Anfragen, Kosten, Laufzeit.
 
 ### CLI (`cli.py`)

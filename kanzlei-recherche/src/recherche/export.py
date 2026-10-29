@@ -14,7 +14,7 @@ from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.worksheet.worksheet import Worksheet
 
 from .extract.kanzlei import grund_aus_abweichung
-from .extract.standorte import standort_spalte
+from .extract.standorte import spiegel_domains, standort_spalte
 from .models import Dublette, Kanzlei, LaufEintrag, NichtGefunden, Status
 from .storage import Storage
 
@@ -171,7 +171,9 @@ def build_workbook(
     spalten = _mit_standort(KANZLEI_SPALTEN, standorte)
     keine = [k for k in kanzleien if k.status == Status.KEINE_KANZLEI]
     aussen = [k for k in kanzleien if k.status == Status.AUSSERHALB]
-    kanzleien = [k for k in kanzleien if k.status not in (Status.KEINE_KANZLEI, Status.AUSSERHALB)]
+    # weitere Domains derselben Kanzlei (gleicher Name, Telefon, Person, Adresse) nur einmal in der Versandliste
+    weitere = {id(k) for liste in spiegel_domains(list(kanzleien)).values() for k in liste}
+    kanzleien = [k for k in kanzleien if k.status not in (Status.KEINE_KANZLEI, Status.AUSSERHALB) and id(k) not in weitere]
     wb = Workbook()
     ws = wb.active
     ws.title = BLATT_KANZLEIEN
