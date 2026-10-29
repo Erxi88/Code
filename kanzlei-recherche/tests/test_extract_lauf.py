@@ -141,3 +141,25 @@ def test_hinweis_robots_nicht_abrufbar_in_abweichung(storage, ausschluss):
     storage.cache_put("robots", host, {"status": 500, "text": "", "url": host})
     run_extract(storage, "SH", AufzeichnungsExtractor(), None, ausschluss, "l1")
     assert "robots.txt nicht abrufbar (HTTP 500), Seite gelesen" in storage.kanzlei_fuer_kandidat(kid).abweichung
+
+
+def test_ausserhalb_ohne_llm_aufruf(storage, ausschluss):
+    """Kleingemeinden: Brave liefert bundesweite Kanzleien – PLZ außerhalb SH → kein LLM-Aufruf."""
+    import httpx
+
+    from recherche.normalize import PlzPruefer
+
+    kid = _kandidat_mit_seiten(storage, "hansen-steuerberatung.example")  # Impressum: 24103 Kiel
+    sachsen = {"federalState": {"name": "Sachsen"}}
+    pruefer = PlzPruefer(client=httpx.Client(transport=httpx.MockTransport(
+        lambda r: httpx.Response(200, json=[{"name": "Kiel", **sachsen}]))))  # tut so, als läge 24103 in Sachsen
+    ex = AufzeichnungsExtractor()
+    stat = run_extract(storage, "SH", ex, pruefer, ausschluss, "l1", ziel_land="Schleswig-Holstein")
+    k = storage.kanzlei_fuer_kandidat(kid)
+    assert (ex.aufrufe, stat.ohne_llm_ausserhalb, k.status) == (0, 1, Status.AUSSERHALB)
+    assert "ohne LLM: PLZ 24103 liegt in Sachsen" in k.abweichung
+    # im Land: LLM läuft wie gewohnt
+    storage.set_extract_status(kid, SchrittStatus.OFFEN)
+    ex2 = AufzeichnungsExtractor()
+    run_extract(storage, "SH", ex2, _pruefer(), ausschluss, "l2", ziel_land="Schleswig-Holstein")
+    assert ex2.aufrufe == 1 and storage.kanzlei_fuer_kandidat(kid).status == Status.NEU

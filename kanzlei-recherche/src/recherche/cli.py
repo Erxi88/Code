@@ -301,6 +301,8 @@ def _extract(
                            fortschritt=lambda m: console.print(f"  {m}"),
                            kanzlei_rechtsformen=s.extract.kanzlei_rechtsformen if s.extract.kanzlei_pruefung else None,
                            ziel_land=ctx.bl_cfg.name)  # fmt: skip
+    if stat.ohne_llm_ausserhalb:
+        console.print(f"  {stat.ohne_llm_ausserhalb} ohne LLM-Aufruf: PLZ laut Impressum außerhalb {ctx.bl_cfg.name}")
     console.print(
         f"Fertig: {stat.fertig} Kanzleien ({stat.ohne_website} ohne Website), {stat.fehler} Fehler, "
         f"{stat.llm_aufrufe} LLM-Aufrufe, {pruefer.anfragen} OpenPLZ-Anfragen."

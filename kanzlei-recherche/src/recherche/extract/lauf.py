@@ -39,6 +39,7 @@ class ExtractStatistik:
     tokens: int = 0
     gekuerzt: int = 0  # Kanzleien, deren Seitentext für den Prompt gekürzt wurde
     kontext_voll: int = 0  # Prompt + Antwort ≥ 95 % von num_ctx (Ollama hat vermutlich abgeschnitten)
+    ohne_llm_ausserhalb: int = 0  # PLZ laut Regel außerhalb des Bundeslandes – LLM übersprungen
     abbruch: str | None = None
 
     def hinweis(self) -> str | None:
@@ -99,7 +100,7 @@ def run_extract(
     suchorte = suchorte_je_stammdomain(storage, bundesland) if kanzlei_rechtsformen is not None else {}
     for k in offen:
         try:
-            kanzlei = _eine(storage, k, extractor, pruefer, ausschluss, stat)
+            kanzlei = _eine(storage, k, extractor, pruefer, ausschluss, stat, ziel_land)
             if kanzlei_rechtsformen is not None and k.domain:
                 pruefen(kanzlei, storage.kandidat_seiten(k.id), tuple(kanzlei_rechtsformen), storage.funde_kandidat(k.id),
                         suchorte.get(stammdomain(k.domain), 0), ziel_land)
@@ -136,7 +137,8 @@ def run_extract(
     return stat
 
 
-def _eine(storage: Storage, k: Kandidat, extractor, pruefer, ausschluss, stat: ExtractStatistik):
+def _eine(storage: Storage, k: Kandidat, extractor, pruefer, ausschluss, stat: ExtractStatistik,
+          ziel_land: str | None = None):
     funde = storage.funde_kandidat(k.id)
     if not (k.domain or k.website):
         stat.ohne_website += 1
@@ -144,6 +146,14 @@ def _eine(storage: Storage, k: Kandidat, extractor, pruefer, ausschluss, stat: E
     seiten = storage.kandidat_seiten(k.id)
     regel = regeln_fuer(seiten, ausschluss, k.domain)
     llm = None
+    if extractor is not None and seiten and ziel_land and pruefer:
+        # Vorprüfung ohne LLM: liegt die PLZ (Discovery bzw. Impressum-Regel) außerhalb des Bundeslandes,
+        # spart das den LLM-Aufruf (Kleingemeinden: Brave füllt mit bundesweiten Kanzleien auf)
+        vorab = zusammenfuehren(k, funde, seiten, regel, None, pruefer.pruefe, ausschluss)
+        if vorab.bundesland and vorab.bundesland != ziel_land:
+            stat.ohne_llm_ausserhalb += 1
+            vorab.abweichung = "; ".join(x for x in (vorab.abweichung, f"ohne LLM: PLZ {vorab.plz} liegt in {vorab.bundesland}") if x)
+            return vorab
     if extractor is not None and seiten:
         antwort = extractor.extract(seiten)
         llm = antwort.ergebnis
