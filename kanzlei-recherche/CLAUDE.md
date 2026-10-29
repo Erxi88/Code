@@ -65,6 +65,9 @@ der nächsten Quelle füllen.**
   geholt. Orte ohne Einwohnerzahl werden vollständig gesucht. Gilt für `search` und
   `search-compare`, nicht für `fill`.
   Je Stufe schaltet `weiter: false` das Weiterblättern ab (Standard für unter 2.000 Einwohner).
+  `recherche suche-auswertung [--out datei.csv]` zeigt je Einwohnerstufe Orte, Queries, Anfragen (davon
+  über der Seitenregel), Kosten, neue Kandidaten und deren Ergebnis (Kanzlei im Land, außerhalb, keine
+  Kanzlei, nicht gelesen), Kosten je Kanzlei und Kanzleien je 100 Anfragen – zum Kalibrieren der Regel.
 - **Fremdort-Filter** (`discovery.stufe_a.fremdorte`, `config/grossstaedte.yaml`): Bei Orten unter
   2.000 Einwohnern füllt Brave mit bundesweiten Kanzleien auf. Nennt Titel oder Snippet eine große Stadt
   eines anderen Bundeslandes (Bonn, Aachen, Konstanz …), aber nicht den Suchort, wird kein Kandidat
@@ -469,7 +472,7 @@ der nächsten Quelle füllen.**
 ### CLI (`cli.py`)
 
 `recherche search | fill | coverage | crawl | extract | export | run | search-compare | orte |
-blocklist-vorschlag | kanzlei-pruefung | robots-check | fixture-add | fixture-eval | fixture-prompt |
+blocklist-vorschlag | kanzlei-pruefung | robots-check | suche-auswertung | fixture-add | fixture-eval | fixture-prompt |
 fixture-klassen-umstellen`,
 jeweils mit `--bundesland` und `--db`. **Jeder Schritt muss nach Abbruch
 wiederaufnehmbar sein**: Fortschritt steht in SQLite (Status je Domain und

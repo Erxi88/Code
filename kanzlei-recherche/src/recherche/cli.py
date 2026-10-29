@@ -555,6 +555,38 @@ def robots_check_cmd(
         console.print(zeile, markup=False, highlight=False)
 
 
+@app.command("suche-auswertung")
+def suche_auswertung(
+    bundesland: BundeslandOpt = None,
+    db: DbOpt = None,
+    config: ConfigOpt = None,
+    adapter: Annotated[str | None, typer.Option(help="Websuche-Adapter (Standard: discovery.stufe_a.adapter)")] = None,
+    out: Annotated[Path | None, typer.Option("--out", "-o", help="Ergebnis als CSV (Semikolon)")] = None,
+) -> None:
+    """Ausbeute der Websuche je Einwohnerstufe: Anfragen, Kosten, neue Kandidaten und davon echte Kanzleien
+    im Bundesland – zum Kalibrieren der Einwohnerregel (nach extract und kanzlei-pruefung aussagekräftig)."""
+    from .search.auswertung import als_csv, auswerten
+
+    ctx = _kontext(config, bundesland, db)
+    name = adapter or ctx.settings.discovery.stufe_a.adapter
+    with ctx.storage() as st:
+        liste = auswerten(st, ctx.bundesland, ctx.orte(None), ctx.vorlagen(), name, ctx.bl_cfg.name)
+    t = Table(title=f"Websuche {name} je Einwohnerstufe ({ctx.bundesland})")
+    for col in ("Stufe", "Orte", "Queries", "Anfragen", "davon über Seitenregel", "Kosten", "Kandidaten",
+                "Kanzleien im Land", "außerhalb", "keine Kanzlei", "nicht gelesen", "Kosten je Kanzlei",
+                "Kanzleien je 100 Anfragen"):
+        t.add_column(col, justify="left" if col == "Stufe" else "right")
+    for z in liste:
+        t.add_row(z.stufe, str(z.orte), str(z.queries), str(z.anfragen), str(z.ueber_regel), f"{z.kosten:.2f}",
+                  str(z.kandidaten), str(z.kanzleien), str(z.ausserhalb), str(z.keine_kanzlei), str(z.nicht_gelesen),
+                  _zahl(z.kosten_je_kanzlei, 3), _zahl(z.kanzleien_je_100_anfragen, 1))
+    console.print(t)
+    console.print("Kanzleien zählen beim Suchort, der sie zuerst gefunden hat. „Nicht gelesen\" = ohne Kanzlei-Zeile "
+                  "(Crawl-Fehler oder noch nicht extrahiert).")
+    if out:
+        console.print(f"CSV geschrieben: {als_csv(liste, out)}")
+
+
 @app.command("kanzlei-pruefung")
 def kanzlei_pruefung(
     bundesland: BundeslandOpt = None,

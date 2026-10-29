@@ -290,3 +290,33 @@ def test_kleingemeinden_blaettern_nicht_weiter():
     assert (len(hits), extra, a.aufrufe) == (2, 0, 1)
     b = Seitenweise()
     assert suche_query(b, "q", EinwohnerStufe(seiten=1), 60, set(), WeiterWennVollConfig())[1] == 2
+
+
+def test_suche_auswertung_je_einwohnerstufe(storage):
+    from recherche.config import EinwohnerStufe
+    from recherche.models import Kanzlei, LaufEintrag, Status
+    from recherche.search.auswertung import auswerten
+    from recherche.search.pipeline import Suchplan
+
+    plan = Suchplan(["Steuerberater {ort}"], regel=[EinwohnerStufe(unter=2000, seiten=1),
+                                                    EinwohnerStufe(unter=20000, seiten=2), EinwohnerStufe(seiten=3)])
+    orte = [Ort("Tetenbüll", "25882", einwohner=600), Ort("Husum", "25813", einwohner=23000)]
+    for ort, anfragen in (("Tetenbüll", 3), ("Husum", 3)):
+        storage.log_lauf(LaufEintrag(lauf_id="l", schritt="search", bundesland="SH", adapter="brave", ort=ort,
+                                     suchbegriff=f"Steuerberater {ort}", anfragen=anfragen, kosten=anfragen * 0.005))
+    from recherche.models import Kandidat
+
+    for i, (ort, status, land) in enumerate([("Tetenbüll", Status.AUSSERHALB, "Sachsen"),
+                                              ("Tetenbüll", Status.NEU, "Schleswig-Holstein"),
+                                              ("Husum", Status.NEU, "Schleswig-Holstein"),
+                                              ("Husum", Status.KEINE_KANZLEI, "Schleswig-Holstein"),
+                                              ("Husum", None, None)]):
+        kid = storage.add_kandidat(Kandidat(bundesland="SH", domain=f"k{i}.example", suchort=ort, quelle="brave"))
+        if status:
+            storage.upsert_kanzlei(Kanzlei(kandidat_id=kid, domain=f"k{i}.example", lauf_bundesland="SH",
+                                           status=status, bundesland=land))
+    z = {s.stufe: s for s in auswerten(storage, "SH", orte, plan, "brave", "Schleswig-Holstein")}
+    klein, gross = z["0–1.999 Einwohner"], z["ab 20.000 Einwohner"]
+    assert (klein.anfragen, klein.ueber_regel, klein.kandidaten, klein.kanzleien, klein.ausserhalb) == (3, 2, 2, 1, 1)
+    assert (gross.kanzleien, gross.keine_kanzlei, gross.nicht_gelesen, gross.ueber_regel) == (1, 1, 1, 0)
+    assert klein.kosten_je_kanzlei == pytest.approx(0.015)
