@@ -88,22 +88,29 @@ discovery:
       min_zelle_km: 0.5
       kosten_je_1000: 35.0           # Text Search Enterprise (Telefon/Website) – mit der aktuellen Preisliste abgleichen
       pause_s: 0.2
-    gelbeseiten:                     # Platzhalter
+    # ---- Verzeichnisse (search/verzeichnisse.py): nur `fill --luecken` (oder --orte), 10–15 s je Anfrage.
+    # url_vorlage mit {rubrik} {ort} {plz} {seite}; ohne Vorlage nicht einsatzbereit. Nutzungsbedingungen prüfen!
+    gelbeseiten:
       aktiv: false
       pause_s: 10.0
       pause_jitter_s: 5.0
-    dasoertliche:                    # Platzhalter
+      url_vorlage: null
+    dasoertliche:
       aktiv: false
       pause_s: 10.0
       pause_jitter_s: 5.0
-    elf880:                          # Platzhalter (11880)
+      url_vorlage: null
+    elf880:                          # 11880
       aktiv: false
       pause_s: 10.0
       pause_jitter_s: 5.0
-    stb_verzeichnis:                 # Platzhalter: amtliches Steuerberaterverzeichnis, PLZ für PLZ
+      url_vorlage: null
+    stb_verzeichnis:                 # amtliches Steuerberaterverzeichnis, PLZ für PLZ – Grundliste
       aktiv: false                   # standardmäßig AUS
       pause_s: 30.0
-      pause_jitter_s: 15.0
+      pause_jitter_s: 5.0
+      je_plz: true
+      url_vorlage: null
 
 crawl:
   parallel_domains: 10               # so viele Domains gleichzeitig

@@ -108,7 +108,14 @@ class PlacesConfig(QuelleConfig):
 class VerzeichnisConfig(QuelleConfig):
     rubrik: str = "Steuerberater"
     pause_s: float = 10.0
-    pause_jitter_s: float = 5.0
+    pause_jitter_s: float = 5.0  # Pause je Anfrage: pause_s + Zufall 0..jitter (10–15 s)
+    # Ergebnisseite; Platzhalter {rubrik} {ort} {plz} {seite}. Ohne Vorlage ist der Adapter nicht einsatzbereit.
+    url_vorlage: str | None = None
+    max_seiten: int = 5  # Ergebnisseiten je Ort bzw. PLZ
+    je_plz: bool = False  # True: je PLZ des Ortes suchen (amtliches Verzeichnis)
+    nur_luecken: bool = True  # nur `fill --luecken` (oder ausdrücklich --orte), nie --alle
+    website_nachsuche: bool = True  # neue Einträge ohne Website: Brave „{Name} {Ort}" (eine Seite)
+    user_agent: str = "kanzlei-recherche/0.1 (Recherche-Tool; Kontakt siehe README)"
 
 
 class QuellenConfig(BaseModel):
@@ -121,7 +128,7 @@ class QuellenConfig(BaseModel):
     dasoertliche: VerzeichnisConfig = Field(default_factory=VerzeichnisConfig)
     elf880: VerzeichnisConfig = Field(default_factory=VerzeichnisConfig)
     stb_verzeichnis: VerzeichnisConfig = Field(
-        default_factory=lambda: VerzeichnisConfig(pause_s=30.0, pause_jitter_s=15.0)
+        default_factory=lambda: VerzeichnisConfig(pause_s=30.0, pause_jitter_s=5.0, je_plz=True)
     )
 
     def get(self, name: str) -> QuelleConfig:

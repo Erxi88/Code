@@ -109,6 +109,17 @@ der nächsten Quelle füllen.**
     (`kosten_je_1000` 35 = Enterprise-SKU wegen Telefon/Website). `fill` meldet die Ausbeute:
     „X Treffer, davon Y neu, Z bereits bekannt (Telefon/Adresse/Domain), W verworfen".
     `search-compare` nimmt Stufe-B-Quellen nur mit `--adapter` mit.
+  - **Verzeichnisse** (`search/verzeichnisse.py`, Gerüst gebaut): `gelbeseiten`, `dasoertliche`, `elf880` und
+    `stb_verzeichnis` (amtlich, **Grundliste**, PLZ für PLZ, `je_plz`). Ergebnisseiten aus
+    `url_vorlage` ({rubrik} {ort} {plz} {seite}; ohne Vorlage nicht einsatzbereit), bis `max_seiten`,
+    gedrosselt pause_s + Zufall (Verzeichnisse 10–15 s, amtlich 30–35 s), robots.txt beachtet, Antworten
+    gecacht. Parser: verzeichnisspezifisch (aus den Seiten in `tests/fixtures/verzeichnisse/`, folgt),
+    sonst schema.org (JSON-LD, Microdata). Nur `fill --luecken` oder `--orte`, nie `--alle`
+    (`nur_luecken`). Abgleich über die Dubletten-Logik (Name+PLZ, Adresse, Telefon) → „X Treffer, Y neu,
+    Z bekannt". **Website-Nachsuche** (`search/nachsuche.py`): neue Einträge ohne Website → Brave
+    „{Name} {Ort}", eine Seite; erster Treffer mit Kanzlei-Domain, die zum Namen passt, wird Website
+    (Kandidat → crawl/extract); sonst bleibt die amtliche Anschrift („Website vorhanden" = nein), das
+    Telefon ergänzt ein späterer `fill` mit gelbeseiten/dasoertliche/elf880. Jeder Eintrag einmal.
 - **Interface** (`search/base.py`): `QueryAdapter.search(query, max_results)` (Stufe A)
   und `OrtsAdapter.search_ort(ort)` (Stufe B). Alle liefern `SearchHit` mit Name,
   Straße, PLZ, Ort, Telefon, Website, Quelle, Quell-ID (+ Snippet, Fundstelle). Jede
@@ -515,8 +526,7 @@ Schemaversion über `PRAGMA user_version` (aktuell 4, `adresszusatz`); ältere D
 - Stufe 1 (Gerüst): Modelle, SQLite-Speicher, Excel-Export, CLI.
 - Discovery-Sitzung: Ergebnisformat und Dubletten-Logik über Adresse/Telefon, Brave- und
   Google-CSE-Adapter, `coverage`, `fill`, `search-compare` für alle aktiven Adapter.
-  Platzhalter: `serpapi`, `gelbeseiten`, `dasoertliche`,
-  `elf880`, `stb_verzeichnis`.
+  Platzhalter: `serpapi`, `places` (stillgelegt); Verzeichnisse als Gerüst (Parser folgen).
 - Stufe 2 (Lesen und Extrahieren): `crawl`, `extract` (Regeln + Ollama), Zusammenführung
   mit Abweichung und Konfidenz, OpenPLZ-Prüfung, Schema v3, `fixture-add`,
   `fixture-eval` mit 6 fiktiven Beispielen. Die 15 echten Fixtures folgen (lokal).

@@ -371,6 +371,9 @@ def fill(
         if not isinstance(adapter, OrtsAdapter):
             _fehler(f"{quelle} ist eine Websuche (Stufe A) – bitte `recherche search --adapter {quelle}` verwenden")
         _adapter_pruefen(adapter, explizit=False)
+        if alle and getattr(adapter.cfg, "nur_luecken", False):
+            _fehler(f"{quelle} läuft nur für Lücken (--luecken) oder ausdrücklich genannte Orte (--orte), nie --alle "
+                    f"(discovery.quellen.{quelle}.nur_luecken)")
         if luecken:
             erg = _coverage(ctx, st)
             namen = erg.luecken_orte(ctx.settings.discovery.coverage.quote_ziel)
@@ -380,6 +383,27 @@ def fill(
         else:
             auswahl = ctx.orte(orte if orte else None, mit_zusatz=False)
         _lauf(ctx, st, adapter, auswahl, _lauf_id())
+        if getattr(adapter.cfg, "website_nachsuche", False):
+            _website_nachsuche(ctx, st, quelle)
+
+
+def _website_nachsuche(ctx: Kontext, st: Storage, quelle: str) -> None:
+    """Neue Verzeichnis-Einträge ohne Website: Brave „{Name} {Ort}", eine Seite je Eintrag."""
+    from .search.nachsuche import website_nachsuche
+
+    name = ctx.settings.discovery.stufe_a.adapter
+    brave = build_adapter(name, ctx.settings, cache=st)
+    if not isinstance(brave, QueryAdapter) or brave.nicht_konfiguriert_grund():
+        console.print(f"[yellow]Website-Nachsuche übersprungen: {name} nicht einsatzbereit "
+                      f"({brave.nicht_konfiguriert_grund() if isinstance(brave, QueryAdapter) else 'keine Websuche'})[/yellow]")
+        return
+    console.print(f"Website-Nachsuche für neue {quelle}-Einträge ohne Website mit {name} (eine Seite je Eintrag) …")
+    stat = website_nachsuche(st, brave, ctx.bundesland, quelle, ctx.blocklist(), fortschritt=lambda m: console.print(f"  {m}"))
+    console.print(f"Nachsuche: {stat.geprueft} gesucht, {stat.gefunden} mit Website (→ crawl/extract), "
+                  f"{stat.ohne_website} ohne Website (amtliche Anschrift bleibt), {stat.schon_vergeben} Domain schon "
+                  f"vergeben, {stat.fehler} Fehler; {brave.anfragen} Anfragen ≈ {brave.kosten():.2f}")
+    if stat.abbruch:
+        console.print(f"[yellow]Nachsuche vorzeitig beendet:[/yellow] {stat.abbruch} – erneut `fill` aufrufen setzt fort.")
 
 
 @app.command()

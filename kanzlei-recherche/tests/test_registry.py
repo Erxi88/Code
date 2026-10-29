@@ -63,7 +63,7 @@ def test_fehlende_keys(settings, name, key):
     assert key in build_adapter(name, settings).nicht_konfiguriert_grund()
 
 
-@pytest.mark.parametrize("name", ["serpapi", "gelbeseiten", "dasoertliche", "elf880", "stb_verzeichnis"])
+@pytest.mark.parametrize("name", ["serpapi"])
 def test_platzhalter(settings, monkeypatch, name):
     for key in ("SERPAPI_KEY", "GOOGLE_PLACES_API_KEY"):
         monkeypatch.setenv(key, "k")
@@ -81,3 +81,11 @@ def test_places_stillgelegt(settings, monkeypatch):
     monkeypatch.setenv("GOOGLE_PLACES_API_KEY", "k")
     a = build_adapter("places", settings)
     assert not a.aktiv and "Platzhalter" in a.nicht_konfiguriert_grund()
+
+
+@pytest.mark.parametrize("name", ["gelbeseiten", "dasoertliche", "elf880", "stb_verzeichnis"])
+def test_verzeichnisse_ohne_url_vorlage_nicht_bereit(settings, name):
+    a = build_adapter(name, settings)
+    assert not a.aktiv and "url_vorlage fehlt" in a.nicht_konfiguriert_grund()
+    assert settings.discovery.quellen.get(name).nur_luecken
+    assert settings.discovery.quellen.stb_verzeichnis.je_plz and settings.discovery.quellen.stb_verzeichnis.pause_s == 30
