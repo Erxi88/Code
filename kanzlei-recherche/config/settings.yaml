@@ -28,7 +28,7 @@ discovery:
     # Gründlichkeit je Einwohnerklasse: varianten = erste N Vorlagen aus queries.yaml,
     # seiten = Ergebnisseiten je Query (Brave: 20 Treffer je Seite). "alle" = ohne Begrenzung.
     einwohner_regel:
-      - {unter: 2000, varianten: 1, seiten: 1}
+      - {unter: 2000, varianten: 1, seiten: 1, weiter: false}   # Kleingemeinden: nie weiterblättern
       - {unter: 20000, varianten: 2, seiten: 2}
       - {varianten: alle, seiten: 3}
     ohne_einwohner: {varianten: alle, seiten: 3}   # Einwohnerzahl unbekannt: lieber gründlich
@@ -38,6 +38,11 @@ discovery:
     weiter_wenn_voll:
       aktiv: true
       anteil_kanzlei_domains: 0.5
+    # Kleingemeinden: Treffer, die eine große Stadt außerhalb des Bundeslandes nennen (config/grossstaedte.yaml),
+    # nicht aber den Suchort, gar nicht erst als Kandidat anlegen
+    fremdorte:
+      aktiv: true
+      unter_einwohner: 2000
   max_anfragen_je_lauf: 1000         # Budget je Lauf und Adapter (bezahlte Anfragen, ohne Cache-Treffer)
   coverage:
     quote_ziel: 0.9                  # Lücke, wenn gefunden < erwartet * quote_ziel

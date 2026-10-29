@@ -64,6 +64,11 @@ der nächsten Quelle füllen.**
   (`weiter_wenn_voll`, > 50 % nicht auf der Blocklist), wird die nächste Seite trotzdem
   geholt. Orte ohne Einwohnerzahl werden vollständig gesucht. Gilt für `search` und
   `search-compare`, nicht für `fill`.
+  Je Stufe schaltet `weiter: false` das Weiterblättern ab (Standard für unter 2.000 Einwohner).
+- **Fremdort-Filter** (`discovery.stufe_a.fremdorte`, `config/grossstaedte.yaml`): Bei Orten unter
+  2.000 Einwohnern füllt Brave mit bundesweiten Kanzleien auf. Nennt Titel oder Snippet eine große Stadt
+  eines anderen Bundeslandes (Bonn, Aachen, Konstanz …), aber nicht den Suchort, wird kein Kandidat
+  angelegt (Zähler in der Ausgabe). Mehrdeutige Namen (Hagen, Hamm, Essen, Halle …) stehen nicht in der Liste.
 - **Zusatz-Suchorte großer Städte**: kreisfreie Städte ab 100.000 Einwohnern (Kiel,
   Lübeck) bekommen je PLZ-Bezirk einen Zusatz-Suchort mit Verweis auf die Gemeinde
   (`stadtteil_vorlagen` in `queries.yaml`). OpenPLZ führt je PLZ meist nur den Postort

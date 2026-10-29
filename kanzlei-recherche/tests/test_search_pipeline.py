@@ -243,3 +243,50 @@ def test_stadtteile_nachsuchen_aus_openplz():
     assert nachsuchen(Ort("Wedel", "22880", "Kreis Pinneberg")) == []  # nicht kreisfrei
     assert nachsuchen(Ort("Kiel", "24103", "Kreisfreie Stadt Kiel", 5000)) == []  # zu klein laut Einwohnern
     assert openplz.aufrufe == 1  # einmal geladen
+
+
+def test_fremdort_filter_bei_kleingemeinden(storage, settings):
+    """Brave füllt bei „Steuerberater Tetenbüll" mit bundesweiten Kanzleien auf."""
+    from fakes import FakeQueryAdapter, hit
+
+    from recherche.search.pipeline import Fremdorte
+
+    fremd = Fremdorte.laden(settings.pfad(settings.pfade.grossstaedte), "SH", 2000)
+    klein = Ort("Tetenbüll", "25882", "Kreis Nordfriesland", 600)
+    gross = Ort("Husum", "25813", "Kreis Nordfriesland", 23000)
+    treffer = [
+        hit("brave", "https://bonn-stb.example/", name="Steuerberater Bonn – Kanzlei Rhein", snippet="Ihre Kanzlei in Bonn"),
+        hit("brave", "https://nf-stb.example/", name="Steuerberater Tetenbüll", snippet="Kanzlei bei Bonn-Tetenbüll"),
+        hit("brave", "https://kiel-stb.example/", name="Steuerberater Kiel"),  # Kiel liegt in SH → bleibt
+        hit("brave", "https://hagen-mueller.example/", name="Steuerberater Hagen Müller"),  # „Hagen" nicht in der Liste
+    ]
+    adapter = FakeQueryAdapter("fake", {"Steuerberater Tetenbüll": treffer, "Steuerberater Husum": treffer})
+    stat = run_search(storage, adapter, [klein, gross], ["Steuerberater {ort}"], set(), "SH", "l1", 20, fremdorte=fremd)
+    domains = {k.domain for k in storage.kandidaten("SH")}
+    assert stat.fremdort == 1 and "nf-stb.example" in domains and "kiel-stb.example" in domains
+    assert "bonn-stb.example" in domains  # bei Husum (über 2.000 Einwohner) wird nicht gefiltert
+    assert len(storage.funde_kandidat(next(k.id for k in storage.kandidaten("SH") if k.domain == "bonn-stb.example"))) == 1
+
+
+def test_kleingemeinden_blaettern_nicht_weiter():
+    from recherche.config import EinwohnerStufe, WeiterWennVollConfig
+    from recherche.search.pipeline import suche_query
+
+    class Seitenweise:
+        blaettert, seitengroesse, aufrufe = True, 2, 0
+
+        def seiten(self, query, max_results):
+            for i in range(3):
+                self.aufrufe += 1
+                yield [hit_(f"https://k{i}{j}.example/") for j in range(2)]
+
+    from fakes import hit as _hit
+
+    def hit_(url):
+        return _hit("brave", url)
+
+    a = Seitenweise()
+    hits, extra = suche_query(a, "q", EinwohnerStufe(seiten=1, weiter=False), 60, set(), WeiterWennVollConfig())
+    assert (len(hits), extra, a.aufrufe) == (2, 0, 1)
+    b = Seitenweise()
+    assert suche_query(b, "q", EinwohnerStufe(seiten=1), 60, set(), WeiterWennVollConfig())[1] == 2

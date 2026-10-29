@@ -50,6 +50,7 @@ from .orte import (
 from .search.base import OrtsAdapter, QueryAdapter, SearchAdapter
 from .search.compare import VergleichsErgebnis, compare_adapters
 from .search.pipeline import (
+    Fremdorte,
     Ort,
     Suchplan,
     SuchStatistik,
@@ -175,12 +176,15 @@ def _lauf(ctx: Kontext, st: Storage, adapter: SearchAdapter, orte: list[Ort], la
         st, adapter, orte, ctx.vorlagen(), ctx.blocklist(), ctx.bundesland, lauf_id,
         s.discovery.stufe_a.max_results_per_query,
         fortschritt=lambda m: console.print(f"  {m}"), stadtteile=nachsuchen,
+        fremdorte=Fremdorte.laden(s.pfad(s.pfade.grossstaedte), ctx.bundesland, s.discovery.stufe_a.fremdorte.unter_einwohner)
+        if s.discovery.stufe_a.fremdorte.aktiv else None,
     )  # fmt: skip
     console.print(
         f"Fertig: {stat.queries} Abfragen, {stat.uebersprungen} schon erledigt, {stat.fehler} Fehler, "
         f"{stat.treffer} Treffer, {stat.neue_kandidaten} neue Kandidaten"
         + (f", {stat.zusatzseiten} Zusatzseiten wegen voller Kanzlei-Seiten" if stat.zusatzseiten else "")
-        + (f", {stat.stadtteile} Stadtteil-Suchorte nachgesucht" if stat.stadtteile else "") + "."
+        + (f", {stat.stadtteile} Stadtteil-Suchorte nachgesucht" if stat.stadtteile else "")
+        + (f", {stat.fremdort} Treffer mit fremder Großstadt nicht angelegt" if stat.fremdort else "") + "."
     )
     if isinstance(adapter, OrtsAdapter):
         console.print(f"Ausbeute {adapter.name}: {stat.treffer} Treffer, davon {stat.neue_kandidaten} neu, "

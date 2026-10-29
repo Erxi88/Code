@@ -27,6 +27,7 @@ class PfadConfig(BaseModel):
     db: str = "data/recherche.sqlite"
     ausgabe: str = "data/export/kanzleien_{bundesland}_{datum}.xlsx"
     queries: str = "config/queries.yaml"
+    grossstaedte: str = "config/grossstaedte.yaml"
     blocklist: str = "config/domain_blocklist.txt"
     referenz: str = "config/referenz_kammern.yaml"
     impressum_ausschluss: str = "config/impressum_ausschluss.yaml"
@@ -139,6 +140,7 @@ class EinwohnerStufe(BaseModel):
     unter: int | None = None  # gilt für Orte mit weniger Einwohnern (None = alle übrigen)
     varianten: int | None = None  # erste N Vorlagen aus queries.yaml
     seiten: int | None = None  # Ergebnisseiten je Query
+    weiter: bool = True  # weiter_wenn_voll in dieser Stufe erlaubt (Kleingemeinden: nein)
 
     @field_validator("varianten", "seiten", mode="before")
     @classmethod
@@ -154,6 +156,15 @@ class WeiterWennVollConfig(BaseModel):
     anteil_kanzlei_domains: float = 0.5
 
 
+class FremdortConfig(BaseModel):
+    """Websuche in kleinen Gemeinden: Brave füllt mit bundesweiten Kanzleien auf. Treffer, die eine große
+    Stadt außerhalb des Bundeslandes nennen (config/grossstaedte.yaml), aber nicht den Suchort, werden nicht
+    als Kandidat angelegt."""
+
+    aktiv: bool = True
+    unter_einwohner: int = 2000  # nur für Orte mit weniger Einwohnern (ohne Einwohnerzahl: nie)
+
+
 class StufeAConfig(BaseModel):
     adapter: str = "brave"
     max_results_per_query: int = 60  # harte Obergrenze je Query
@@ -167,6 +178,7 @@ class StufeAConfig(BaseModel):
     ohne_einwohner: EinwohnerStufe = Field(default_factory=lambda: EinwohnerStufe(seiten=3))
     stadtteil: EinwohnerStufe = Field(default_factory=lambda: EinwohnerStufe(seiten=2))
     weiter_wenn_voll: WeiterWennVollConfig = Field(default_factory=WeiterWennVollConfig)
+    fremdorte: FremdortConfig = Field(default_factory=lambda: FremdortConfig())
 
 
 class CoverageConfig(BaseModel):

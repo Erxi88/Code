@@ -278,7 +278,8 @@ def suche_query(
             extra += 1
         if nr >= stufe.seiten:
             voll = len(seite) >= adapter.seitengroesse
-            if not (weiter.aktiv and voll and anteil_kanzlei_domains(seite, blocklist) >= weiter.anteil_kanzlei_domains):
+            if not (weiter.aktiv and stufe.weiter and voll
+                    and anteil_kanzlei_domains(seite, blocklist) >= weiter.anteil_kanzlei_domains):
                 break
     return hits, extra
 
@@ -378,6 +379,7 @@ class SuchStatistik:
     stadtteile: int = 0  # automatisch nachgesuchte Zusatz-Suchorte großer Städte
     bekannt: int = 0  # Treffer, die einem bestehenden Kandidaten zugeordnet wurden (Telefon, Adresse, Domain)
     verworfen: int = 0  # Blocklist oder schon von dieser Quelle gefunden
+    fremdort: int = 0  # Kleingemeinde-Treffer mit großer Stadt eines anderen Bundeslandes – nicht angelegt
     abbruch: str | None = None  # gesetzt, wenn der Lauf wegen LimitErreicht endete
 
 
@@ -391,6 +393,33 @@ def _auftraege(adapter: SearchAdapter, orte: list[Ort], plan: Suchplan, max_resu
             stufe = plan.stufe(ort)
             for query in plan.queries(ort):
                 yield ort, query, partial(suche_query, adapter, query, stufe, max_results, blocklist, plan.weiter)
+
+
+class Fremdorte:
+    """Treffer einer Kleingemeinde-Suche, die eine große Stadt eines anderen Bundeslandes nennen, nicht aber
+    den Suchort („Steuerberater Bonn" bei „Steuerberater Tetenbüll") – kein Kandidat."""
+
+    def __init__(self, staedte: dict[str, str], land: str, unter_einwohner: int = 2000):
+        namen = sorted((n for n, k in staedte.items() if k.upper() != land.upper()), key=len, reverse=True)
+        self.muster = re.compile(r"(?<![\wäöüß-])(" + "|".join(map(re.escape, namen)) + r")(?![\wäöüß])") if namen else None
+        self.unter_einwohner = unter_einwohner
+
+    @classmethod
+    def laden(cls, pfad: str | Path, land: str, unter_einwohner: int = 2000) -> Fremdorte:
+        p = Path(pfad)
+        daten = yaml.safe_load(p.read_text(encoding="utf-8-sig")) if p.exists() else {}
+        return cls({str(k): str(v) for k, v in (daten or {}).items()}, land, unter_einwohner)
+
+    def grund(self, hit: SearchHit, ort: Ort) -> str | None:
+        if self.muster is None or ort.einwohner is None or ort.einwohner >= self.unter_einwohner:
+            return None
+        text = f"{hit.name or ''} {hit.snippet or ''}"
+        if not (m := self.muster.search(text)):
+            return None
+        suchort = (ort.gemeinde or ort.name).split("(")[0].strip()
+        if suchort and re.search(r"(?<![\wäöüß])" + re.escape(suchort.split()[0]), text, re.I):
+            return None
+        return m.group(1)
 
 
 def _nummer(orte: list[Ort], ort: Ort) -> int:
@@ -430,6 +459,7 @@ def run_search(
     max_results: int,
     fortschritt: Callable[[str], None] | None = None,
     stadtteile: Callable[[Ort], list[Ort]] | None = None,
+    fremdorte: Fremdorte | None = None,
 ) -> SuchStatistik:
     """Führt einen Adapter für alle Orte aus und speichert Kandidaten und Funde.
 
@@ -491,7 +521,11 @@ def run_search(
             stat.fehler += 1
             log.warning("Suche fehlgeschlagen: %s", fehler)
             continue
-        ergebnisse = [zuordnung.verarbeite(h, adapter, suchbegriff, ort.name) for h in hits]
+        behalten = hits
+        if fremdorte and isinstance(adapter, QueryAdapter):
+            behalten = [h for h in hits if not fremdorte.grund(h, ort)]
+            stat.fremdort += len(hits) - len(behalten)
+        ergebnisse = [zuordnung.verarbeite(h, adapter, suchbegriff, ort.name) for h in behalten]
         neu = sum(1 for e in ergebnisse if e is True)
         stat.bekannt += sum(1 for e in ergebnisse if e is False)
         stat.verworfen += sum(1 for e in ergebnisse if e is None)
