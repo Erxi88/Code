@@ -55,6 +55,7 @@ discovery:
       retries: 3
       backoff_s: 5.0
       kosten_je_1000: 5.0
+      guthaben: null                 # Restguthaben in $ (Dashboard) – Warnung vor dem Start, wenn die Schätzung darüber liegt
     google_cse:                      # nur mit Alt-Key (API für Neukunden gesperrt, Ende 01.01.2027)
       aktiv: false                   # Keys: GOOGLE_CSE_API_KEY, GOOGLE_CSE_ID
       per_page: 10

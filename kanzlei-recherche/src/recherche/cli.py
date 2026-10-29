@@ -57,6 +57,7 @@ from .search.pipeline import (
     load_orte,
     orte_filtern,
     run_search,
+    schaetze_anfragen,
     schreibe_orte,
 )
 from .search.registry import aktive_adapter, build_adapter
@@ -137,9 +138,33 @@ def _adapter_pruefen(adapter: SearchAdapter, explizit: bool) -> None:
         _fehler(f"Quelle {adapter.name} nicht einsatzbereit: {grund}")
 
 
-def _lauf(ctx: Kontext, st: Storage, adapter: SearchAdapter, orte: list[Ort], lauf_id: str) -> SuchStatistik:
+def _budget_hinweis(ctx: Kontext, st: Storage, adapter: QueryAdapter, orte: list[Ort], ja: bool) -> bool:
+    """Schätzung vor dem Start gegen das Guthaben aus settings.yaml. False = Abbruch durch den Nutzer."""
+    max_results = ctx.settings.discovery.stufe_a.max_results_per_query
+    queries, anfragen = schaetze_anfragen(st, adapter, orte, ctx.vorlagen(), ctx.bundesland, max_results)
+    kosten = adapter.kosten(anfragen)
+    guthaben = adapter.cfg.guthaben
+    console.print(f"Budget: {queries} offene Queries, höchstens etwa {anfragen} Anfragen ≈ {kosten:.2f} "
+                  f"(kosten_je_1000 {adapter.cfg.kosten_je_1000}; dazu ggf. Zusatzseiten und Stadtteil-Nachsuche); "
+                  f"Guthaben laut settings: {'nicht hinterlegt' if guthaben is None else f'{guthaben:.2f}'}"
+                  f"; Budget je Lauf: {adapter.max_anfragen or 'unbegrenzt'} Anfragen")
+    if guthaben is not None and kosten > guthaben:
+        console.print(f"[yellow]Die Schätzung ({kosten:.2f}) liegt über dem Guthaben ({guthaben:.2f}) – der Lauf endet "
+                      "voraussichtlich mit „Guthaben erschöpft“ und lässt sich nach dem Aufladen fortsetzen.[/yellow]")
+        if not ja and not typer.confirm("Trotzdem starten?", default=False):
+            return False
+    return True
+
+
+def _lauf(ctx: Kontext, st: Storage, adapter: SearchAdapter, orte: list[Ort], lauf_id: str,
+          ja: bool = False) -> SuchStatistik | None:
     stufe = "Websuche (Stufe A)" if isinstance(adapter, QueryAdapter) else "Lückenfüller (Stufe B)"
     console.print(f"{stufe} mit [bold]{adapter.name}[/bold] in {len(orte)} Orten ({ctx.bundesland}) …")
+    if isinstance(adapter, QueryAdapter) and not _budget_hinweis(ctx, st, adapter, orte, ja):
+        console.print("Abgebrochen – nichts gesucht.")
+        return None
+    if hasattr(adapter, "melden"):
+        adapter.melden = lambda m: console.print(f"  [yellow]{m}[/yellow]")
     s = ctx.settings
     nachsuchen = None
     if isinstance(adapter, QueryAdapter) and s.orte.stadtteile.aktiv:
@@ -172,14 +197,15 @@ def _lauf(ctx: Kontext, st: Storage, adapter: SearchAdapter, orte: list[Ort], la
     return stat
 
 
-def _search(ctx: Kontext, orte: str | None, adapter_name: str | None, lauf_id: str) -> None:
+def _search(ctx: Kontext, orte: str | None, adapter_name: str | None, lauf_id: str, ja: bool = False) -> bool:
+    """False, wenn der Start nach dem Budget-Hinweis abgelehnt wurde."""
     with ctx.storage() as st:
         name = adapter_name or ctx.settings.discovery.stufe_a.adapter
         adapter = build_adapter(name, ctx.settings, cache=st)
         if not isinstance(adapter, QueryAdapter):
             _fehler(f"{name} ist ein Lückenfüller (Stufe B) – bitte `recherche fill --quelle {name}` verwenden")
         _adapter_pruefen(adapter, explizit=adapter_name is not None)
-        _lauf(ctx, st, adapter, ctx.orte(orte), lauf_id)
+        return _lauf(ctx, st, adapter, ctx.orte(orte), lauf_id, ja) is not None
 
 
 def _crawl(ctx: Kontext, limit: int | None = None, wiederholen: bool = False) -> None:
@@ -313,9 +339,10 @@ def search(
     config: ConfigOpt = None,
     orte: OrteOpt = None,
     adapter: Annotated[str | None, typer.Option(help="Websuche-Adapter statt discovery.stufe_a.adapter")] = None,
+    ja: JaOpt = False,
 ) -> None:
     """Stufe A: Websuche je Ort mit allen Query-Vorlagen (wiederaufnehmbar)."""
-    _search(_kontext(config, bundesland, db), orte, adapter, _lauf_id())
+    _search(_kontext(config, bundesland, db), orte, adapter, _lauf_id(), ja)
 
 
 @app.command()
@@ -417,6 +444,7 @@ def zeige_coverage(erg: CoverageErgebnis, top: int, quote_ziel: float) -> None:
 
 
 LimitOpt = Annotated[int | None, typer.Option("--limit", help="höchstens so viele Kandidaten (Test)")]
+JaOpt = Annotated[bool, typer.Option("--ja", "-y", help="ohne Rückfrage starten (auch wenn die Schätzung über dem Guthaben liegt)")]
 WiederholenOpt = Annotated[bool, typer.Option("--wiederholen", help="fehlgeschlagene Kandidaten erneut versuchen")]
 
 
@@ -809,10 +837,12 @@ def run(
     orte: OrteOpt = None,
     adapter: Annotated[str | None, typer.Option(help="Websuche-Adapter, z. B. ddgs für lokale Tests")] = None,
     out: Annotated[Path | None, typer.Option("--out", "-o", help="Ziel-.xlsx")] = None,
+    ja: JaOpt = False,
 ) -> None:
     """Gesamtlauf Stufe A: search → crawl → extract → export. Nach Abbruch einfach erneut starten."""
     ctx = _kontext(config, bundesland, db)
-    _search(ctx, orte, adapter, _lauf_id())
+    if not _search(ctx, orte, adapter, _lauf_id(), ja):
+        return
     _crawl(ctx)
     _extract(ctx)
     _export(ctx, out)

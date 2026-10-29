@@ -493,3 +493,13 @@ def test_extract_alle_mit_rueckfrage(tmp_path):
     r = runner.invoke(cli.app, ["extract", "--db", str(db), "-b", "SH", "--alle", "--ohne-llm", "--ja"])
     assert r.exit_code == 0, r.output
     assert "3 Kandidaten wieder offen" in r.output and "Fertig: 3 Kanzleien" in r.output
+
+
+def test_search_budget_hinweis_und_rueckfrage(fakes, db_pfad):
+    fakes["brave"].cfg.guthaben = 0.0001  # Schätzung liegt darüber
+    r = runner.invoke(cli.app, _args("search", db_pfad, "--orte", "Kiel"), input="n\n")
+    assert r.exit_code == 0, r.output
+    assert "Budget:" in r.output and "Guthaben laut settings: 0.00" in r.output and "Abgebrochen" in r.output
+    assert fakes["brave"].aufrufe == []
+    r = runner.invoke(cli.app, _args("search", db_pfad, "--orte", "Kiel", "--ja"))
+    assert r.exit_code == 0 and fakes["brave"].aufrufe and "Ort 1/" in r.output

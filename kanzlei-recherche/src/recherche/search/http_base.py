@@ -7,6 +7,7 @@ gesendeten Anfragen für Budget und Kostenlog.
 
 from __future__ import annotations
 
+import concurrent.futures
 import html
 import json
 import logging
@@ -26,6 +27,14 @@ log = logging.getLogger(__name__)
 
 # Parameter, die nie in Cache-Schlüssel oder Logs landen
 GEHEIME_PARAMETER = frozenset({"key", "api_key", "cx"})
+
+
+class FristUeberschritten(RuntimeError):
+    """Request lief über den harten Gesamt-Timeout."""
+
+
+# Threads für den harten Gesamt-Timeout je Request (ein hängender Request blockiert nicht den Lauf)
+_WATCHDOG = concurrent.futures.ThreadPoolExecutor(max_workers=4, thread_name_prefix="http-frist")
 
 
 @dataclass(frozen=True)
@@ -64,6 +73,7 @@ class HttpQueryAdapter(QueryAdapter):
         self._clock = clock
         self._rng = rng or random.Random()
         self._letzte_anfrage: float | None = None
+        self.melden: Callable[[str], None] | None = None  # Retry-Meldungen sofort im Terminal
 
     @property
     def client(self) -> httpx.Client:
@@ -127,6 +137,17 @@ class HttpQueryAdapter(QueryAdapter):
         if rest > 0:
             self._sleep(rest)
 
+    def _get_mit_frist(self, params: dict, headers: dict) -> httpx.Response:
+        """GET mit hartem Gesamt-Timeout: httpx' timeout gilt je Lese-/Schreibvorgang, eine tröpfelnde
+        oder hängende Antwort kann ihn umgehen. Ein Watchdog-Thread bricht nach timeout_s + 2 s ab."""
+        frist = self.cfg.timeout_s + 2
+        zukunft = _WATCHDOG.submit(self.client.get, self.cfg.url, params=params, headers=headers)
+        try:
+            return zukunft.result(timeout=frist)
+        except concurrent.futures.TimeoutError:
+            zukunft.cancel()
+            raise FristUeberschritten(f"keine Antwort nach {frist:.0f} s (harter Timeout)") from None
+
     def _hole(self, params: dict, headers: dict) -> dict:
         schluessel = self._cache_schluessel(params)
         if self.cache is not None and (gecacht := self.cache.cache_get(self.name, schluessel)) is not None:
@@ -136,10 +157,12 @@ class HttpQueryAdapter(QueryAdapter):
             self._drosseln()
             self._anfrage_zaehlen()
             try:
-                resp = self.client.get(self.cfg.url, params=params, headers=headers)
+                resp = self._get_mit_frist(params, headers)
                 retry = self._pruefe(resp)
             except httpx.TransportError as e:  # Timeout, Verbindungsfehler
                 retry = Retry(f"{type(e).__name__}: {e}")
+            except FristUeberschritten as e:  # Request hängt (Antwort tröpfelt, Verbindung offen)
+                retry = Retry(str(e))
             finally:
                 self._letzte_anfrage = self._clock()
             if retry is None:
@@ -154,6 +177,8 @@ class HttpQueryAdapter(QueryAdapter):
                 raise retry.endgueltig(f"{self.name}: {retry.grund} (nach {versuche} Versuchen)")
             warte = self.cfg.backoff_s * 2 ** (versuch - 1)
             log.warning("%s: %s – Versuch %d/%d, warte %.0f s", self.name, retry.grund, versuch, versuche, warte)
+            if self.melden:
+                self.melden(f"{self.name}: {retry.grund} – Versuch {versuch}/{versuche}, warte {warte:.0f} s")
             self._sleep(warte)
         raise AssertionError("unreachable")  # pragma: no cover
 

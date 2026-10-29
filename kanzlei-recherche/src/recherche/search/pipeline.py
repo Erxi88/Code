@@ -393,6 +393,27 @@ def _auftraege(adapter: SearchAdapter, orte: list[Ort], plan: Suchplan, max_resu
                 yield ort, query, partial(suche_query, adapter, query, stufe, max_results, blocklist, plan.weiter)
 
 
+def _nummer(orte: list[Ort], ort: Ort) -> int:
+    return next((i for i, o in enumerate(orte, start=1) if o is ort), 0)
+
+
+def schaetze_anfragen(storage: Storage, adapter: QueryAdapter, orte: list[Ort], vorlagen: list[str] | Suchplan,
+                      bundesland: str, max_results: int) -> tuple[int, int]:
+    """(offene Queries, höchstens nötige Anfragen) für einen Websuche-Lauf – Seitenregel je Ort, ohne
+    Zusatzseiten (weiter_wenn_voll) und ohne nachgesuchte Stadtteile; erledigte Queries zählen nicht."""
+    plan = als_suchplan(vorlagen)
+    queries = anfragen = 0
+    seite = max(1, adapter.seitengroesse)
+    for ort in orte:
+        stufe = plan.stufe(ort)
+        je_query = -(-min(max_results, (stufe.seiten or 99) * seite) // seite)
+        for q in plan.queries(ort):
+            if not storage.query_erledigt(bundesland, adapter.name, q, "search"):
+                queries += 1
+                anfragen += je_query
+    return queries, anfragen
+
+
 def _grenze(adapter: QueryAdapter, stufe: EinwohnerStufe, max_results: int) -> int:
     """Trefferzahl, ab der eine Liste voll ist (max_results bzw. Seitenregel × Seitengröße)."""
     return max_results if stufe.seiten is None else min(max_results, stufe.seiten * adapter.seitengroesse)
@@ -483,7 +504,9 @@ def run_search(
         stat.neue_kandidaten += neu
         if fortschritt:
             zusatz = f", +{extra} Seite(n) wegen voller Kanzlei-Seite" if extra else ""
-            fortschritt(f"{suchbegriff}: {len(hits)} Treffer, {neu} neu, {eintrag.anfragen} Anfragen{zusatz}")
+            gesamt = adapter.anfragen - start_anfragen
+            fortschritt(f"Ort {_nummer(orte, ort)}/{len(orte)} · {suchbegriff}: {len(hits)} Treffer, {neu} neu, "
+                        f"{eintrag.anfragen} Anfragen{zusatz} · gesamt {gesamt} Anfragen ≈ {adapter.kosten(gesamt):.2f}")
         nachsuchen(ort, len(hits))
     stat.anfragen = adapter.anfragen - start_anfragen
     stat.kosten = adapter.kosten(stat.anfragen)

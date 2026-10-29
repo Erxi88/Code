@@ -47,6 +47,7 @@ class QuelleConfig(BaseModel):
     backoff_s: float = 5.0  # Wartezeit vor Retry n: backoff_s * 2**(n-1)
     timeout_s: float = 15.0
     kosten_je_1000: float = 0.0  # für das Kostenlog
+    guthaben: float | None = None  # Restguthaben (von Hand pflegen) – Hinweis vor dem Start, wenn die Schätzung darüber liegt
     cache: bool = True  # API-Antworten in SQLite cachen (Wiederaufnahme ohne Doppelkosten)
 
 

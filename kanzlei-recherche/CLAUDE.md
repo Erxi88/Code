@@ -109,7 +109,15 @@ der nächsten Quelle füllen.**
   `kosten_je_1000` steht beim jeweiligen Adapter. Anfragen und Kosten landen je Query im
   Lauf-Protokoll und werden am Ende ausgegeben.
 - **Limits**: `LimitErreicht` (Kontingent/Tageslimit, Budget, ungültiger Key) beendet
-  den Lauf sauber; ein erneuter Aufruf macht dort weiter. Jede API-Antwort wird in
+  den Lauf sauber; ein erneuter Aufruf macht dort weiter. Brave: HTTP 402, `X-RateLimit-Remaining`
+  mit Monatsrest 0 oder ein Guthaben-/Limit-Fehlertext → sofort „Brave-Guthaben erschöpft – im
+  Dashboard aufladen, dann erneut starten" (meldet eine erfolgreiche Antwort Rest 0, endet der Lauf vor
+  der nächsten Anfrage). Jeder Request hat einen **harten Gesamt-Timeout** (`timeout_s` + 2 s, Watchdog-
+  Thread – httpx' Timeout gilt nur je Lesevorgang), höchstens `retries` (3) Wiederholungen, danach
+  Query als Fehler und weiter; Retry-Meldungen erscheinen sofort im Terminal. Fortschritt je Query:
+  „Ort 812/1127 · … · gesamt N Anfragen ≈ X". Vor dem Start: offene Queries × Seiten × Preis gegen
+  `discovery.quellen.<adapter>.guthaben` (von Hand gepflegtes Restguthaben); liegt die Schätzung
+  darüber, fragt `search`/`run` nach (`--ja` ohne Rückfrage). Jede API-Antwort wird in
   `api_cache` gespeichert, damit eine Wiederaufnahme nichts doppelt bezahlt.
 - **Blocklist** (`config/domain_blocklist.txt`) und **Dubletten-Logik**
   (`search/dedupe.py`) liegen außerhalb der Adapter (`search/pipeline.py`) und gelten

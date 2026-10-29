@@ -4,13 +4,16 @@
 - bis 20 Treffer je Anfrage (count), Paging über offset = Seitenindex (0..9)
 - country=DE, search_lang=de
 - Retry mit Backoff bei 5xx und 429 (Ratenlimit je Sekunde)
-- 429 mit Monatskontingent 0 bzw. 402: Kontingent erschöpft → Lauf endet sauber
+- 402, X-RateLimit-Remaining 0 (Monat) oder ein Fehlertext zu Guthaben/Limit: sofortiger Abbruch mit
+  „Brave-Guthaben erschöpft – im Dashboard aufladen, dann erneut starten"; meldet eine erfolgreiche
+  Antwort Restkontingent 0, endet der Lauf vor der nächsten Anfrage
 - 401/403: Key ungültig → Lauf endet sauber
 """
 
 from __future__ import annotations
 
 import math
+import re
 from collections.abc import Iterator
 
 import httpx
@@ -20,6 +23,8 @@ from .base import KontingentErschoepft, SearchError, SearchHit, ZugangVerweigert
 from .http_base import HttpQueryAdapter, Retry, fehlertext, text_ohne_html, url_id
 
 ENV_KEY = "BRAVE_API_KEY"
+ERSCHOEPFT = "Brave-Guthaben erschöpft – im Dashboard aufladen, dann erneut starten"
+_GUTHABEN_TEXT = re.compile(r"credit|usage.?limit|quota|insufficient|payment|balance|subscription", re.I)
 MAX_OFFSET = 9  # Brave erlaubt Seitenindex 0..9
 
 
@@ -42,6 +47,7 @@ class BraveAdapter(HttpQueryAdapter):
     def __init__(self, cfg: BraveConfig | None = None, **kwargs):
         super().__init__(cfg or BraveConfig(), **kwargs)
         self.api_key = env(ENV_KEY)
+        self._erschoepft = False
 
     def fehlende_keys(self) -> list[str]:
         return [] if self.api_key else [ENV_KEY]
@@ -93,17 +99,21 @@ class BraveAdapter(HttpQueryAdapter):
             return False
         return len(treffer) >= erwartet
 
+    def _hole(self, params: dict, headers: dict) -> dict:
+        if self._erschoepft:
+            raise KontingentErschoepft(f"{ERSCHOEPFT} (letzte Antwort meldete Restkontingent 0)")
+        return super()._hole(params, headers)
+
     def _pruefe(self, resp: httpx.Response) -> Retry | None:
         s = resp.status_code
         if s == 200:
+            self._erschoepft = _monatsrest(resp) == 0  # diese Antwort noch nutzen, dann Schluss
             return None
         text = fehlertext(resp)
+        if s == 402 or _monatsrest(resp) == 0 or (s == 429 and _GUTHABEN_TEXT.search(text)):
+            raise KontingentErschoepft(f"{ERSCHOEPFT} (HTTP {s}: {text})")
         if s == 429:
-            if _monatsrest(resp) == 0:
-                raise KontingentErschoepft(f"brave: Monatskontingent erschöpft ({text})")
             return Retry(f"429 Ratenlimit ({text})", endgueltig=KontingentErschoepft)
-        if s == 402:
-            raise KontingentErschoepft(f"brave: Guthaben/Kontingent aufgebraucht ({text})")
         if s in (401, 403):
             raise ZugangVerweigert(f"brave: Zugriff verweigert – {ENV_KEY} prüfen ({text})")
         if s >= 500:

@@ -110,7 +110,7 @@ def test_dauerhaftes_ratenlimit_beendet_lauf():
 
 def test_monatskontingent_erschoepft_ohne_retry():
     a, http, _ = _adapter([(429, F429, {"X-RateLimit-Remaining": "1, 0"})])
-    with pytest.raises(KontingentErschoepft, match="Monatskontingent"):
+    with pytest.raises(KontingentErschoepft, match="Brave-Guthaben erschöpft – im Dashboard aufladen"):
         a.search("Steuerberater Kiel", 20)
     assert len(http.anfragen) == 1
 
@@ -164,3 +164,66 @@ def test_kostenlog_in_pipeline(storage):
                       {"11880.com"}, "SH", "lauf1", 60)
     assert (stat.anfragen, stat.kosten, stat.neue_kandidaten) == (2, 0.01, 4)  # 5 Treffer, 11880 blockiert
     assert storage.anfragen_summe("SH", "lauf1") == {"brave": (2, 0.01)}
+
+
+def test_402_meldung_und_kein_retry():
+    a, http, _ = _adapter([(402, {"error": {"detail": "Payment required"}})])
+    with pytest.raises(KontingentErschoepft, match="Brave-Guthaben erschöpft – im Dashboard aufladen, dann erneut starten"):
+        a.search("Steuerberater Kiel", 20)
+    assert len(http.anfragen) == 1
+
+
+def test_guthabentext_im_429_bricht_sofort_ab():
+    a, http, _ = _adapter([(429, {"error": {"code": "USAGE_LIMIT_EXCEEDED", "detail": "Usage limit exceeded"}})] * 3)
+    with pytest.raises(KontingentErschoepft, match="Brave-Guthaben"):
+        a.search("Steuerberater Kiel", 20)
+    assert len(http.anfragen) == 1
+
+
+def test_restkontingent_null_in_erfolgreicher_antwort_stoppt_vor_naechster_anfrage():
+    a, http, _ = _adapter([(200, SEITE0, {"X-RateLimit-Remaining": "1, 0"}), (200, SEITE1)])
+    assert len(a.search("Steuerberater Kiel", 20)) == 20  # diese Antwort wird noch genutzt
+    with pytest.raises(KontingentErschoepft, match="Restkontingent 0"):
+        a.search("Steuerkanzlei Kiel", 20)
+    assert len(http.anfragen) == 1
+
+
+def test_harter_timeout_bei_haengendem_request():
+    """Lauf fror eine Stunde ein: ein hängender Request wird nach timeout_s + 2 s abgebrochen."""
+    import threading
+
+    freigabe = threading.Event()
+
+    def haengt(req):
+        freigabe.wait(5)  # simuliert eine Antwort, die nie fertig wird
+        return (200, SEITE1)
+
+    a, _, _ = _adapter(haengt, timeout_s=0.1, retries=1)
+    meldungen = []
+    a.melden = meldungen.append
+    try:
+        with pytest.raises(SearchError, match="harter Timeout"):
+            a.search("Steuerberater Kiel", 20)
+    finally:
+        freigabe.set()
+    assert a.anfragen == 2 and "Versuch 1/2" in meldungen[0]
+
+
+def test_fortschritt_mit_ortsnummer_und_anfragen(storage):
+    a, _, _ = _adapter([(200, SEITE1), (200, LEER)])
+    zeilen = []
+    run_search(storage, a, [Ort("Kiel", "24103"), Ort("Husum", "25813")], ["Steuerberater {ort}"], set(), "SH", "l1", 20,
+               fortschritt=zeilen.append)
+    assert zeilen[0].startswith("Ort 1/2 · Steuerberater Kiel: 5 Treffer")
+    assert zeilen[1].startswith("Ort 2/2 · Steuerberater Husum") and "gesamt 2 Anfragen ≈ 0.01" in zeilen[1]
+
+
+def test_schaetzung_vor_dem_start(storage):
+    from recherche.search.pipeline import Suchplan, schaetze_anfragen
+
+    a, _, _ = _adapter([(200, SEITE1)])
+    plan = Suchplan(["Steuerberater {ort}", "Steuerkanzlei {ort}"])
+    orte = [Ort("Kiel", "24103"), Ort("Husum", "25813")]
+    assert schaetze_anfragen(storage, a, orte, plan, "SH", 60) == (4, 12)  # ohne Seitenregel: 60/20 = 3 je Query
+    run_search(storage, a, orte[:1], ["Steuerberater {ort}"], set(), "SH", "l1", 20)
+    assert schaetze_anfragen(storage, a, orte, plan, "SH", 60) == (3, 9)  # erledigte Query zählt nicht
