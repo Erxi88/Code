@@ -169,7 +169,8 @@ def _lauf(ctx: Kontext, st: Storage, adapter: SearchAdapter, orte: list[Ort], la
     nachsuchen = None
     if isinstance(adapter, QueryAdapter) and s.orte.stadtteile.aktiv:
         openplz = OpenPlzOrte(s.openplz.url, cache=st, page_size=s.openplz.page_size, pause_s=s.openplz.pause_s)
-        nachsuchen = stadtteile_nachsuchen(openplz, LAND_SCHLUESSEL[ctx.bundesland], s.orte.stadtteile)
+        nachsuchen = stadtteile_nachsuchen(openplz, LAND_SCHLUESSEL[ctx.bundesland], s.orte.stadtteile,
+                                           melden=lambda m: console.print(f"  {m}"))
     stat = run_search(
         st, adapter, orte, ctx.vorlagen(), ctx.blocklist(), ctx.bundesland, lauf_id,
         s.discovery.stufe_a.max_results_per_query,

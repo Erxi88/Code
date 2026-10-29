@@ -398,7 +398,8 @@ def zusatz_orte(ort: Ort, g: Gemeinde) -> list[Ort]:
     return ergebnis
 
 
-def stadtteile_nachsuchen(openplz: OpenPlzOrte, land_schluessel: str, cfg: StadtteilConfig) -> Callable[[Ort], list[Ort]]:
+def stadtteile_nachsuchen(openplz: OpenPlzOrte, land_schluessel: str, cfg: StadtteilConfig,
+                          melden: Callable[[str], None] | None = None) -> Callable[[Ort], list[Ort]]:
     """Für `search`: Zusatz-Suchorte einer großen Stadt erst bei Bedarf (volle Trefferliste) aus OpenPLZ."""
     gemeinden: dict[str, Gemeinde] | None = None
 
@@ -410,7 +411,10 @@ def stadtteile_nachsuchen(openplz: OpenPlzOrte, land_schluessel: str, cfg: Stadt
             return []
         if gemeinden is None:
             try:
-                gemeinden = {_norm(g.name): g for g in gemeinden_aus_localities(openplz.localities(land_schluessel)).values()}
+                if melden:
+                    melden(f"{ort.name}: Trefferliste voll – lade PLZ-Bezirke aus OpenPLZ (einmalig, gecacht) …")
+                gemeinden = {_norm(g.name): g for g in
+                             gemeinden_aus_localities(openplz.localities(land_schluessel, fortschritt=melden)).values()}
             except OrteFehler as e:  # OpenPLZ nicht erreichbar: ohne Nachsuche weiter
                 log.warning("Stadtteil-Nachsuche ohne OpenPLZ: %s", e)
                 gemeinden = {}

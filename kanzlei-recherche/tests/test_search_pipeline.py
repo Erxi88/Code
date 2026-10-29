@@ -229,7 +229,7 @@ def test_stadtteile_nachsuchen_aus_openplz():
     class FakeOpenPlz:
         aufrufe = 0
 
-        def localities(self, land):
+        def localities(self, land, fortschritt=None):
             self.aufrufe += 1
             m = {"key": "01002000", "name": "Kiel, Landeshauptstadt"}
             return [{"postalCode": p, "name": n, "municipality": m} for p, n in

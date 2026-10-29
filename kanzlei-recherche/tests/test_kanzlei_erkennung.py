@@ -175,8 +175,18 @@ def test_ohne_excelblatt_wenn_keine(storage, tmp_path):
     assert BLATT_KEINE_KANZLEI not in load_workbook(export_excel(storage, "SH", tmp_path / "x.xlsx")).sheetnames
 
 
-def test_cli(tmp_path):
+def test_cli(tmp_path, monkeypatch):
+    from recherche.normalize import PlzPruefung
     from recherche.storage import Storage
+
+    class OhneNetz:  # kein OpenPLZ in Tests
+        def __init__(self, *a, **k):
+            pass
+
+        def pruefe(self, plz, ort):
+            return PlzPruefung(None)
+
+    monkeypatch.setattr(cli, "PlzPruefer", OhneNetz)
 
     db = tmp_path / "t.sqlite"
     with Storage(db) as st:
