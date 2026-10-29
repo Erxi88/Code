@@ -155,8 +155,13 @@ def place_als_hit(place: dict) -> SearchHit | None:
 
 
 class PlacesAdapter(OrtsAdapter):
+    """Gebaut und getestet, aber **stillgelegt**: Name und Adresse gehören bei Text Search (New) zur
+    kostenpflichtigen Pro-Stufe, kostenlos ist nur „IDs Only" – kein kostenloser Weg als Kompass.
+    Zum Wiederbeleben `implementiert = True` setzen (Kosten im Kostenlog)."""
+
     name = "places"
     cfg: PlacesConfig
+    implementiert = False
 
     def __init__(self, cfg: PlacesConfig | None = None, cache: Cache | None = None,
                  client: httpx.Client | None = None, sleep: Callable[[float], None] = time.sleep, **_):

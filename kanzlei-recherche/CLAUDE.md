@@ -98,7 +98,8 @@ der nächsten Quelle füllen.**
   langsam). Ob und welche Stufe-B-Quellen gebaut werden, entscheidet sich nach den
   Coverage-Zahlen aus Stufe A. Nutzungsbedingungen (Speichern von Places-Inhalten,
   automatisierte Abfragen der Verzeichnisse) vor dem Bau klären.
-  - **`places`** (`search/places.py`, gebaut): Gebiet des Ortes aus dem viewport einer Text Search
+  - **`places`** (`search/places.py`, gebaut, aber **stillgelegt**: Name und Adresse gehören zur
+    kostenpflichtigen Pro-Stufe, kostenlos ist nur „IDs Only" – Entscheidung nach dem Pilot): Gebiet des Ortes aus dem viewport einer Text Search
     („24103 Kiel, Deutschland"), dann je Rasterzelle POST `places:searchText` („Steuerberater",
     includedType `accounting`, locationRestriction = Zelle, bis 3 Seiten à 20); volle Zellen werden
     geviertelt (`zelle_km` 5 → `min_zelle_km` 0,5). FieldMask **nur** id, displayName,

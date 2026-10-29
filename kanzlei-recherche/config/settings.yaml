@@ -81,7 +81,7 @@ discovery:
 
     # ---- Stufe B: Lückenfüller, nur für übergebene Orte (oder --luecken / --alle)
     places:                          # Google Places Text Search (New) über ein Rechteck-Raster (fill --orte)
-      aktiv: true                    # Key: GOOGLE_PLACES_API_KEY in .env; läuft nur mit `fill --quelle places --orte …`
+      aktiv: false                   # stillgelegt: Name/Adresse nur in der kostenpflichtigen Pro-Stufe (Code bleibt)
       text_query: Steuerberater
       included_type: accounting
       zelle_km: 5.0                  # Startzellen; volle Zellen (60 Treffer) werden geviertelt

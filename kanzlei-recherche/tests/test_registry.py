@@ -43,8 +43,8 @@ def test_alle_quellen_konfiguriert(settings):
 
 
 def test_aktive_adapter_aus_settings(settings):
-    assert [a.name for a in aktive_adapter(settings)] == ["brave", "ddgs", "places"]
-    assert [a.name for a in aktive_adapter(settings, stufe="B")] == ["places"]
+    assert [a.name for a in aktive_adapter(settings)] == ["brave", "ddgs"]
+    assert [a.name for a in aktive_adapter(settings, stufe="B")] == []
     s = settings.model_copy(deep=True)
     s.discovery.quellen.places.aktiv = True
     s.discovery.quellen.ddgs.aktiv = False
@@ -75,3 +75,9 @@ def test_platzhalter(settings, monkeypatch, name):
 
 def test_ddgs_ohne_key_bereit(settings):
     assert build_adapter("ddgs", settings).ist_konfiguriert
+
+
+def test_places_stillgelegt(settings, monkeypatch):
+    monkeypatch.setenv("GOOGLE_PLACES_API_KEY", "k")
+    a = build_adapter("places", settings)
+    assert not a.aktiv and "Platzhalter" in a.nicht_konfiguriert_grund()
