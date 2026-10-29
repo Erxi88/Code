@@ -485,6 +485,7 @@ def blocklist_vorschlag(
 def robots_check_cmd(
     domain: Annotated[str, typer.Option("--domain", "-d", help="Domain, z. B. obh-partner.de")],
     config: ConfigOpt = None,
+    rendern: Annotated[bool, typer.Option("--rendern", help="Startseite zusätzlich mit Playwright rendern")] = False,
 ) -> None:
     """Diagnose einer Domain: robots.txt aller Varianten roh (Status, Fehler, Weiterleitungen), Gruppe und
     entscheidende Regel für die Startseite, dann die Startseite selbst. Live, ohne Cache."""
@@ -493,7 +494,7 @@ def robots_check_cmd(
     from .crawl import robots_check
 
     s = load_settings(config)
-    for zeile in asyncio.run(robots_check(s.crawl, domain)):
+    for zeile in asyncio.run(robots_check(s.crawl, domain, rendern=rendern)):
         console.print(zeile, markup=False, highlight=False)
 
 

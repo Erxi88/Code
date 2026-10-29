@@ -21,6 +21,7 @@ import re
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from html import escape as html_escape
 from urllib.parse import urljoin, urlsplit, urlunsplit
 
 import httpx
@@ -175,6 +176,43 @@ def links(html: str, basis_url: str) -> list[tuple[str, str]]:
         elif not href.lower().startswith(("javascript:", "data:", "#")):
             ergebnis.append((urljoin(basis_url, href), text))
     return ergebnis
+
+
+_META_REFRESH = re.compile(r"^\s*\d+\s*[;,]\s*(?:url\s*=\s*)?['\"]?([^'\"\s>]+)", re.I)
+_JS_WEITERLEITUNG = re.compile(
+    r"(?:window\.|document\.|top\.|self\.)?location(?:\.href)?\s*=\s*['\"]([^'\"]+)['\"]|"
+    r"location\.(?:replace|assign)\(\s*['\"]([^'\"]+)['\"]",
+    re.I,
+)
+
+
+def html_weiterleitungen(html: str | None, basis_url: str) -> list[str]:
+    """Ziele, die eine fast leere Startseite selbst lädt: Frames/iFrames (Framesets alter Kanzleiseiten),
+    Meta-Refresh und JavaScript-Weiterleitungen (`location.href = "…"`) – in dieser Reihenfolge."""
+    if not html:
+        return []
+    soup = _soup(html)
+    ziele = [f.get("src", "").strip() for f in soup.find_all(["frame", "iframe"])]
+    for m in soup.find_all("meta", attrs={"http-equiv": re.compile("^refresh$", re.I)}):
+        if t := _META_REFRESH.match(m.get("content") or ""):
+            ziele.append(t.group(1))
+    for s in soup.find_all("script"):
+        for t in _JS_WEITERLEITUNG.finditer(s.get_text() or ""):
+            ziele.append(t.group(1) or t.group(2))
+    ergebnis = []
+    for z in ziele:
+        if z and not z.lower().startswith(("javascript:", "about:", "data:", "#")):
+            url = _ohne_fragment(urljoin(basis_url, z))
+            if url not in ergebnis and url != _ohne_fragment(basis_url):
+                ergebnis.append(url)
+    return ergebnis
+
+
+def _link_html(abrufe: list) -> str:
+    """Links mehrerer Frames als ein Dokument mit absoluten URLs (für finde_unterseiten)."""
+    return "<html><body>" + "".join(
+        f'<a href="{html_escape(u)}">{html_escape(t)}</a>\n'
+        for a in abrufe for u, t in links(a.html or "", a.final_url or a.url)) + "</body></html>"
 
 
 # ---------------------------------------------------------------------- Unterseiten erkennen
@@ -357,15 +395,40 @@ class _Verboten(Exception):
     """robots.txt verbietet das Ziel einer Weiterleitung."""
 
 
-async def playwright_render(url: str, timeout_s: float = 20.0, user_agent: str | None = None) -> str | None:
-    """HTML nach Ausführen von JavaScript (nur wenn crawl.playwright aktiviert ist)."""
+# Inhalt eines Frames mit absoluten Links (Frames haben eigene Basis-URLs)
+_FRAME_BODY_JS = """() => {
+  document.querySelectorAll('a[href]').forEach(a => a.setAttribute('href', a.href));
+  return document.body ? document.body.outerHTML : '';
+}"""
+
+
+async def playwright_render(url: str, timeout_s: float = 20.0, user_agent: str | None = None,
+                            warten_s: float = 2.0) -> str | None:
+    """HTML nach Ausführen von JavaScript (nur wenn crawl.playwright aktiviert ist).
+
+    Wartet auf `domcontentloaded` plus `warten_s` – „networkidle" läuft bei Seiten mit Tracking/Chat-
+    Widgets in den Timeout. Ein Timeout beim Laden ist kein Fehler, solange schon Inhalt da ist.
+    Bei Framesets/iFrames werden die Inhalte aller Frames angehängt (page.content() enthält sie nicht)."""
+    from playwright.async_api import TimeoutError as PlaywrightTimeout
     from playwright.async_api import async_playwright
 
     async with async_playwright() as p:
         browser = await p.chromium.launch()
         try:
             seite = await browser.new_page(user_agent=user_agent)
-            await seite.goto(url, timeout=timeout_s * 1000, wait_until="networkidle")
+            try:
+                await seite.goto(url, timeout=timeout_s * 1000, wait_until="domcontentloaded")
+            except PlaywrightTimeout:
+                pass  # Inhalt nehmen, der bis dahin da ist
+            await seite.wait_for_timeout(warten_s * 1000)
+            teile = []
+            for frame in seite.frames:
+                try:
+                    teile.append(await frame.evaluate(_FRAME_BODY_JS))
+                except Exception:  # Frame inzwischen entfernt, fremde Herkunft …
+                    continue
+            if len(seite.frames) > 1 and any(teile):
+                return "<html><body>" + "\n".join(teile) + "</body></html>"
             return await seite.content()
         finally:
             await browser.close()
@@ -616,7 +679,7 @@ class Crawler:
     async def _rendern_nach_403(self, abruf: Abruf) -> Abruf:
         """Bot-Schutz: Startseite mit HTTP 403 im echten Browser versuchen."""
         renderer = self._renderer or (
-            lambda u: playwright_render(u, self.cfg.playwright_timeout_s, self.cfg.user_agent)
+            lambda u: playwright_render(u, self.cfg.playwright_timeout_s, self.cfg.user_agent, self.cfg.playwright_warten_s)
         )
         try:
             html = await renderer(abruf.url)
@@ -637,7 +700,7 @@ class Crawler:
 
     async def _rendern(self, abruf: Abruf) -> Abruf:
         renderer = self._renderer or (
-            lambda u: playwright_render(u, self.cfg.playwright_timeout_s, self.cfg.user_agent)
+            lambda u: playwright_render(u, self.cfg.playwright_timeout_s, self.cfg.user_agent, self.cfg.playwright_warten_s)
         )
         try:
             html = await renderer(abruf.final_url or abruf.url)
@@ -693,11 +756,28 @@ class Crawler:
             return
         basis = start.final_url or start.url
         site = ziel if ziel != domain else domain
-        if len(start.text or "") < self.cfg.min_text_zeichen and not finde_unterseiten(start.html, basis, site):
-            erg.grund, erg.url = "Seite ohne Text (vermutlich JavaScript)", basis
+        link_html = start.html
+        if len(start.text or "") < self.cfg.min_text_zeichen:
+            # Frameset, iFrame, Meta-Refresh oder JavaScript-Weiterleitung: den Zielen folgen (je max. 3)
+            geholt = []
+            for url in html_weiterleitungen(start.html, basis)[:3]:
+                if gleiche_site(url, site) and (a := await self.hole(url, site, Seitentyp.START)).ok:
+                    geholt.append(a)
+            if geholt:
+                bester = max(geholt, key=lambda a: len(a.text or ""))
+                bester.playwright = f"Inhalt aus {', '.join(urlsplit(a.url).path or '/' for a in geholt)} (Frame/Weiterleitung)"
+                link_html = _link_html([start, *geholt])
+                if len(bester.text or "") > len(start.text or ""):
+                    start = bester
+                    erg.seiten[Seitentyp.START] = start
+                    basis = start.final_url or start.url
+        if len(start.text or "") < self.cfg.min_text_zeichen and not finde_unterseiten(link_html, basis, site):
+            pw = start.playwright or ("crawl.playwright ist aus" if not self.cfg.playwright else "nicht versucht")
+            erg.grund = f"Seite ohne Text (vermutlich JavaScript; {len(start.text or '')} Zeichen, Playwright: {pw})"
+            erg.url = basis
             return
 
-        gefunden = finde_unterseiten(start.html, basis, site)
+        gefunden = finde_unterseiten(link_html, basis, site)
         geladen: dict[str, Abruf] = {start.url: start}
         budget = self.cfg.max_seiten_je_domain - 1
 
@@ -873,7 +953,8 @@ def run_crawl(
 # ---------------------------------------------------------------------- Diagnose
 
 
-async def robots_check(cfg: CrawlConfig, domain: str, client: httpx.AsyncClient | None = None) -> list[str]:
+async def robots_check(cfg: CrawlConfig, domain: str, client: httpx.AsyncClient | None = None,
+                       rendern: bool = False, renderer: Renderer | None = None) -> list[str]:
     """`recherche robots-check --domain X`: robots.txt aller Varianten roh abrufen (Status, Fehler,
     Weiterleitungskette), Gruppe und entscheidende Regel für die Startseite, dann die Startseite selbst.
     Ohne Cache und ohne Drossel-Wartezeit über mehrere Domains – nur zur Diagnose einer Domain."""
@@ -929,6 +1010,24 @@ async def robots_check(cfg: CrawlConfig, domain: str, client: httpx.AsyncClient 
             zeilen.append(f"    Fehler: {fehler}")
         elif resp is not None:
             zeilen.append(f"    HTTP {resp.status_code}, {len(resp.text)} Zeichen, {resp.headers.get('content-type', '?')}")
+            basis = str(resp.url) if kette else f"https://{domain}/"
+            text = html_zu_text(resp.text) if resp.status_code < 400 else ""
+            n_links = len(finde_unterseiten(resp.text, basis, normalize_domain(basis) or domain))
+            zeilen.append(f"    Text {len(text)} Zeichen (Grenze {cfg.min_text_zeichen}), erkannte Unterseiten: {n_links}")
+            if ziele := html_weiterleitungen(resp.text, basis):
+                zeilen.append(f"    Frames/Weiterleitungen im HTML: {', '.join(ziele[:5])}")
+            if len(text) < cfg.min_text_zeichen:
+                zeilen.append(f"    → {'fast leer' if not ziele else 'fast leer, Crawler folgt den Frames/Weiterleitungen'}"
+                              f"{'' if cfg.playwright else '; crawl.playwright ist aus'}")
+        if rendern:
+            render = renderer or (lambda u: playwright_render(u, cfg.playwright_timeout_s, cfg.user_agent, cfg.playwright_warten_s))
+            try:
+                html = await render(f"https://{domain}/")
+                text = html_zu_text(html or "")
+                zeilen.append(f"Playwright: {len(html or '')} Zeichen HTML, {len(text)} Zeichen Text"
+                              f" – Anfang: {text[:200].replace(chr(10), ' | ')}")
+            except Exception as e:
+                zeilen.append(f"Playwright: fehlgeschlagen ({type(e).__name__}: {str(e).splitlines()[0][:150] if str(e) else ''})")
     finally:
         if eigener:
             await client.aclose()

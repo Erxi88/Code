@@ -155,7 +155,8 @@ der nächsten Quelle füllen.**
   robots-Sperre; diese Domains überspringt `crawl --wiederholen`. Anfragen mit vollständigem
   Kopfsatz (Accept, Accept-Language, Accept-Encoding), User-Agent bleibt unserer.
 - `recherche robots-check --domain X`: Diagnose live ohne Cache – robots.txt aller Varianten roh
-  (Status, Fehlermeldung, Weiterleitungskette), geltende Gruppe und entscheidende Regel, Startseite.
+  (Status, Fehlermeldung, Weiterleitungskette), geltende Gruppe und entscheidende Regel, Startseite
+  (Textlänge, erkannte Unterseiten, Frames/Weiterleitungen); `--rendern` zusätzlich mit Playwright.
 - `recherche blocklist-vorschlag [--mindestens N] [--out datei.csv]`: Domains aus „Nicht
   gefunden" mit Grund robots.txt/HTTP 403 und gelesene Domains mit Status „keine Kanzlei", nach
   Stammdomain zusammengefasst und nach Zahl der Suchorte sortiert (ab 5 Suchorten als „Portal"
@@ -177,7 +178,12 @@ der nächsten Quelle füllen.**
   `playwright_team_min_anteil` = 2 % des HTML; Namen per JavaScript) – nur mit
   `crawl.playwright: true` (`setup.sh --mit-playwright`). Das gerenderte HTML ersetzt das
   ursprüngliche nur, wenn es mehr Text ergibt. Mit `crawl --wiederholen` werden auch gecachte
-  403-Startseiten und Leerseiten aus einem Lauf ohne Playwright gerendert (Cache wird ersetzt). Das Ergebnis (gerendert, fehlgeschlagen
+  403-Startseiten und Leerseiten aus einem Lauf ohne Playwright gerendert (Cache wird ersetzt).
+  Fast leere Startseiten: zuerst **Frames/iFrames, Meta-Refresh und JavaScript-Weiterleitungen**
+  (`location.href = "…"`) derselben Site folgen (je bis 3); der Frame mit dem meisten Text wird
+  Startseite, Links aus allen Frames zählen. Playwright wartet auf `domcontentloaded` +
+  `crawl.playwright_warten_s` (2 s; „networkidle" lief in Timeouts) und hängt die Inhalte aller
+  Frames an. Der Grund „Seite ohne Text" nennt Textlänge und Playwright-Ergebnis. Das Ergebnis (gerendert, fehlgeschlagen
   mit Grund, nicht mehr Text, nötig aber aus) steht in `meta.json` der Fixture und in der
   Ausgabe von `fixture-add`.
 - Fehler (nicht erreichbar, HTTP-Fehler, robots.txt, kein Impressum, JavaScript-Seite,

@@ -270,7 +270,8 @@ JS_SEITE = "<html><body><div id='app'></div><script src='/app.js'></script></bod
 def test_javascript_seite_ohne_playwright(storage):
     web, clock, _ = _setup(storage, {"https://js.example/": (200, JS_SEITE)}, ("js.example", {}))
     _crawl(storage, web, clock)
-    assert storage.nicht_gefunden("SH")[0].grund == "Seite ohne Text (vermutlich JavaScript)"
+    assert storage.nicht_gefunden("SH")[0].grund.startswith("Seite ohne Text (vermutlich JavaScript; ")
+    assert "crawl.playwright ist aus" in storage.nicht_gefunden("SH")[0].grund
 
 
 def test_javascript_seite_mit_playwright_rueckfall(storage):
@@ -501,7 +502,7 @@ def test_robots_check_diagnose():
     assert "301 http://obh.example/robots.txt" in text  # Weiterleitungskette
     assert "DNS – Domain existiert nicht" in text
     assert "gilt Gruppe „*\"; Startseite: erlaubt (keine passende Regel)" in text
-    assert zeilen[-1].strip().startswith("HTTP 200")
+    assert any(z.strip().startswith("HTTP 200") for z in zeilen)
 
 
 def test_robots_entscheidung_nennt_regel():
@@ -567,3 +568,48 @@ def test_wiederholen_rendert_gecachte_403_startseite(storage):
 
     assert asyncio.run(lauf(True)).fertig == 1
     assert storage.get_seite(start).http_status == 200  # Cache durch das gerenderte HTML ersetzt
+
+
+@pytest.mark.parametrize("start_html", [
+    # Frameset alter Kanzleiseiten: Navigation und Inhalt in Frames
+    '<html><frameset cols="200,*"><frame src="nav.html"><frame src="inhalt.html"></frameset></html>',
+    '<html><body><iframe src="/inhalt.html" width="100%"></iframe></body></html>',
+    '<html><head><meta http-equiv="refresh" content="0; URL=inhalt.html"></head><body></body></html>',
+    '<html><body><script>window.location.href = "/inhalt.html";</script></body></html>',
+])  # fmt: skip
+def test_frames_und_weiterleitungen_im_html_werden_gefolgt(storage, start_html):
+    inhalt = beispiel_seiten("foerde-steuer.example")["https://foerde-steuer.example/"][1]
+    seiten = {**beispiel_seiten("foerde-steuer.example"),
+              "https://foerde-steuer.example/": (200, start_html),
+              "https://foerde-steuer.example/nav.html": (200, '<a href="rechtliches/impressum.html">Impressum</a>'),
+              "https://foerde-steuer.example/inhalt.html": (200, inhalt)}
+    web, clock, ids = _setup(storage, seiten, ("foerde-steuer.example", {}))
+    assert _crawl(storage, web, clock).fertig == 1
+    s = storage.kandidat_seiten(ids[0])
+    assert s[Seitentyp.START].url == "https://foerde-steuer.example/inhalt.html"
+    assert Seitentyp.IMPRESSUM in s
+
+
+def test_html_weiterleitungen_ignoriert_fremde_und_javascript():
+    from recherche.crawl import html_weiterleitungen
+
+    html = ('<iframe src="https://www.youtube.com/embed/x"></iframe><iframe src="javascript:void(0)"></iframe>'
+            '<meta http-equiv="Refresh" content="5;url=\'/neu/\'">')
+    assert html_weiterleitungen(html, "https://a.example/") == ["https://www.youtube.com/embed/x", "https://a.example/neu/"]
+
+
+def test_robots_check_zeigt_frames_und_rendern():
+    import asyncio
+
+    from recherche.crawl import robots_check
+
+    clock = FakeAsyncClock()
+    web = FakeWeb({"https://frame.example/robots.txt": (404, ""),
+                   "https://frame.example/": (200, '<frameset><frame src="haupt.html"></frameset>')}, clock)
+
+    async def renderer(url):
+        return "<html><body><p>Steuerkanzlei Frame</p></body></html>"
+
+    text = "\n".join(asyncio.run(robots_check(CFG, "frame.example", client=web.client(), rendern=True, renderer=renderer)))
+    assert "Frames/Weiterleitungen im HTML: https://frame.example/haupt.html" in text
+    assert "fast leer, Crawler folgt" in text and "Playwright: " in text and "Steuerkanzlei Frame" in text

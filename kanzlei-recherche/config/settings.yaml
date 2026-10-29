@@ -110,6 +110,7 @@ crawl:
   min_text_zeichen: 300              # darunter gilt eine Seite als leer (JavaScript)
   playwright: false                  # Rückfall für JavaScript-Seiten (setup.sh --mit-playwright)
   playwright_timeout_s: 20
+  playwright_warten_s: 2             # nach „domcontentloaded" warten (networkidle läuft oft in den Timeout)
   # Teamseite mit großem HTML, aber Text unter 2 % davon (Namen per JavaScript) → Playwright
   playwright_team_min_html: 20000
   playwright_team_min_anteil: 0.02
