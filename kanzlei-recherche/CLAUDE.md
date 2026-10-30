@@ -531,6 +531,8 @@ der nächsten Quelle füllen.**
   die Vorlage an. `recherche fixture-eval [--live] [--modell M]` misst die Trefferquote
   je Feld, mittlere Laufzeit und Token je Kanzlei; `--live` fragt Ollama und zeichnet
   auf – nur für `echt/`, außer mit `--nur beispiele`. `--offline` prüft PLZ/Ort ohne OpenPLZ.
+  `fixture-eval` und `fixture-prompt` laden `config/ketten.yaml` wie der Lauf (Standortseiten-Regel Q11 auch ohne
+  Impressum-URL der Zentrale in meta.json).
   Name und Ansprechpartner werden offline nur über Aufzeichnungen bewertet. Sollwerte `null` (oder fehlend) zählen
   als „nicht bewertet", nicht als Fehler. Bei jedem Fehler steht die Regel dabei, die das Ergebnis bestimmt hat
   (Einträge aus „Abweichung" wie „Telefon aus dem Text …, tel:-Link nennt …", „Ansprechpartner-Rang: …",
