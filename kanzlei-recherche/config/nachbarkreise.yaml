@@ -1,19 +1,2533 @@
 # Nachbarkreise je Bundesland für die Vorwahl-PLZ-Prüfung (Q4, src/recherche/vorwahl.py).
-# Ortsnetze enden nicht an Kreisgrenzen (Kronshagen → 0431 Kiel); eine Vorwahl aus einem Nachbarkreis passt.
-# Symmetrisch gelesen: A → B genügt. Kreisnamen wie in config/orte_<BL>.csv. immer_zulaessig: Vorwahlen ohne
-# Prüfung (Hamburg 040 für das SH-Umland, Rücksprache 30.10.2026). SH geprüft 30.10.2026.
+# Erzeugt mit `recherche nachbarkreise` aus Wikidata (P47, Kreisschlüssel P440) und GV-ISys (nur aktuelle Kreise,
+# Namen aus GV-ISys). Ortsnetze enden nicht an Kreisgrenzen (Kronshagen → 0431 Kiel); eine Vorwahl aus einem
+# Nachbarkreis passt. Symmetrisch, auch über Landesgrenzen. immer_zulaessig: Vorwahlen ohne Prüfung
+# (Hamburg 040 für SH, Rücksprache 30.10.2026). SH gegen die geprüfte Handliste vom 30.10.2026 abgeglichen.
 SH:
-  immer_zulaessig: ["040"]
+  immer_zulaessig:
+  - '040'
   nachbarn:
-    Kreisfreie Stadt Flensburg: [Kreis Schleswig-Flensburg]
-    Kreisfreie Stadt Kiel: [Kreis Rendsburg-Eckernförde, Kreis Plön]
-    Kreisfreie Stadt Lübeck: [Kreis Ostholstein, Kreis Stormarn, Kreis Herzogtum Lauenburg]
-    Kreisfreie Stadt Neumünster: [Kreis Rendsburg-Eckernförde, Kreis Segeberg, Kreis Plön]
-    Kreis Dithmarschen: [Kreis Nordfriesland, Kreis Rendsburg-Eckernförde, Kreis Schleswig-Flensburg, Kreis Steinburg]
-    Kreis Herzogtum Lauenburg: [Kreis Stormarn]
-    Kreis Nordfriesland: [Kreis Schleswig-Flensburg]
-    Kreis Ostholstein: [Kreis Plön, Kreis Segeberg, Kreis Stormarn]
-    Kreis Pinneberg: [Kreis Segeberg, Kreis Steinburg]
-    Kreis Plön: [Kreis Rendsburg-Eckernförde, Kreis Segeberg]
-    Kreis Rendsburg-Eckernförde: [Kreis Schleswig-Flensburg, Kreis Segeberg, Kreis Steinburg]
-    Kreis Segeberg: [Kreis Stormarn, Kreis Steinburg]
+    Kreisfreie Stadt Flensburg:
+    - Kreis Schleswig-Flensburg
+    Kreisfreie Stadt Kiel:
+    - Kreis Plön
+    - Kreis Rendsburg-Eckernförde
+    Kreisfreie Stadt Lübeck:
+    - Kreis Herzogtum Lauenburg
+    - Kreis Ostholstein
+    - Kreis Stormarn
+    - Landkreis Nordwestmecklenburg
+    Kreisfreie Stadt Neumünster:
+    - Kreis Plön
+    - Kreis Rendsburg-Eckernförde
+    - Kreis Segeberg
+    Kreis Dithmarschen:
+    - Kreis Nordfriesland
+    - Kreis Rendsburg-Eckernförde
+    - Kreis Schleswig-Flensburg
+    - Kreis Steinburg
+    - Landkreis Cuxhaven
+    - Landkreis Stade
+    Kreis Herzogtum Lauenburg:
+    - Kreis Stormarn
+    - Kreisfreie Stadt Hamburg
+    - Kreisfreie Stadt Lübeck
+    - Landkreis Harburg
+    - Landkreis Ludwigslust-Parchim
+    - Landkreis Lüneburg
+    - Landkreis Nordwestmecklenburg
+    Kreis Nordfriesland:
+    - Kreis Dithmarschen
+    - Kreis Schleswig-Flensburg
+    Kreis Ostholstein:
+    - Kreis Plön
+    - Kreis Segeberg
+    - Kreis Stormarn
+    - Kreisfreie Stadt Lübeck
+    Kreis Pinneberg:
+    - Kreis Segeberg
+    - Kreis Steinburg
+    - Kreisfreie Stadt Hamburg
+    - Landkreis Stade
+    Kreis Plön:
+    - Kreis Ostholstein
+    - Kreis Rendsburg-Eckernförde
+    - Kreis Segeberg
+    - Kreisfreie Stadt Kiel
+    - Kreisfreie Stadt Neumünster
+    Kreis Rendsburg-Eckernförde:
+    - Kreis Dithmarschen
+    - Kreis Plön
+    - Kreis Schleswig-Flensburg
+    - Kreis Segeberg
+    - Kreis Steinburg
+    - Kreisfreie Stadt Kiel
+    - Kreisfreie Stadt Neumünster
+    Kreis Schleswig-Flensburg:
+    - Kreis Dithmarschen
+    - Kreis Nordfriesland
+    - Kreis Rendsburg-Eckernförde
+    - Kreisfreie Stadt Flensburg
+    Kreis Segeberg:
+    - Kreis Ostholstein
+    - Kreis Pinneberg
+    - Kreis Plön
+    - Kreis Rendsburg-Eckernförde
+    - Kreis Steinburg
+    - Kreis Stormarn
+    - Kreisfreie Stadt Hamburg
+    - Kreisfreie Stadt Neumünster
+    Kreis Steinburg:
+    - Kreis Dithmarschen
+    - Kreis Pinneberg
+    - Kreis Rendsburg-Eckernförde
+    - Kreis Segeberg
+    - Landkreis Stade
+    Kreis Stormarn:
+    - Kreis Herzogtum Lauenburg
+    - Kreis Ostholstein
+    - Kreis Segeberg
+    - Kreisfreie Stadt Hamburg
+    - Kreisfreie Stadt Lübeck
+HH:
+  nachbarn:
+    Kreisfreie Stadt Hamburg:
+    - Kreis Herzogtum Lauenburg
+    - Kreis Pinneberg
+    - Kreis Segeberg
+    - Kreis Stormarn
+    - Landkreis Harburg
+    - Landkreis Stade
+NI:
+  nachbarn:
+    Kreisfreie Stadt Braunschweig:
+    - Kreisfreie Stadt Salzgitter
+    - Landkreis Gifhorn
+    - Landkreis Helmstedt
+    - Landkreis Peine
+    - Landkreis Wolfenbüttel
+    Kreisfreie Stadt Salzgitter:
+    - Kreisfreie Stadt Braunschweig
+    - Landkreis Goslar
+    - Landkreis Hildesheim
+    - Landkreis Peine
+    - Landkreis Wolfenbüttel
+    Kreisfreie Stadt Wolfsburg:
+    - Landkreis Gifhorn
+    - Landkreis Helmstedt
+    Landkreis Gifhorn:
+    - Kreisfreie Stadt Braunschweig
+    - Kreisfreie Stadt Wolfsburg
+    - Landkreis Altmarkkreis Salzwedel
+    - Landkreis Börde
+    - Landkreis Celle
+    - Landkreis Helmstedt
+    - Landkreis Peine
+    - Landkreis Region Hannover
+    - Landkreis Uelzen
+    Landkreis Goslar:
+    - Kreisfreie Stadt Salzgitter
+    - Landkreis Göttingen
+    - Landkreis Harz
+    - Landkreis Hildesheim
+    - Landkreis Nordhausen
+    - Landkreis Northeim
+    - Landkreis Wolfenbüttel
+    Landkreis Helmstedt:
+    - Kreisfreie Stadt Braunschweig
+    - Kreisfreie Stadt Wolfsburg
+    - Landkreis Börde
+    - Landkreis Gifhorn
+    - Landkreis Harz
+    - Landkreis Wolfenbüttel
+    Landkreis Northeim:
+    - Kreis Höxter
+    - Landkreis Goslar
+    - Landkreis Göttingen
+    - Landkreis Hildesheim
+    - Landkreis Holzminden
+    - Landkreis Kassel
+    Landkreis Peine:
+    - Kreisfreie Stadt Braunschweig
+    - Kreisfreie Stadt Salzgitter
+    - Landkreis Gifhorn
+    - Landkreis Hildesheim
+    - Landkreis Region Hannover
+    Landkreis Wolfenbüttel:
+    - Kreisfreie Stadt Braunschweig
+    - Kreisfreie Stadt Salzgitter
+    - Landkreis Goslar
+    - Landkreis Harz
+    - Landkreis Helmstedt
+    - Landkreis Hildesheim
+    Landkreis Göttingen:
+    - Kreisfreie Stadt Kassel
+    - Landkreis Eichsfeld
+    - Landkreis Goslar
+    - Landkreis Kassel
+    - Landkreis Nordhausen
+    - Landkreis Northeim
+    - Landkreis Werra-Meißner-Kreis
+    Landkreis Region Hannover:
+    - Landkreis Celle
+    - Landkreis Gifhorn
+    - Landkreis Hameln-Pyrmont
+    - Landkreis Heidekreis
+    - Landkreis Hildesheim
+    - Landkreis Nienburg (Weser)
+    - Landkreis Peine
+    - Landkreis Schaumburg
+    Landkreis Diepholz:
+    - Kreis Minden-Lübbecke
+    - Kreisfreie Stadt Bremen
+    - Kreisfreie Stadt Delmenhorst
+    - Landkreis Nienburg (Weser)
+    - Landkreis Oldenburg
+    - Landkreis Osnabrück
+    - Landkreis Vechta
+    - Landkreis Verden
+    Landkreis Hameln-Pyrmont:
+    - Kreis Lippe
+    - Landkreis Hildesheim
+    - Landkreis Holzminden
+    - Landkreis Region Hannover
+    - Landkreis Schaumburg
+    Landkreis Hildesheim:
+    - Kreisfreie Stadt Salzgitter
+    - Landkreis Goslar
+    - Landkreis Hameln-Pyrmont
+    - Landkreis Holzminden
+    - Landkreis Northeim
+    - Landkreis Peine
+    - Landkreis Region Hannover
+    - Landkreis Wolfenbüttel
+    Landkreis Holzminden:
+    - Kreis Höxter
+    - Kreis Lippe
+    - Landkreis Hameln-Pyrmont
+    - Landkreis Hildesheim
+    - Landkreis Northeim
+    Landkreis Nienburg (Weser):
+    - Kreis Minden-Lübbecke
+    - Landkreis Diepholz
+    - Landkreis Heidekreis
+    - Landkreis Region Hannover
+    - Landkreis Schaumburg
+    - Landkreis Verden
+    Landkreis Schaumburg:
+    - Kreis Lippe
+    - Kreis Minden-Lübbecke
+    - Landkreis Hameln-Pyrmont
+    - Landkreis Nienburg (Weser)
+    - Landkreis Region Hannover
+    Landkreis Celle:
+    - Landkreis Gifhorn
+    - Landkreis Heidekreis
+    - Landkreis Region Hannover
+    - Landkreis Uelzen
+    Landkreis Cuxhaven:
+    - Kreis Dithmarschen
+    - Kreisfreie Stadt Bremerhaven
+    - Landkreis Osterholz
+    - Landkreis Rotenburg (Wümme)
+    - Landkreis Stade
+    - Landkreis Wesermarsch
+    Landkreis Harburg:
+    - Kreis Herzogtum Lauenburg
+    - Kreisfreie Stadt Hamburg
+    - Landkreis Heidekreis
+    - Landkreis Lüneburg
+    - Landkreis Rotenburg (Wümme)
+    - Landkreis Stade
+    Landkreis Lüchow-Dannenberg:
+    - Landkreis Altmarkkreis Salzwedel
+    - Landkreis Ludwigslust-Parchim
+    - Landkreis Lüneburg
+    - Landkreis Prignitz
+    - Landkreis Stendal
+    - Landkreis Uelzen
+    Landkreis Lüneburg:
+    - Kreis Herzogtum Lauenburg
+    - Landkreis Harburg
+    - Landkreis Heidekreis
+    - Landkreis Ludwigslust-Parchim
+    - Landkreis Lüchow-Dannenberg
+    - Landkreis Uelzen
+    Landkreis Osterholz:
+    - Kreisfreie Stadt Bremen
+    - Landkreis Cuxhaven
+    - Landkreis Rotenburg (Wümme)
+    - Landkreis Verden
+    - Landkreis Wesermarsch
+    Landkreis Rotenburg (Wümme):
+    - Landkreis Cuxhaven
+    - Landkreis Harburg
+    - Landkreis Heidekreis
+    - Landkreis Osterholz
+    - Landkreis Stade
+    - Landkreis Verden
+    Landkreis Heidekreis:
+    - Landkreis Celle
+    - Landkreis Harburg
+    - Landkreis Lüneburg
+    - Landkreis Nienburg (Weser)
+    - Landkreis Region Hannover
+    - Landkreis Rotenburg (Wümme)
+    - Landkreis Uelzen
+    - Landkreis Verden
+    Landkreis Stade:
+    - Kreis Dithmarschen
+    - Kreis Pinneberg
+    - Kreis Steinburg
+    - Kreisfreie Stadt Hamburg
+    - Landkreis Cuxhaven
+    - Landkreis Harburg
+    - Landkreis Rotenburg (Wümme)
+    Landkreis Uelzen:
+    - Landkreis Altmarkkreis Salzwedel
+    - Landkreis Celle
+    - Landkreis Gifhorn
+    - Landkreis Heidekreis
+    - Landkreis Lüchow-Dannenberg
+    - Landkreis Lüneburg
+    Landkreis Verden:
+    - Kreisfreie Stadt Bremen
+    - Landkreis Diepholz
+    - Landkreis Heidekreis
+    - Landkreis Nienburg (Weser)
+    - Landkreis Osterholz
+    - Landkreis Rotenburg (Wümme)
+    Kreisfreie Stadt Delmenhorst:
+    - Kreisfreie Stadt Bremen
+    - Landkreis Diepholz
+    - Landkreis Oldenburg
+    - Landkreis Wesermarsch
+    Kreisfreie Stadt Emden:
+    - Landkreis Aurich
+    - Landkreis Leer
+    Kreisfreie Stadt Oldenburg (Oldb):
+    - Landkreis Ammerland
+    - Landkreis Oldenburg
+    - Landkreis Wesermarsch
+    Kreisfreie Stadt Osnabrück:
+    - Kreis Steinfurt
+    - Landkreis Osnabrück
+    Kreisfreie Stadt Wilhelmshaven:
+    - Landkreis Friesland
+    Landkreis Ammerland:
+    - Kreisfreie Stadt Oldenburg (Oldb)
+    - Landkreis Cloppenburg
+    - Landkreis Friesland
+    - Landkreis Leer
+    - Landkreis Oldenburg
+    - Landkreis Wesermarsch
+    Landkreis Aurich:
+    - Kreisfreie Stadt Emden
+    - Landkreis Leer
+    - Landkreis Wittmund
+    Landkreis Cloppenburg:
+    - Landkreis Ammerland
+    - Landkreis Emsland
+    - Landkreis Leer
+    - Landkreis Oldenburg
+    - Landkreis Osnabrück
+    - Landkreis Vechta
+    Landkreis Emsland:
+    - Kreis Steinfurt
+    - Landkreis Cloppenburg
+    - Landkreis Grafschaft Bentheim
+    - Landkreis Leer
+    - Landkreis Osnabrück
+    Landkreis Friesland:
+    - Kreisfreie Stadt Wilhelmshaven
+    - Landkreis Ammerland
+    - Landkreis Leer
+    - Landkreis Wesermarsch
+    - Landkreis Wittmund
+    Landkreis Grafschaft Bentheim:
+    - Kreis Borken
+    - Kreis Steinfurt
+    - Landkreis Emsland
+    Landkreis Leer:
+    - Kreisfreie Stadt Emden
+    - Landkreis Ammerland
+    - Landkreis Aurich
+    - Landkreis Cloppenburg
+    - Landkreis Emsland
+    - Landkreis Friesland
+    - Landkreis Wittmund
+    Landkreis Oldenburg:
+    - Kreisfreie Stadt Delmenhorst
+    - Kreisfreie Stadt Oldenburg (Oldb)
+    - Landkreis Ammerland
+    - Landkreis Cloppenburg
+    - Landkreis Diepholz
+    - Landkreis Vechta
+    - Landkreis Wesermarsch
+    Landkreis Osnabrück:
+    - Kreis Gütersloh
+    - Kreis Herford
+    - Kreis Minden-Lübbecke
+    - Kreis Steinfurt
+    - Kreis Warendorf
+    - Kreisfreie Stadt Osnabrück
+    - Landkreis Cloppenburg
+    - Landkreis Diepholz
+    - Landkreis Emsland
+    - Landkreis Vechta
+    Landkreis Vechta:
+    - Landkreis Cloppenburg
+    - Landkreis Diepholz
+    - Landkreis Oldenburg
+    - Landkreis Osnabrück
+    Landkreis Wesermarsch:
+    - Kreisfreie Stadt Bremen
+    - Kreisfreie Stadt Bremerhaven
+    - Kreisfreie Stadt Delmenhorst
+    - Kreisfreie Stadt Oldenburg (Oldb)
+    - Landkreis Ammerland
+    - Landkreis Cuxhaven
+    - Landkreis Friesland
+    - Landkreis Oldenburg
+    - Landkreis Osterholz
+    Landkreis Wittmund:
+    - Landkreis Aurich
+    - Landkreis Friesland
+    - Landkreis Leer
+HB:
+  nachbarn:
+    Kreisfreie Stadt Bremen:
+    - Kreisfreie Stadt Delmenhorst
+    - Landkreis Diepholz
+    - Landkreis Osterholz
+    - Landkreis Verden
+    - Landkreis Wesermarsch
+    Kreisfreie Stadt Bremerhaven:
+    - Landkreis Cuxhaven
+    - Landkreis Wesermarsch
+NW:
+  nachbarn:
+    Kreisfreie Stadt Düsseldorf:
+    - Kreis Mettmann
+    - Kreis Rhein-Kreis Neuss
+    - Kreisfreie Stadt Duisburg
+    Kreisfreie Stadt Duisburg:
+    - Kreis Mettmann
+    - Kreis Rhein-Kreis Neuss
+    - Kreis Wesel
+    - Kreisfreie Stadt Düsseldorf
+    - Kreisfreie Stadt Krefeld
+    - Kreisfreie Stadt Mülheim an der Ruhr
+    - Kreisfreie Stadt Oberhausen
+    Kreisfreie Stadt Essen:
+    - Kreis Ennepe-Ruhr-Kreis
+    - Kreis Mettmann
+    - Kreis Recklinghausen
+    - Kreisfreie Stadt Bochum
+    - Kreisfreie Stadt Bottrop
+    - Kreisfreie Stadt Gelsenkirchen
+    - Kreisfreie Stadt Mülheim an der Ruhr
+    - Kreisfreie Stadt Oberhausen
+    Kreisfreie Stadt Krefeld:
+    - Kreis Rhein-Kreis Neuss
+    - Kreis Viersen
+    - Kreis Wesel
+    - Kreisfreie Stadt Duisburg
+    Kreisfreie Stadt Mönchengladbach:
+    - Kreis Heinsberg
+    - Kreis Rhein-Kreis Neuss
+    - Kreis Viersen
+    Kreisfreie Stadt Mülheim an der Ruhr:
+    - Kreis Mettmann
+    - Kreisfreie Stadt Duisburg
+    - Kreisfreie Stadt Essen
+    - Kreisfreie Stadt Oberhausen
+    Kreisfreie Stadt Oberhausen:
+    - Kreis Wesel
+    - Kreisfreie Stadt Bottrop
+    - Kreisfreie Stadt Duisburg
+    - Kreisfreie Stadt Essen
+    - Kreisfreie Stadt Mülheim an der Ruhr
+    Kreisfreie Stadt Remscheid:
+    - Kreis Oberbergischer Kreis
+    - Kreis Rheinisch-Bergischer Kreis
+    - Kreisfreie Stadt Solingen
+    - Kreisfreie Stadt Wuppertal
+    Kreisfreie Stadt Solingen:
+    - Kreis Mettmann
+    - Kreis Rheinisch-Bergischer Kreis
+    - Kreisfreie Stadt Remscheid
+    - Kreisfreie Stadt Wuppertal
+    Kreisfreie Stadt Wuppertal:
+    - Kreis Ennepe-Ruhr-Kreis
+    - Kreis Mettmann
+    - Kreis Oberbergischer Kreis
+    - Kreisfreie Stadt Remscheid
+    - Kreisfreie Stadt Solingen
+    Kreis Kleve:
+    - Kreis Borken
+    - Kreis Viersen
+    - Kreis Wesel
+    Kreis Mettmann:
+    - Kreis Ennepe-Ruhr-Kreis
+    - Kreis Rhein-Kreis Neuss
+    - Kreis Rheinisch-Bergischer Kreis
+    - Kreisfreie Stadt Duisburg
+    - Kreisfreie Stadt Düsseldorf
+    - Kreisfreie Stadt Essen
+    - Kreisfreie Stadt Köln
+    - Kreisfreie Stadt Leverkusen
+    - Kreisfreie Stadt Mülheim an der Ruhr
+    - Kreisfreie Stadt Solingen
+    - Kreisfreie Stadt Wuppertal
+    Kreis Rhein-Kreis Neuss:
+    - Kreis Düren
+    - Kreis Heinsberg
+    - Kreis Mettmann
+    - Kreis Rhein-Erft-Kreis
+    - Kreis Viersen
+    - Kreisfreie Stadt Duisburg
+    - Kreisfreie Stadt Düsseldorf
+    - Kreisfreie Stadt Krefeld
+    - Kreisfreie Stadt Köln
+    - Kreisfreie Stadt Mönchengladbach
+    Kreis Viersen:
+    - Kreis Heinsberg
+    - Kreis Kleve
+    - Kreis Rhein-Kreis Neuss
+    - Kreis Wesel
+    - Kreisfreie Stadt Krefeld
+    - Kreisfreie Stadt Mönchengladbach
+    Kreis Wesel:
+    - Kreis Borken
+    - Kreis Kleve
+    - Kreis Recklinghausen
+    - Kreis Viersen
+    - Kreisfreie Stadt Bottrop
+    - Kreisfreie Stadt Duisburg
+    - Kreisfreie Stadt Krefeld
+    - Kreisfreie Stadt Oberhausen
+    Kreisfreie Stadt Bonn:
+    - Kreis Rhein-Sieg-Kreis
+    - Landkreis Ahrweiler
+    Kreisfreie Stadt Köln:
+    - Kreis Mettmann
+    - Kreis Rhein-Erft-Kreis
+    - Kreis Rhein-Kreis Neuss
+    - Kreis Rhein-Sieg-Kreis
+    - Kreis Rheinisch-Bergischer Kreis
+    - Kreisfreie Stadt Leverkusen
+    Kreisfreie Stadt Leverkusen:
+    - Kreis Mettmann
+    - Kreis Rheinisch-Bergischer Kreis
+    - Kreisfreie Stadt Köln
+    Kreis Städteregion Aachen:
+    - Kreis Düren
+    - Kreis Euskirchen
+    - Kreis Heinsberg
+    Kreis Düren:
+    - Kreis Euskirchen
+    - Kreis Heinsberg
+    - Kreis Rhein-Erft-Kreis
+    - Kreis Rhein-Kreis Neuss
+    - Kreis Städteregion Aachen
+    Kreis Rhein-Erft-Kreis:
+    - Kreis Düren
+    - Kreis Euskirchen
+    - Kreis Rhein-Kreis Neuss
+    - Kreis Rhein-Sieg-Kreis
+    - Kreisfreie Stadt Köln
+    Kreis Euskirchen:
+    - Kreis Düren
+    - Kreis Rhein-Erft-Kreis
+    - Kreis Rhein-Sieg-Kreis
+    - Kreis Städteregion Aachen
+    - Landkreis Ahrweiler
+    - Landkreis Eifelkreis Bitburg-Prüm
+    - Landkreis Vulkaneifel
+    Kreis Heinsberg:
+    - Kreis Düren
+    - Kreis Rhein-Kreis Neuss
+    - Kreis Städteregion Aachen
+    - Kreis Viersen
+    - Kreisfreie Stadt Mönchengladbach
+    Kreis Oberbergischer Kreis:
+    - Kreis Ennepe-Ruhr-Kreis
+    - Kreis Märkischer Kreis
+    - Kreis Olpe
+    - Kreis Rhein-Sieg-Kreis
+    - Kreis Rheinisch-Bergischer Kreis
+    - Kreisfreie Stadt Remscheid
+    - Kreisfreie Stadt Wuppertal
+    - Landkreis Altenkirchen (Westerwald)
+    Kreis Rheinisch-Bergischer Kreis:
+    - Kreis Mettmann
+    - Kreis Oberbergischer Kreis
+    - Kreis Rhein-Sieg-Kreis
+    - Kreisfreie Stadt Köln
+    - Kreisfreie Stadt Leverkusen
+    - Kreisfreie Stadt Remscheid
+    - Kreisfreie Stadt Solingen
+    Kreis Rhein-Sieg-Kreis:
+    - Kreis Euskirchen
+    - Kreis Oberbergischer Kreis
+    - Kreis Rhein-Erft-Kreis
+    - Kreis Rheinisch-Bergischer Kreis
+    - Kreisfreie Stadt Bonn
+    - Kreisfreie Stadt Köln
+    - Landkreis Ahrweiler
+    - Landkreis Altenkirchen (Westerwald)
+    - Landkreis Neuwied
+    Kreisfreie Stadt Bottrop:
+    - Kreis Recklinghausen
+    - Kreis Wesel
+    - Kreisfreie Stadt Essen
+    - Kreisfreie Stadt Oberhausen
+    Kreisfreie Stadt Gelsenkirchen:
+    - Kreis Recklinghausen
+    - Kreisfreie Stadt Bochum
+    - Kreisfreie Stadt Essen
+    - Kreisfreie Stadt Herne
+    Kreisfreie Stadt Münster:
+    - Kreis Coesfeld
+    - Kreis Steinfurt
+    - Kreis Warendorf
+    Kreis Borken:
+    - Kreis Coesfeld
+    - Kreis Kleve
+    - Kreis Recklinghausen
+    - Kreis Steinfurt
+    - Kreis Wesel
+    - Landkreis Grafschaft Bentheim
+    Kreis Coesfeld:
+    - Kreis Borken
+    - Kreis Recklinghausen
+    - Kreis Steinfurt
+    - Kreis Unna
+    - Kreis Warendorf
+    - Kreisfreie Stadt Hamm
+    - Kreisfreie Stadt Münster
+    Kreis Recklinghausen:
+    - Kreis Borken
+    - Kreis Coesfeld
+    - Kreis Unna
+    - Kreis Wesel
+    - Kreisfreie Stadt Bochum
+    - Kreisfreie Stadt Bottrop
+    - Kreisfreie Stadt Dortmund
+    - Kreisfreie Stadt Essen
+    - Kreisfreie Stadt Gelsenkirchen
+    - Kreisfreie Stadt Herne
+    Kreis Steinfurt:
+    - Kreis Borken
+    - Kreis Coesfeld
+    - Kreis Warendorf
+    - Kreisfreie Stadt Münster
+    - Kreisfreie Stadt Osnabrück
+    - Landkreis Emsland
+    - Landkreis Grafschaft Bentheim
+    - Landkreis Osnabrück
+    Kreis Warendorf:
+    - Kreis Coesfeld
+    - Kreis Gütersloh
+    - Kreis Soest
+    - Kreis Steinfurt
+    - Kreisfreie Stadt Hamm
+    - Kreisfreie Stadt Münster
+    - Landkreis Osnabrück
+    Kreisfreie Stadt Bielefeld:
+    - Kreis Gütersloh
+    - Kreis Herford
+    - Kreis Lippe
+    Kreis Gütersloh:
+    - Kreis Herford
+    - Kreis Lippe
+    - Kreis Paderborn
+    - Kreis Soest
+    - Kreis Warendorf
+    - Kreisfreie Stadt Bielefeld
+    - Landkreis Osnabrück
+    Kreis Herford:
+    - Kreis Gütersloh
+    - Kreis Lippe
+    - Kreis Minden-Lübbecke
+    - Kreisfreie Stadt Bielefeld
+    - Landkreis Osnabrück
+    Kreis Höxter:
+    - Kreis Hochsauerlandkreis
+    - Kreis Lippe
+    - Kreis Paderborn
+    - Landkreis Holzminden
+    - Landkreis Kassel
+    - Landkreis Northeim
+    - Landkreis Waldeck-Frankenberg
+    Kreis Lippe:
+    - Kreis Gütersloh
+    - Kreis Herford
+    - Kreis Höxter
+    - Kreis Minden-Lübbecke
+    - Kreis Paderborn
+    - Kreisfreie Stadt Bielefeld
+    - Landkreis Hameln-Pyrmont
+    - Landkreis Holzminden
+    - Landkreis Schaumburg
+    Kreis Minden-Lübbecke:
+    - Kreis Herford
+    - Kreis Lippe
+    - Landkreis Diepholz
+    - Landkreis Nienburg (Weser)
+    - Landkreis Osnabrück
+    - Landkreis Schaumburg
+    Kreis Paderborn:
+    - Kreis Gütersloh
+    - Kreis Hochsauerlandkreis
+    - Kreis Höxter
+    - Kreis Lippe
+    - Kreis Soest
+    Kreisfreie Stadt Bochum:
+    - Kreis Ennepe-Ruhr-Kreis
+    - Kreis Recklinghausen
+    - Kreisfreie Stadt Dortmund
+    - Kreisfreie Stadt Essen
+    - Kreisfreie Stadt Gelsenkirchen
+    - Kreisfreie Stadt Herne
+    Kreisfreie Stadt Dortmund:
+    - Kreis Ennepe-Ruhr-Kreis
+    - Kreis Recklinghausen
+    - Kreis Unna
+    - Kreisfreie Stadt Bochum
+    - Kreisfreie Stadt Hagen
+    Kreisfreie Stadt Hagen:
+    - Kreis Ennepe-Ruhr-Kreis
+    - Kreis Märkischer Kreis
+    - Kreis Unna
+    - Kreisfreie Stadt Dortmund
+    Kreisfreie Stadt Hamm:
+    - Kreis Coesfeld
+    - Kreis Soest
+    - Kreis Unna
+    - Kreis Warendorf
+    Kreisfreie Stadt Herne:
+    - Kreis Recklinghausen
+    - Kreisfreie Stadt Bochum
+    - Kreisfreie Stadt Gelsenkirchen
+    Kreis Ennepe-Ruhr-Kreis:
+    - Kreis Mettmann
+    - Kreis Märkischer Kreis
+    - Kreis Oberbergischer Kreis
+    - Kreisfreie Stadt Bochum
+    - Kreisfreie Stadt Dortmund
+    - Kreisfreie Stadt Essen
+    - Kreisfreie Stadt Hagen
+    - Kreisfreie Stadt Wuppertal
+    Kreis Hochsauerlandkreis:
+    - Kreis Höxter
+    - Kreis Märkischer Kreis
+    - Kreis Olpe
+    - Kreis Paderborn
+    - Kreis Siegen-Wittgenstein
+    - Kreis Soest
+    - Landkreis Waldeck-Frankenberg
+    Kreis Märkischer Kreis:
+    - Kreis Ennepe-Ruhr-Kreis
+    - Kreis Hochsauerlandkreis
+    - Kreis Oberbergischer Kreis
+    - Kreis Olpe
+    - Kreis Soest
+    - Kreis Unna
+    - Kreisfreie Stadt Hagen
+    Kreis Olpe:
+    - Kreis Hochsauerlandkreis
+    - Kreis Märkischer Kreis
+    - Kreis Oberbergischer Kreis
+    - Kreis Siegen-Wittgenstein
+    - Landkreis Altenkirchen (Westerwald)
+    Kreis Siegen-Wittgenstein:
+    - Kreis Hochsauerlandkreis
+    - Kreis Olpe
+    - Landkreis Altenkirchen (Westerwald)
+    - Landkreis Lahn-Dill-Kreis
+    - Landkreis Marburg-Biedenkopf
+    - Landkreis Waldeck-Frankenberg
+    - Landkreis Westerwaldkreis
+    Kreis Soest:
+    - Kreis Gütersloh
+    - Kreis Hochsauerlandkreis
+    - Kreis Märkischer Kreis
+    - Kreis Paderborn
+    - Kreis Unna
+    - Kreis Warendorf
+    - Kreisfreie Stadt Hamm
+    Kreis Unna:
+    - Kreis Coesfeld
+    - Kreis Märkischer Kreis
+    - Kreis Recklinghausen
+    - Kreis Soest
+    - Kreisfreie Stadt Dortmund
+    - Kreisfreie Stadt Hagen
+    - Kreisfreie Stadt Hamm
+HE:
+  nachbarn:
+    Kreisfreie Stadt Darmstadt:
+    - Landkreis Darmstadt-Dieburg
+    - Landkreis Offenbach
+    Kreisfreie Stadt Frankfurt am Main:
+    - Kreisfreie Stadt Offenbach am Main
+    - Landkreis Groß-Gerau
+    - Landkreis Hochtaunuskreis
+    - Landkreis Main-Kinzig-Kreis
+    - Landkreis Main-Taunus-Kreis
+    - Landkreis Offenbach
+    - Landkreis Wetteraukreis
+    Kreisfreie Stadt Offenbach am Main:
+    - Kreisfreie Stadt Frankfurt am Main
+    - Landkreis Main-Kinzig-Kreis
+    - Landkreis Offenbach
+    Kreisfreie Stadt Wiesbaden:
+    - Kreisfreie Stadt Mainz
+    - Landkreis Groß-Gerau
+    - Landkreis Main-Taunus-Kreis
+    - Landkreis Mainz-Bingen
+    - Landkreis Rheingau-Taunus-Kreis
+    Landkreis Bergstraße:
+    - Kreisfreie Stadt Worms
+    - Landkreis Alzey-Worms
+    - Landkreis Darmstadt-Dieburg
+    - Landkreis Groß-Gerau
+    - Landkreis Odenwaldkreis
+    - Landkreis Rhein-Neckar-Kreis
+    - Landkreis Rhein-Pfalz-Kreis
+    - Stadtkreis Mannheim
+    Landkreis Darmstadt-Dieburg:
+    - Kreisfreie Stadt Darmstadt
+    - Landkreis Aschaffenburg
+    - Landkreis Bergstraße
+    - Landkreis Groß-Gerau
+    - Landkreis Miltenberg
+    - Landkreis Odenwaldkreis
+    - Landkreis Offenbach
+    Landkreis Groß-Gerau:
+    - Kreisfreie Stadt Frankfurt am Main
+    - Kreisfreie Stadt Mainz
+    - Kreisfreie Stadt Wiesbaden
+    - Landkreis Alzey-Worms
+    - Landkreis Bergstraße
+    - Landkreis Darmstadt-Dieburg
+    - Landkreis Main-Taunus-Kreis
+    - Landkreis Mainz-Bingen
+    - Landkreis Offenbach
+    Landkreis Hochtaunuskreis:
+    - Kreisfreie Stadt Frankfurt am Main
+    - Landkreis Lahn-Dill-Kreis
+    - Landkreis Limburg-Weilburg
+    - Landkreis Main-Taunus-Kreis
+    - Landkreis Rheingau-Taunus-Kreis
+    - Landkreis Wetteraukreis
+    Landkreis Main-Kinzig-Kreis:
+    - Kreisfreie Stadt Frankfurt am Main
+    - Kreisfreie Stadt Offenbach am Main
+    - Landkreis Aschaffenburg
+    - Landkreis Bad Kissingen
+    - Landkreis Fulda
+    - Landkreis Main-Spessart
+    - Landkreis Offenbach
+    - Landkreis Vogelsbergkreis
+    - Landkreis Wetteraukreis
+    Landkreis Main-Taunus-Kreis:
+    - Kreisfreie Stadt Frankfurt am Main
+    - Kreisfreie Stadt Wiesbaden
+    - Landkreis Groß-Gerau
+    - Landkreis Hochtaunuskreis
+    - Landkreis Rheingau-Taunus-Kreis
+    Landkreis Odenwaldkreis:
+    - Landkreis Bergstraße
+    - Landkreis Darmstadt-Dieburg
+    - Landkreis Miltenberg
+    - Landkreis Neckar-Odenwald-Kreis
+    - Landkreis Rhein-Neckar-Kreis
+    Landkreis Offenbach:
+    - Kreisfreie Stadt Darmstadt
+    - Kreisfreie Stadt Frankfurt am Main
+    - Kreisfreie Stadt Offenbach am Main
+    - Landkreis Aschaffenburg
+    - Landkreis Darmstadt-Dieburg
+    - Landkreis Groß-Gerau
+    - Landkreis Main-Kinzig-Kreis
+    Landkreis Rheingau-Taunus-Kreis:
+    - Kreisfreie Stadt Wiesbaden
+    - Landkreis Hochtaunuskreis
+    - Landkreis Limburg-Weilburg
+    - Landkreis Main-Taunus-Kreis
+    - Landkreis Mainz-Bingen
+    - Landkreis Rhein-Lahn-Kreis
+    Landkreis Wetteraukreis:
+    - Kreisfreie Stadt Frankfurt am Main
+    - Landkreis Gießen
+    - Landkreis Hochtaunuskreis
+    - Landkreis Lahn-Dill-Kreis
+    - Landkreis Main-Kinzig-Kreis
+    - Landkreis Vogelsbergkreis
+    Landkreis Gießen:
+    - Landkreis Lahn-Dill-Kreis
+    - Landkreis Marburg-Biedenkopf
+    - Landkreis Vogelsbergkreis
+    - Landkreis Wetteraukreis
+    Landkreis Lahn-Dill-Kreis:
+    - Kreis Siegen-Wittgenstein
+    - Landkreis Gießen
+    - Landkreis Hochtaunuskreis
+    - Landkreis Limburg-Weilburg
+    - Landkreis Marburg-Biedenkopf
+    - Landkreis Westerwaldkreis
+    - Landkreis Wetteraukreis
+    Landkreis Limburg-Weilburg:
+    - Landkreis Hochtaunuskreis
+    - Landkreis Lahn-Dill-Kreis
+    - Landkreis Rhein-Lahn-Kreis
+    - Landkreis Rheingau-Taunus-Kreis
+    - Landkreis Westerwaldkreis
+    Landkreis Marburg-Biedenkopf:
+    - Kreis Siegen-Wittgenstein
+    - Landkreis Gießen
+    - Landkreis Lahn-Dill-Kreis
+    - Landkreis Schwalm-Eder-Kreis
+    - Landkreis Vogelsbergkreis
+    - Landkreis Waldeck-Frankenberg
+    Landkreis Vogelsbergkreis:
+    - Landkreis Fulda
+    - Landkreis Gießen
+    - Landkreis Hersfeld-Rotenburg
+    - Landkreis Main-Kinzig-Kreis
+    - Landkreis Marburg-Biedenkopf
+    - Landkreis Schwalm-Eder-Kreis
+    - Landkreis Wetteraukreis
+    Kreisfreie Stadt Kassel:
+    - Landkreis Göttingen
+    - Landkreis Kassel
+    Landkreis Fulda:
+    - Landkreis Bad Kissingen
+    - Landkreis Hersfeld-Rotenburg
+    - Landkreis Main-Kinzig-Kreis
+    - Landkreis Rhön-Grabfeld
+    - Landkreis Schmalkalden-Meiningen
+    - Landkreis Vogelsbergkreis
+    - Landkreis Wartburgkreis
+    Landkreis Hersfeld-Rotenburg:
+    - Landkreis Fulda
+    - Landkreis Schwalm-Eder-Kreis
+    - Landkreis Vogelsbergkreis
+    - Landkreis Wartburgkreis
+    - Landkreis Werra-Meißner-Kreis
+    Landkreis Kassel:
+    - Kreis Höxter
+    - Kreisfreie Stadt Kassel
+    - Landkreis Göttingen
+    - Landkreis Northeim
+    - Landkreis Schwalm-Eder-Kreis
+    - Landkreis Waldeck-Frankenberg
+    - Landkreis Werra-Meißner-Kreis
+    Landkreis Schwalm-Eder-Kreis:
+    - Landkreis Hersfeld-Rotenburg
+    - Landkreis Kassel
+    - Landkreis Marburg-Biedenkopf
+    - Landkreis Vogelsbergkreis
+    - Landkreis Waldeck-Frankenberg
+    - Landkreis Werra-Meißner-Kreis
+    Landkreis Waldeck-Frankenberg:
+    - Kreis Hochsauerlandkreis
+    - Kreis Höxter
+    - Kreis Siegen-Wittgenstein
+    - Landkreis Kassel
+    - Landkreis Marburg-Biedenkopf
+    - Landkreis Schwalm-Eder-Kreis
+    Landkreis Werra-Meißner-Kreis:
+    - Landkreis Eichsfeld
+    - Landkreis Göttingen
+    - Landkreis Hersfeld-Rotenburg
+    - Landkreis Kassel
+    - Landkreis Schwalm-Eder-Kreis
+    - Landkreis Unstrut-Hainich-Kreis
+    - Landkreis Wartburgkreis
+RP:
+  nachbarn:
+    Kreisfreie Stadt Koblenz:
+    - Landkreis Mayen-Koblenz
+    - Landkreis Rhein-Lahn-Kreis
+    - Landkreis Westerwaldkreis
+    Landkreis Ahrweiler:
+    - Kreis Euskirchen
+    - Kreis Rhein-Sieg-Kreis
+    - Kreisfreie Stadt Bonn
+    - Landkreis Mayen-Koblenz
+    - Landkreis Neuwied
+    - Landkreis Vulkaneifel
+    Landkreis Altenkirchen (Westerwald):
+    - Kreis Oberbergischer Kreis
+    - Kreis Olpe
+    - Kreis Rhein-Sieg-Kreis
+    - Kreis Siegen-Wittgenstein
+    - Landkreis Neuwied
+    - Landkreis Westerwaldkreis
+    Landkreis Bad Kreuznach:
+    - Landkreis Alzey-Worms
+    - Landkreis Birkenfeld
+    - Landkreis Donnersbergkreis
+    - Landkreis Kusel
+    - Landkreis Mainz-Bingen
+    - Landkreis Rhein-Hunsrück-Kreis
+    Landkreis Birkenfeld:
+    - Landkreis Bad Kreuznach
+    - Landkreis Bernkastel-Wittlich
+    - Landkreis Kusel
+    - Landkreis Rhein-Hunsrück-Kreis
+    - Landkreis St. Wendel
+    - Landkreis Trier-Saarburg
+    Landkreis Cochem-Zell:
+    - Landkreis Bernkastel-Wittlich
+    - Landkreis Mayen-Koblenz
+    - Landkreis Rhein-Hunsrück-Kreis
+    - Landkreis Vulkaneifel
+    Landkreis Mayen-Koblenz:
+    - Kreisfreie Stadt Koblenz
+    - Landkreis Ahrweiler
+    - Landkreis Cochem-Zell
+    - Landkreis Neuwied
+    - Landkreis Rhein-Hunsrück-Kreis
+    - Landkreis Rhein-Lahn-Kreis
+    - Landkreis Vulkaneifel
+    - Landkreis Westerwaldkreis
+    Landkreis Neuwied:
+    - Kreis Rhein-Sieg-Kreis
+    - Landkreis Ahrweiler
+    - Landkreis Altenkirchen (Westerwald)
+    - Landkreis Mayen-Koblenz
+    - Landkreis Westerwaldkreis
+    Landkreis Rhein-Hunsrück-Kreis:
+    - Landkreis Bad Kreuznach
+    - Landkreis Bernkastel-Wittlich
+    - Landkreis Birkenfeld
+    - Landkreis Cochem-Zell
+    - Landkreis Mainz-Bingen
+    - Landkreis Mayen-Koblenz
+    - Landkreis Rhein-Lahn-Kreis
+    Landkreis Rhein-Lahn-Kreis:
+    - Kreisfreie Stadt Koblenz
+    - Landkreis Limburg-Weilburg
+    - Landkreis Mainz-Bingen
+    - Landkreis Mayen-Koblenz
+    - Landkreis Rhein-Hunsrück-Kreis
+    - Landkreis Rheingau-Taunus-Kreis
+    - Landkreis Westerwaldkreis
+    Landkreis Westerwaldkreis:
+    - Kreis Siegen-Wittgenstein
+    - Kreisfreie Stadt Koblenz
+    - Landkreis Altenkirchen (Westerwald)
+    - Landkreis Lahn-Dill-Kreis
+    - Landkreis Limburg-Weilburg
+    - Landkreis Mayen-Koblenz
+    - Landkreis Neuwied
+    - Landkreis Rhein-Lahn-Kreis
+    Kreisfreie Stadt Trier:
+    - Landkreis Trier-Saarburg
+    Landkreis Bernkastel-Wittlich:
+    - Landkreis Birkenfeld
+    - Landkreis Cochem-Zell
+    - Landkreis Eifelkreis Bitburg-Prüm
+    - Landkreis Rhein-Hunsrück-Kreis
+    - Landkreis Trier-Saarburg
+    - Landkreis Vulkaneifel
+    Landkreis Eifelkreis Bitburg-Prüm:
+    - Kreis Euskirchen
+    - Landkreis Bernkastel-Wittlich
+    - Landkreis Trier-Saarburg
+    - Landkreis Vulkaneifel
+    Landkreis Vulkaneifel:
+    - Kreis Euskirchen
+    - Landkreis Ahrweiler
+    - Landkreis Bernkastel-Wittlich
+    - Landkreis Cochem-Zell
+    - Landkreis Eifelkreis Bitburg-Prüm
+    - Landkreis Mayen-Koblenz
+    Landkreis Trier-Saarburg:
+    - Kreisfreie Stadt Trier
+    - Landkreis Bernkastel-Wittlich
+    - Landkreis Birkenfeld
+    - Landkreis Eifelkreis Bitburg-Prüm
+    - Landkreis Merzig-Wadern
+    - Landkreis St. Wendel
+    Kreisfreie Stadt Frankenthal (Pfalz):
+    - Kreisfreie Stadt Ludwigshafen am Rhein
+    - Landkreis Rhein-Pfalz-Kreis
+    - Stadtkreis Mannheim
+    Kreisfreie Stadt Kaiserslautern:
+    - Landkreis Bad Dürkheim
+    - Landkreis Kaiserslautern
+    Kreisfreie Stadt Landau in der Pfalz:
+    - Landkreis Bad Dürkheim
+    - Landkreis Südliche Weinstraße
+    - Landkreis Südwestpfalz
+    Kreisfreie Stadt Ludwigshafen am Rhein:
+    - Kreisfreie Stadt Frankenthal (Pfalz)
+    - Landkreis Rhein-Pfalz-Kreis
+    - Stadtkreis Mannheim
+    Kreisfreie Stadt Mainz:
+    - Kreisfreie Stadt Wiesbaden
+    - Landkreis Groß-Gerau
+    - Landkreis Mainz-Bingen
+    Kreisfreie Stadt Neustadt an der Weinstraße:
+    - Landkreis Bad Dürkheim
+    - Landkreis Rhein-Pfalz-Kreis
+    - Landkreis Südliche Weinstraße
+    Kreisfreie Stadt Pirmasens:
+    - Landkreis Südwestpfalz
+    Kreisfreie Stadt Speyer:
+    - Landkreis Karlsruhe
+    - Landkreis Rhein-Neckar-Kreis
+    - Landkreis Rhein-Pfalz-Kreis
+    Kreisfreie Stadt Worms:
+    - Landkreis Alzey-Worms
+    - Landkreis Bad Dürkheim
+    - Landkreis Bergstraße
+    - Landkreis Rhein-Pfalz-Kreis
+    Kreisfreie Stadt Zweibrücken:
+    - Landkreis Saarpfalz-Kreis
+    - Landkreis Südwestpfalz
+    Landkreis Alzey-Worms:
+    - Kreisfreie Stadt Worms
+    - Landkreis Bad Dürkheim
+    - Landkreis Bad Kreuznach
+    - Landkreis Bergstraße
+    - Landkreis Donnersbergkreis
+    - Landkreis Groß-Gerau
+    - Landkreis Mainz-Bingen
+    - Landkreis Rhein-Pfalz-Kreis
+    Landkreis Bad Dürkheim:
+    - Kreisfreie Stadt Kaiserslautern
+    - Kreisfreie Stadt Landau in der Pfalz
+    - Kreisfreie Stadt Neustadt an der Weinstraße
+    - Kreisfreie Stadt Worms
+    - Landkreis Alzey-Worms
+    - Landkreis Donnersbergkreis
+    - Landkreis Kaiserslautern
+    - Landkreis Rhein-Pfalz-Kreis
+    - Landkreis Südliche Weinstraße
+    - Landkreis Südwestpfalz
+    Landkreis Donnersbergkreis:
+    - Landkreis Alzey-Worms
+    - Landkreis Bad Dürkheim
+    - Landkreis Bad Kreuznach
+    - Landkreis Kaiserslautern
+    - Landkreis Kusel
+    Landkreis Germersheim:
+    - Landkreis Karlsruhe
+    - Landkreis Rastatt
+    - Landkreis Rhein-Pfalz-Kreis
+    - Landkreis Südliche Weinstraße
+    - Stadtkreis Karlsruhe
+    Landkreis Kaiserslautern:
+    - Kreisfreie Stadt Kaiserslautern
+    - Landkreis Bad Dürkheim
+    - Landkreis Donnersbergkreis
+    - Landkreis Kusel
+    - Landkreis Saarpfalz-Kreis
+    - Landkreis Südwestpfalz
+    Landkreis Kusel:
+    - Landkreis Bad Kreuznach
+    - Landkreis Birkenfeld
+    - Landkreis Donnersbergkreis
+    - Landkreis Kaiserslautern
+    - Landkreis Neunkirchen
+    - Landkreis Saarpfalz-Kreis
+    - Landkreis St. Wendel
+    Landkreis Südliche Weinstraße:
+    - Kreisfreie Stadt Landau in der Pfalz
+    - Kreisfreie Stadt Neustadt an der Weinstraße
+    - Landkreis Bad Dürkheim
+    - Landkreis Germersheim
+    - Landkreis Rhein-Pfalz-Kreis
+    - Landkreis Südwestpfalz
+    Landkreis Rhein-Pfalz-Kreis:
+    - Kreisfreie Stadt Frankenthal (Pfalz)
+    - Kreisfreie Stadt Ludwigshafen am Rhein
+    - Kreisfreie Stadt Neustadt an der Weinstraße
+    - Kreisfreie Stadt Speyer
+    - Kreisfreie Stadt Worms
+    - Landkreis Alzey-Worms
+    - Landkreis Bad Dürkheim
+    - Landkreis Bergstraße
+    - Landkreis Germersheim
+    - Landkreis Karlsruhe
+    - Landkreis Rhein-Neckar-Kreis
+    - Landkreis Südliche Weinstraße
+    - Stadtkreis Mannheim
+    Landkreis Mainz-Bingen:
+    - Kreisfreie Stadt Mainz
+    - Kreisfreie Stadt Wiesbaden
+    - Landkreis Alzey-Worms
+    - Landkreis Bad Kreuznach
+    - Landkreis Groß-Gerau
+    - Landkreis Rhein-Hunsrück-Kreis
+    - Landkreis Rhein-Lahn-Kreis
+    - Landkreis Rheingau-Taunus-Kreis
+    Landkreis Südwestpfalz:
+    - Kreisfreie Stadt Landau in der Pfalz
+    - Kreisfreie Stadt Pirmasens
+    - Kreisfreie Stadt Zweibrücken
+    - Landkreis Bad Dürkheim
+    - Landkreis Kaiserslautern
+    - Landkreis Saarpfalz-Kreis
+    - Landkreis Südliche Weinstraße
+BW:
+  nachbarn:
+    Stadtkreis Stuttgart:
+    - Landkreis Böblingen
+    - Landkreis Esslingen
+    - Landkreis Ludwigsburg
+    - Landkreis Rems-Murr-Kreis
+    Landkreis Böblingen:
+    - Landkreis Calw
+    - Landkreis Enzkreis
+    - Landkreis Esslingen
+    - Landkreis Ludwigsburg
+    - Landkreis Reutlingen
+    - Landkreis Tübingen
+    - Stadtkreis Stuttgart
+    Landkreis Esslingen:
+    - Landkreis Böblingen
+    - Landkreis Göppingen
+    - Landkreis Rems-Murr-Kreis
+    - Landkreis Reutlingen
+    - Stadtkreis Stuttgart
+    Landkreis Göppingen:
+    - Landkreis Alb-Donau-Kreis
+    - Landkreis Esslingen
+    - Landkreis Heidenheim
+    - Landkreis Ostalbkreis
+    - Landkreis Rems-Murr-Kreis
+    - Landkreis Reutlingen
+    Landkreis Ludwigsburg:
+    - Landkreis Böblingen
+    - Landkreis Enzkreis
+    - Landkreis Heilbronn
+    - Landkreis Rems-Murr-Kreis
+    - Stadtkreis Stuttgart
+    Landkreis Rems-Murr-Kreis:
+    - Landkreis Esslingen
+    - Landkreis Göppingen
+    - Landkreis Heilbronn
+    - Landkreis Ludwigsburg
+    - Landkreis Ostalbkreis
+    - Landkreis Schwäbisch Hall
+    - Stadtkreis Stuttgart
+    Stadtkreis Heilbronn:
+    - Landkreis Heilbronn
+    Landkreis Heilbronn:
+    - Landkreis Enzkreis
+    - Landkreis Hohenlohekreis
+    - Landkreis Karlsruhe
+    - Landkreis Ludwigsburg
+    - Landkreis Neckar-Odenwald-Kreis
+    - Landkreis Rems-Murr-Kreis
+    - Landkreis Rhein-Neckar-Kreis
+    - Landkreis Schwäbisch Hall
+    - Stadtkreis Heilbronn
+    Landkreis Hohenlohekreis:
+    - Landkreis Heilbronn
+    - Landkreis Main-Tauber-Kreis
+    - Landkreis Neckar-Odenwald-Kreis
+    - Landkreis Schwäbisch Hall
+    Landkreis Schwäbisch Hall:
+    - Landkreis Ansbach
+    - Landkreis Heilbronn
+    - Landkreis Hohenlohekreis
+    - Landkreis Main-Tauber-Kreis
+    - Landkreis Ostalbkreis
+    - Landkreis Rems-Murr-Kreis
+    Landkreis Main-Tauber-Kreis:
+    - Landkreis Ansbach
+    - Landkreis Hohenlohekreis
+    - Landkreis Main-Spessart
+    - Landkreis Miltenberg
+    - Landkreis Neckar-Odenwald-Kreis
+    - Landkreis Neustadt a.d.Aisch-Bad Windsheim
+    - Landkreis Schwäbisch Hall
+    - Landkreis Würzburg
+    Landkreis Heidenheim:
+    - Landkreis Alb-Donau-Kreis
+    - Landkreis Dillingen a.d.Donau
+    - Landkreis Donau-Ries
+    - Landkreis Göppingen
+    - Landkreis Günzburg
+    - Landkreis Ostalbkreis
+    Landkreis Ostalbkreis:
+    - Landkreis Ansbach
+    - Landkreis Donau-Ries
+    - Landkreis Göppingen
+    - Landkreis Heidenheim
+    - Landkreis Rems-Murr-Kreis
+    - Landkreis Schwäbisch Hall
+    Stadtkreis Baden-Baden:
+    - Landkreis Rastatt
+    Stadtkreis Karlsruhe:
+    - Landkreis Germersheim
+    - Landkreis Karlsruhe
+    Landkreis Karlsruhe:
+    - Kreisfreie Stadt Speyer
+    - Landkreis Calw
+    - Landkreis Enzkreis
+    - Landkreis Germersheim
+    - Landkreis Heilbronn
+    - Landkreis Rastatt
+    - Landkreis Rhein-Neckar-Kreis
+    - Landkreis Rhein-Pfalz-Kreis
+    - Stadtkreis Karlsruhe
+    Landkreis Rastatt:
+    - Landkreis Calw
+    - Landkreis Freudenstadt
+    - Landkreis Germersheim
+    - Landkreis Karlsruhe
+    - Landkreis Ortenaukreis
+    - Stadtkreis Baden-Baden
+    Stadtkreis Heidelberg:
+    - Landkreis Rhein-Neckar-Kreis
+    - Stadtkreis Mannheim
+    Stadtkreis Mannheim:
+    - Kreisfreie Stadt Frankenthal (Pfalz)
+    - Kreisfreie Stadt Ludwigshafen am Rhein
+    - Landkreis Bergstraße
+    - Landkreis Rhein-Neckar-Kreis
+    - Landkreis Rhein-Pfalz-Kreis
+    - Stadtkreis Heidelberg
+    Landkreis Neckar-Odenwald-Kreis:
+    - Landkreis Heilbronn
+    - Landkreis Hohenlohekreis
+    - Landkreis Main-Tauber-Kreis
+    - Landkreis Miltenberg
+    - Landkreis Odenwaldkreis
+    - Landkreis Rhein-Neckar-Kreis
+    Landkreis Rhein-Neckar-Kreis:
+    - Kreisfreie Stadt Speyer
+    - Landkreis Bergstraße
+    - Landkreis Heilbronn
+    - Landkreis Karlsruhe
+    - Landkreis Neckar-Odenwald-Kreis
+    - Landkreis Odenwaldkreis
+    - Landkreis Rhein-Pfalz-Kreis
+    - Stadtkreis Heidelberg
+    - Stadtkreis Mannheim
+    Stadtkreis Pforzheim:
+    - Landkreis Calw
+    - Landkreis Enzkreis
+    Landkreis Calw:
+    - Landkreis Böblingen
+    - Landkreis Enzkreis
+    - Landkreis Freudenstadt
+    - Landkreis Karlsruhe
+    - Landkreis Rastatt
+    - Landkreis Tübingen
+    - Stadtkreis Pforzheim
+    Landkreis Enzkreis:
+    - Landkreis Böblingen
+    - Landkreis Calw
+    - Landkreis Heilbronn
+    - Landkreis Karlsruhe
+    - Landkreis Ludwigsburg
+    - Stadtkreis Pforzheim
+    Landkreis Freudenstadt:
+    - Landkreis Calw
+    - Landkreis Ortenaukreis
+    - Landkreis Rastatt
+    - Landkreis Rottweil
+    - Landkreis Tübingen
+    - Landkreis Zollernalbkreis
+    Stadtkreis Freiburg im Breisgau:
+    - Landkreis Breisgau-Hochschwarzwald
+    - Landkreis Emmendingen
+    Landkreis Breisgau-Hochschwarzwald:
+    - Landkreis Emmendingen
+    - Landkreis Lörrach
+    - Landkreis Schwarzwald-Baar-Kreis
+    - Landkreis Waldshut
+    - Stadtkreis Freiburg im Breisgau
+    Landkreis Emmendingen:
+    - Landkreis Breisgau-Hochschwarzwald
+    - Landkreis Ortenaukreis
+    - Landkreis Schwarzwald-Baar-Kreis
+    - Stadtkreis Freiburg im Breisgau
+    Landkreis Ortenaukreis:
+    - Landkreis Emmendingen
+    - Landkreis Freudenstadt
+    - Landkreis Rastatt
+    - Landkreis Rottweil
+    - Landkreis Schwarzwald-Baar-Kreis
+    Landkreis Rottweil:
+    - Landkreis Freudenstadt
+    - Landkreis Ortenaukreis
+    - Landkreis Schwarzwald-Baar-Kreis
+    - Landkreis Tuttlingen
+    - Landkreis Zollernalbkreis
+    Landkreis Schwarzwald-Baar-Kreis:
+    - Landkreis Breisgau-Hochschwarzwald
+    - Landkreis Emmendingen
+    - Landkreis Konstanz
+    - Landkreis Ortenaukreis
+    - Landkreis Rottweil
+    - Landkreis Tuttlingen
+    - Landkreis Waldshut
+    Landkreis Tuttlingen:
+    - Landkreis Konstanz
+    - Landkreis Rottweil
+    - Landkreis Schwarzwald-Baar-Kreis
+    - Landkreis Sigmaringen
+    - Landkreis Zollernalbkreis
+    Landkreis Konstanz:
+    - Landkreis Bodenseekreis
+    - Landkreis Schwarzwald-Baar-Kreis
+    - Landkreis Sigmaringen
+    - Landkreis Tuttlingen
+    Landkreis Lörrach:
+    - Landkreis Breisgau-Hochschwarzwald
+    - Landkreis Waldshut
+    Landkreis Waldshut:
+    - Landkreis Breisgau-Hochschwarzwald
+    - Landkreis Lörrach
+    - Landkreis Schwarzwald-Baar-Kreis
+    Landkreis Reutlingen:
+    - Landkreis Alb-Donau-Kreis
+    - Landkreis Biberach
+    - Landkreis Böblingen
+    - Landkreis Esslingen
+    - Landkreis Göppingen
+    - Landkreis Sigmaringen
+    - Landkreis Tübingen
+    - Landkreis Zollernalbkreis
+    Landkreis Tübingen:
+    - Landkreis Böblingen
+    - Landkreis Calw
+    - Landkreis Freudenstadt
+    - Landkreis Reutlingen
+    - Landkreis Zollernalbkreis
+    Landkreis Zollernalbkreis:
+    - Landkreis Freudenstadt
+    - Landkreis Reutlingen
+    - Landkreis Rottweil
+    - Landkreis Sigmaringen
+    - Landkreis Tuttlingen
+    - Landkreis Tübingen
+    Stadtkreis Ulm:
+    - Landkreis Alb-Donau-Kreis
+    - Landkreis Neu-Ulm
+    Landkreis Alb-Donau-Kreis:
+    - Landkreis Biberach
+    - Landkreis Göppingen
+    - Landkreis Günzburg
+    - Landkreis Heidenheim
+    - Landkreis Neu-Ulm
+    - Landkreis Reutlingen
+    - Stadtkreis Ulm
+    Landkreis Biberach:
+    - Kreisfreie Stadt Memmingen
+    - Landkreis Alb-Donau-Kreis
+    - Landkreis Neu-Ulm
+    - Landkreis Ravensburg
+    - Landkreis Reutlingen
+    - Landkreis Sigmaringen
+    - Landkreis Unterallgäu
+    Landkreis Bodenseekreis:
+    - Landkreis Konstanz
+    - Landkreis Lindau (Bodensee)
+    - Landkreis Ravensburg
+    - Landkreis Sigmaringen
+    Landkreis Ravensburg:
+    - Kreisfreie Stadt Memmingen
+    - Landkreis Biberach
+    - Landkreis Bodenseekreis
+    - Landkreis Lindau (Bodensee)
+    - Landkreis Oberallgäu
+    - Landkreis Sigmaringen
+    - Landkreis Unterallgäu
+    Landkreis Sigmaringen:
+    - Landkreis Biberach
+    - Landkreis Bodenseekreis
+    - Landkreis Konstanz
+    - Landkreis Ravensburg
+    - Landkreis Reutlingen
+    - Landkreis Tuttlingen
+    - Landkreis Zollernalbkreis
+BY:
+  nachbarn:
+    Kreisfreie Stadt Ingolstadt:
+    - Landkreis Eichstätt
+    - Landkreis Neuburg-Schrobenhausen
+    - Landkreis Pfaffenhofen a.d.Ilm
+    Kreisfreie Stadt München:
+    - Landkreis Dachau
+    - Landkreis Fürstenfeldbruck
+    - Landkreis München
+    Kreisfreie Stadt Rosenheim:
+    - Landkreis Rosenheim
+    Landkreis Altötting:
+    - Landkreis Mühldorf a.Inn
+    - Landkreis Rottal-Inn
+    - Landkreis Traunstein
+    Landkreis Berchtesgadener Land:
+    - Landkreis Traunstein
+    Landkreis Bad Tölz-Wolfratshausen:
+    - Landkreis Garmisch-Partenkirchen
+    - Landkreis Miesbach
+    - Landkreis München
+    - Landkreis Starnberg
+    - Landkreis Weilheim-Schongau
+    Landkreis Dachau:
+    - Kreisfreie Stadt München
+    - Landkreis Aichach-Friedberg
+    - Landkreis Freising
+    - Landkreis Fürstenfeldbruck
+    - Landkreis München
+    - Landkreis Pfaffenhofen a.d.Ilm
+    Landkreis Ebersberg:
+    - Landkreis Erding
+    - Landkreis Mühldorf a.Inn
+    - Landkreis München
+    - Landkreis Rosenheim
+    Landkreis Eichstätt:
+    - Kreisfreie Stadt Ingolstadt
+    - Landkreis Donau-Ries
+    - Landkreis Kelheim
+    - Landkreis Neuburg-Schrobenhausen
+    - Landkreis Neumarkt i.d.OPf.
+    - Landkreis Pfaffenhofen a.d.Ilm
+    - Landkreis Roth
+    - Landkreis Weißenburg-Gunzenhausen
+    Landkreis Erding:
+    - Landkreis Ebersberg
+    - Landkreis Freising
+    - Landkreis Landshut
+    - Landkreis Mühldorf a.Inn
+    - Landkreis München
+    Landkreis Freising:
+    - Landkreis Dachau
+    - Landkreis Erding
+    - Landkreis Kelheim
+    - Landkreis Landshut
+    - Landkreis München
+    - Landkreis Pfaffenhofen a.d.Ilm
+    Landkreis Fürstenfeldbruck:
+    - Kreisfreie Stadt München
+    - Landkreis Aichach-Friedberg
+    - Landkreis Dachau
+    - Landkreis Landsberg am Lech
+    - Landkreis München
+    - Landkreis Starnberg
+    Landkreis Garmisch-Partenkirchen:
+    - Landkreis Bad Tölz-Wolfratshausen
+    - Landkreis Ostallgäu
+    - Landkreis Weilheim-Schongau
+    Landkreis Landsberg am Lech:
+    - Landkreis Aichach-Friedberg
+    - Landkreis Augsburg
+    - Landkreis Fürstenfeldbruck
+    - Landkreis Ostallgäu
+    - Landkreis Starnberg
+    - Landkreis Weilheim-Schongau
+    Landkreis Miesbach:
+    - Landkreis Bad Tölz-Wolfratshausen
+    - Landkreis München
+    - Landkreis Rosenheim
+    Landkreis Mühldorf a.Inn:
+    - Landkreis Altötting
+    - Landkreis Ebersberg
+    - Landkreis Erding
+    - Landkreis Landshut
+    - Landkreis Rosenheim
+    - Landkreis Rottal-Inn
+    - Landkreis Traunstein
+    Landkreis München:
+    - Kreisfreie Stadt München
+    - Landkreis Bad Tölz-Wolfratshausen
+    - Landkreis Dachau
+    - Landkreis Ebersberg
+    - Landkreis Erding
+    - Landkreis Freising
+    - Landkreis Fürstenfeldbruck
+    - Landkreis Miesbach
+    - Landkreis Rosenheim
+    - Landkreis Starnberg
+    Landkreis Neuburg-Schrobenhausen:
+    - Kreisfreie Stadt Ingolstadt
+    - Landkreis Aichach-Friedberg
+    - Landkreis Donau-Ries
+    - Landkreis Eichstätt
+    - Landkreis Pfaffenhofen a.d.Ilm
+    Landkreis Pfaffenhofen a.d.Ilm:
+    - Kreisfreie Stadt Ingolstadt
+    - Landkreis Aichach-Friedberg
+    - Landkreis Dachau
+    - Landkreis Eichstätt
+    - Landkreis Freising
+    - Landkreis Kelheim
+    - Landkreis Neuburg-Schrobenhausen
+    Landkreis Rosenheim:
+    - Kreisfreie Stadt Rosenheim
+    - Landkreis Ebersberg
+    - Landkreis Miesbach
+    - Landkreis Mühldorf a.Inn
+    - Landkreis München
+    - Landkreis Traunstein
+    Landkreis Starnberg:
+    - Landkreis Bad Tölz-Wolfratshausen
+    - Landkreis Fürstenfeldbruck
+    - Landkreis Landsberg am Lech
+    - Landkreis München
+    - Landkreis Weilheim-Schongau
+    Landkreis Traunstein:
+    - Landkreis Altötting
+    - Landkreis Berchtesgadener Land
+    - Landkreis Mühldorf a.Inn
+    - Landkreis Rosenheim
+    Landkreis Weilheim-Schongau:
+    - Landkreis Bad Tölz-Wolfratshausen
+    - Landkreis Garmisch-Partenkirchen
+    - Landkreis Landsberg am Lech
+    - Landkreis Ostallgäu
+    - Landkreis Starnberg
+    Kreisfreie Stadt Landshut:
+    - Landkreis Landshut
+    Kreisfreie Stadt Passau:
+    - Landkreis Passau
+    Kreisfreie Stadt Straubing:
+    - Landkreis Straubing-Bogen
+    Landkreis Deggendorf:
+    - Landkreis Dingolfing-Landau
+    - Landkreis Freyung-Grafenau
+    - Landkreis Passau
+    - Landkreis Regen
+    - Landkreis Rottal-Inn
+    - Landkreis Straubing-Bogen
+    Landkreis Freyung-Grafenau:
+    - Landkreis Deggendorf
+    - Landkreis Passau
+    - Landkreis Regen
+    Landkreis Kelheim:
+    - Landkreis Eichstätt
+    - Landkreis Freising
+    - Landkreis Landshut
+    - Landkreis Neumarkt i.d.OPf.
+    - Landkreis Pfaffenhofen a.d.Ilm
+    - Landkreis Regensburg
+    Landkreis Landshut:
+    - Kreisfreie Stadt Landshut
+    - Landkreis Dingolfing-Landau
+    - Landkreis Erding
+    - Landkreis Freising
+    - Landkreis Kelheim
+    - Landkreis Mühldorf a.Inn
+    - Landkreis Regensburg
+    - Landkreis Rottal-Inn
+    - Landkreis Straubing-Bogen
+    Landkreis Passau:
+    - Kreisfreie Stadt Passau
+    - Landkreis Deggendorf
+    - Landkreis Freyung-Grafenau
+    - Landkreis Rottal-Inn
+    Landkreis Regen:
+    - Landkreis Cham
+    - Landkreis Deggendorf
+    - Landkreis Freyung-Grafenau
+    - Landkreis Straubing-Bogen
+    Landkreis Rottal-Inn:
+    - Landkreis Altötting
+    - Landkreis Deggendorf
+    - Landkreis Dingolfing-Landau
+    - Landkreis Landshut
+    - Landkreis Mühldorf a.Inn
+    - Landkreis Passau
+    Landkreis Straubing-Bogen:
+    - Kreisfreie Stadt Straubing
+    - Landkreis Cham
+    - Landkreis Deggendorf
+    - Landkreis Dingolfing-Landau
+    - Landkreis Landshut
+    - Landkreis Regen
+    - Landkreis Regensburg
+    Landkreis Dingolfing-Landau:
+    - Landkreis Deggendorf
+    - Landkreis Landshut
+    - Landkreis Rottal-Inn
+    - Landkreis Straubing-Bogen
+    Kreisfreie Stadt Amberg:
+    - Landkreis Amberg-Sulzbach
+    Kreisfreie Stadt Regensburg:
+    - Landkreis Regensburg
+    Kreisfreie Stadt Weiden i.d.OPf.:
+    - Landkreis Neustadt a.d.Waldnaab
+    Landkreis Amberg-Sulzbach:
+    - Kreisfreie Stadt Amberg
+    - Landkreis Bayreuth
+    - Landkreis Neumarkt i.d.OPf.
+    - Landkreis Neustadt a.d.Waldnaab
+    - Landkreis Nürnberger Land
+    - Landkreis Schwandorf
+    Landkreis Cham:
+    - Landkreis Regen
+    - Landkreis Regensburg
+    - Landkreis Schwandorf
+    - Landkreis Straubing-Bogen
+    Landkreis Neumarkt i.d.OPf.:
+    - Landkreis Amberg-Sulzbach
+    - Landkreis Eichstätt
+    - Landkreis Kelheim
+    - Landkreis Nürnberger Land
+    - Landkreis Regensburg
+    - Landkreis Roth
+    - Landkreis Schwandorf
+    Landkreis Neustadt a.d.Waldnaab:
+    - Kreisfreie Stadt Weiden i.d.OPf.
+    - Landkreis Amberg-Sulzbach
+    - Landkreis Bayreuth
+    - Landkreis Schwandorf
+    - Landkreis Tirschenreuth
+    Landkreis Regensburg:
+    - Kreisfreie Stadt Regensburg
+    - Landkreis Cham
+    - Landkreis Kelheim
+    - Landkreis Landshut
+    - Landkreis Neumarkt i.d.OPf.
+    - Landkreis Schwandorf
+    - Landkreis Straubing-Bogen
+    Landkreis Schwandorf:
+    - Landkreis Amberg-Sulzbach
+    - Landkreis Cham
+    - Landkreis Neumarkt i.d.OPf.
+    - Landkreis Neustadt a.d.Waldnaab
+    - Landkreis Regensburg
+    Landkreis Tirschenreuth:
+    - Landkreis Bayreuth
+    - Landkreis Neustadt a.d.Waldnaab
+    - Landkreis Wunsiedel i.Fichtelgebirge
+    Kreisfreie Stadt Bamberg:
+    - Landkreis Bamberg
+    Kreisfreie Stadt Bayreuth:
+    - Landkreis Bayreuth
+    Kreisfreie Stadt Coburg:
+    - Landkreis Coburg
+    Kreisfreie Stadt Hof:
+    - Landkreis Hof
+    Landkreis Bamberg:
+    - Kreisfreie Stadt Bamberg
+    - Landkreis Bayreuth
+    - Landkreis Coburg
+    - Landkreis Erlangen-Höchstadt
+    - Landkreis Forchheim
+    - Landkreis Haßberge
+    - Landkreis Kitzingen
+    - Landkreis Lichtenfels
+    - Landkreis Neustadt a.d.Aisch-Bad Windsheim
+    - Landkreis Schweinfurt
+    Landkreis Bayreuth:
+    - Kreisfreie Stadt Bayreuth
+    - Landkreis Amberg-Sulzbach
+    - Landkreis Bamberg
+    - Landkreis Forchheim
+    - Landkreis Hof
+    - Landkreis Kulmbach
+    - Landkreis Lichtenfels
+    - Landkreis Neustadt a.d.Waldnaab
+    - Landkreis Nürnberger Land
+    - Landkreis Tirschenreuth
+    - Landkreis Wunsiedel i.Fichtelgebirge
+    Landkreis Coburg:
+    - Kreisfreie Stadt Coburg
+    - Landkreis Bamberg
+    - Landkreis Haßberge
+    - Landkreis Hildburghausen
+    - Landkreis Kronach
+    - Landkreis Lichtenfels
+    - Landkreis Sonneberg
+    Landkreis Forchheim:
+    - Landkreis Bamberg
+    - Landkreis Bayreuth
+    - Landkreis Erlangen-Höchstadt
+    - Landkreis Nürnberger Land
+    Landkreis Hof:
+    - Kreisfreie Stadt Hof
+    - Landkreis Bayreuth
+    - Landkreis Kronach
+    - Landkreis Kulmbach
+    - Landkreis Saale-Orla-Kreis
+    - Landkreis Vogtlandkreis
+    - Landkreis Wunsiedel i.Fichtelgebirge
+    Landkreis Kronach:
+    - Landkreis Coburg
+    - Landkreis Hof
+    - Landkreis Kulmbach
+    - Landkreis Lichtenfels
+    - Landkreis Saale-Orla-Kreis
+    - Landkreis Saalfeld-Rudolstadt
+    - Landkreis Sonneberg
+    Landkreis Kulmbach:
+    - Landkreis Bayreuth
+    - Landkreis Hof
+    - Landkreis Kronach
+    - Landkreis Lichtenfels
+    Landkreis Lichtenfels:
+    - Landkreis Bamberg
+    - Landkreis Bayreuth
+    - Landkreis Coburg
+    - Landkreis Kronach
+    - Landkreis Kulmbach
+    Landkreis Wunsiedel i.Fichtelgebirge:
+    - Landkreis Bayreuth
+    - Landkreis Hof
+    - Landkreis Tirschenreuth
+    Kreisfreie Stadt Ansbach:
+    - Landkreis Ansbach
+    Kreisfreie Stadt Erlangen:
+    - Kreisfreie Stadt Fürth
+    - Kreisfreie Stadt Nürnberg
+    - Landkreis Erlangen-Höchstadt
+    - Landkreis Fürth
+    Kreisfreie Stadt Fürth:
+    - Kreisfreie Stadt Erlangen
+    - Kreisfreie Stadt Nürnberg
+    - Landkreis Fürth
+    Kreisfreie Stadt Nürnberg:
+    - Kreisfreie Stadt Erlangen
+    - Kreisfreie Stadt Fürth
+    - Kreisfreie Stadt Schwabach
+    - Landkreis Erlangen-Höchstadt
+    - Landkreis Fürth
+    - Landkreis Nürnberger Land
+    - Landkreis Roth
+    Kreisfreie Stadt Schwabach:
+    - Kreisfreie Stadt Nürnberg
+    - Landkreis Roth
+    Landkreis Ansbach:
+    - Kreisfreie Stadt Ansbach
+    - Landkreis Donau-Ries
+    - Landkreis Fürth
+    - Landkreis Main-Tauber-Kreis
+    - Landkreis Neustadt a.d.Aisch-Bad Windsheim
+    - Landkreis Ostalbkreis
+    - Landkreis Roth
+    - Landkreis Schwäbisch Hall
+    - Landkreis Weißenburg-Gunzenhausen
+    Landkreis Erlangen-Höchstadt:
+    - Kreisfreie Stadt Erlangen
+    - Kreisfreie Stadt Nürnberg
+    - Landkreis Bamberg
+    - Landkreis Forchheim
+    - Landkreis Fürth
+    - Landkreis Neustadt a.d.Aisch-Bad Windsheim
+    - Landkreis Nürnberger Land
+    Landkreis Fürth:
+    - Kreisfreie Stadt Erlangen
+    - Kreisfreie Stadt Fürth
+    - Kreisfreie Stadt Nürnberg
+    - Landkreis Ansbach
+    - Landkreis Erlangen-Höchstadt
+    - Landkreis Neustadt a.d.Aisch-Bad Windsheim
+    - Landkreis Roth
+    Landkreis Nürnberger Land:
+    - Kreisfreie Stadt Nürnberg
+    - Landkreis Amberg-Sulzbach
+    - Landkreis Bayreuth
+    - Landkreis Erlangen-Höchstadt
+    - Landkreis Forchheim
+    - Landkreis Neumarkt i.d.OPf.
+    - Landkreis Roth
+    Landkreis Neustadt a.d.Aisch-Bad Windsheim:
+    - Landkreis Ansbach
+    - Landkreis Bamberg
+    - Landkreis Erlangen-Höchstadt
+    - Landkreis Fürth
+    - Landkreis Kitzingen
+    - Landkreis Main-Tauber-Kreis
+    - Landkreis Würzburg
+    Landkreis Roth:
+    - Kreisfreie Stadt Nürnberg
+    - Kreisfreie Stadt Schwabach
+    - Landkreis Ansbach
+    - Landkreis Eichstätt
+    - Landkreis Fürth
+    - Landkreis Neumarkt i.d.OPf.
+    - Landkreis Nürnberger Land
+    - Landkreis Weißenburg-Gunzenhausen
+    Landkreis Weißenburg-Gunzenhausen:
+    - Landkreis Ansbach
+    - Landkreis Donau-Ries
+    - Landkreis Eichstätt
+    - Landkreis Roth
+    Kreisfreie Stadt Aschaffenburg:
+    - Landkreis Aschaffenburg
+    - Landkreis Miltenberg
+    Kreisfreie Stadt Schweinfurt:
+    - Landkreis Schweinfurt
+    Kreisfreie Stadt Würzburg:
+    - Landkreis Würzburg
+    Landkreis Aschaffenburg:
+    - Kreisfreie Stadt Aschaffenburg
+    - Landkreis Darmstadt-Dieburg
+    - Landkreis Main-Kinzig-Kreis
+    - Landkreis Main-Spessart
+    - Landkreis Miltenberg
+    - Landkreis Offenbach
+    Landkreis Bad Kissingen:
+    - Landkreis Fulda
+    - Landkreis Main-Kinzig-Kreis
+    - Landkreis Main-Spessart
+    - Landkreis Rhön-Grabfeld
+    - Landkreis Schweinfurt
+    Landkreis Rhön-Grabfeld:
+    - Landkreis Bad Kissingen
+    - Landkreis Fulda
+    - Landkreis Haßberge
+    - Landkreis Hildburghausen
+    - Landkreis Schmalkalden-Meiningen
+    - Landkreis Schweinfurt
+    Landkreis Haßberge:
+    - Landkreis Bamberg
+    - Landkreis Coburg
+    - Landkreis Hildburghausen
+    - Landkreis Rhön-Grabfeld
+    - Landkreis Schweinfurt
+    Landkreis Kitzingen:
+    - Landkreis Bamberg
+    - Landkreis Neustadt a.d.Aisch-Bad Windsheim
+    - Landkreis Schweinfurt
+    - Landkreis Würzburg
+    Landkreis Miltenberg:
+    - Kreisfreie Stadt Aschaffenburg
+    - Landkreis Aschaffenburg
+    - Landkreis Darmstadt-Dieburg
+    - Landkreis Main-Spessart
+    - Landkreis Main-Tauber-Kreis
+    - Landkreis Neckar-Odenwald-Kreis
+    - Landkreis Odenwaldkreis
+    Landkreis Main-Spessart:
+    - Landkreis Aschaffenburg
+    - Landkreis Bad Kissingen
+    - Landkreis Main-Kinzig-Kreis
+    - Landkreis Main-Tauber-Kreis
+    - Landkreis Miltenberg
+    - Landkreis Schweinfurt
+    - Landkreis Würzburg
+    Landkreis Schweinfurt:
+    - Kreisfreie Stadt Schweinfurt
+    - Landkreis Bad Kissingen
+    - Landkreis Bamberg
+    - Landkreis Haßberge
+    - Landkreis Kitzingen
+    - Landkreis Main-Spessart
+    - Landkreis Rhön-Grabfeld
+    - Landkreis Würzburg
+    Landkreis Würzburg:
+    - Kreisfreie Stadt Würzburg
+    - Landkreis Kitzingen
+    - Landkreis Main-Spessart
+    - Landkreis Main-Tauber-Kreis
+    - Landkreis Neustadt a.d.Aisch-Bad Windsheim
+    - Landkreis Schweinfurt
+    Kreisfreie Stadt Augsburg:
+    - Landkreis Aichach-Friedberg
+    - Landkreis Augsburg
+    Kreisfreie Stadt Kaufbeuren:
+    - Landkreis Ostallgäu
+    Kreisfreie Stadt Kempten (Allgäu):
+    - Landkreis Oberallgäu
+    Kreisfreie Stadt Memmingen:
+    - Landkreis Biberach
+    - Landkreis Ravensburg
+    - Landkreis Unterallgäu
+    Landkreis Aichach-Friedberg:
+    - Kreisfreie Stadt Augsburg
+    - Landkreis Augsburg
+    - Landkreis Dachau
+    - Landkreis Donau-Ries
+    - Landkreis Fürstenfeldbruck
+    - Landkreis Landsberg am Lech
+    - Landkreis Neuburg-Schrobenhausen
+    - Landkreis Pfaffenhofen a.d.Ilm
+    Landkreis Augsburg:
+    - Kreisfreie Stadt Augsburg
+    - Landkreis Aichach-Friedberg
+    - Landkreis Dillingen a.d.Donau
+    - Landkreis Donau-Ries
+    - Landkreis Günzburg
+    - Landkreis Landsberg am Lech
+    - Landkreis Ostallgäu
+    - Landkreis Unterallgäu
+    Landkreis Dillingen a.d.Donau:
+    - Landkreis Augsburg
+    - Landkreis Donau-Ries
+    - Landkreis Günzburg
+    - Landkreis Heidenheim
+    Landkreis Günzburg:
+    - Landkreis Alb-Donau-Kreis
+    - Landkreis Augsburg
+    - Landkreis Dillingen a.d.Donau
+    - Landkreis Heidenheim
+    - Landkreis Neu-Ulm
+    - Landkreis Unterallgäu
+    Landkreis Neu-Ulm:
+    - Landkreis Alb-Donau-Kreis
+    - Landkreis Biberach
+    - Landkreis Günzburg
+    - Landkreis Unterallgäu
+    - Stadtkreis Ulm
+    Landkreis Lindau (Bodensee):
+    - Landkreis Bodenseekreis
+    - Landkreis Oberallgäu
+    - Landkreis Ravensburg
+    Landkreis Ostallgäu:
+    - Kreisfreie Stadt Kaufbeuren
+    - Landkreis Augsburg
+    - Landkreis Garmisch-Partenkirchen
+    - Landkreis Landsberg am Lech
+    - Landkreis Oberallgäu
+    - Landkreis Unterallgäu
+    - Landkreis Weilheim-Schongau
+    Landkreis Unterallgäu:
+    - Kreisfreie Stadt Memmingen
+    - Landkreis Augsburg
+    - Landkreis Biberach
+    - Landkreis Günzburg
+    - Landkreis Neu-Ulm
+    - Landkreis Oberallgäu
+    - Landkreis Ostallgäu
+    - Landkreis Ravensburg
+    Landkreis Donau-Ries:
+    - Landkreis Aichach-Friedberg
+    - Landkreis Ansbach
+    - Landkreis Augsburg
+    - Landkreis Dillingen a.d.Donau
+    - Landkreis Eichstätt
+    - Landkreis Heidenheim
+    - Landkreis Neuburg-Schrobenhausen
+    - Landkreis Ostalbkreis
+    - Landkreis Weißenburg-Gunzenhausen
+    Landkreis Oberallgäu:
+    - Kreisfreie Stadt Kempten (Allgäu)
+    - Landkreis Lindau (Bodensee)
+    - Landkreis Ostallgäu
+    - Landkreis Ravensburg
+    - Landkreis Unterallgäu
+SL:
+  nachbarn:
+    Regionalverband Saarbrücken:
+    - Landkreis Neunkirchen
+    - Landkreis Saarlouis
+    - Landkreis Saarpfalz-Kreis
+    Landkreis Merzig-Wadern:
+    - Landkreis Saarlouis
+    - Landkreis St. Wendel
+    - Landkreis Trier-Saarburg
+    Landkreis Neunkirchen:
+    - Landkreis Kusel
+    - Landkreis Saarlouis
+    - Landkreis Saarpfalz-Kreis
+    - Landkreis St. Wendel
+    - Regionalverband Saarbrücken
+    Landkreis Saarlouis:
+    - Landkreis Merzig-Wadern
+    - Landkreis Neunkirchen
+    - Landkreis St. Wendel
+    - Regionalverband Saarbrücken
+    Landkreis Saarpfalz-Kreis:
+    - Kreisfreie Stadt Zweibrücken
+    - Landkreis Kaiserslautern
+    - Landkreis Kusel
+    - Landkreis Neunkirchen
+    - Landkreis Südwestpfalz
+    - Regionalverband Saarbrücken
+    Landkreis St. Wendel:
+    - Landkreis Birkenfeld
+    - Landkreis Kusel
+    - Landkreis Merzig-Wadern
+    - Landkreis Neunkirchen
+    - Landkreis Saarlouis
+    - Landkreis Trier-Saarburg
+BE:
+  nachbarn:
+    Kreisfreie Stadt Berlin:
+    - Kreisfreie Stadt Potsdam
+    - Landkreis Barnim
+    - Landkreis Dahme-Spreewald
+    - Landkreis Havelland
+    - Landkreis Märkisch-Oderland
+    - Landkreis Oberhavel
+    - Landkreis Oder-Spree
+    - Landkreis Potsdam-Mittelmark
+    - Landkreis Teltow-Fläming
+BB:
+  nachbarn:
+    Kreisfreie Stadt Brandenburg an der Havel:
+    - Landkreis Havelland
+    - Landkreis Potsdam-Mittelmark
+    Kreisfreie Stadt Cottbus:
+    - Landkreis Spree-Neiße
+    Kreisfreie Stadt Frankfurt (Oder):
+    - Landkreis Märkisch-Oderland
+    - Landkreis Oder-Spree
+    Kreisfreie Stadt Potsdam:
+    - Kreisfreie Stadt Berlin
+    - Landkreis Havelland
+    - Landkreis Potsdam-Mittelmark
+    Landkreis Barnim:
+    - Kreisfreie Stadt Berlin
+    - Landkreis Märkisch-Oderland
+    - Landkreis Oberhavel
+    - Landkreis Uckermark
+    Landkreis Dahme-Spreewald:
+    - Kreisfreie Stadt Berlin
+    - Landkreis Elbe-Elster
+    - Landkreis Oberspreewald-Lausitz
+    - Landkreis Oder-Spree
+    - Landkreis Spree-Neiße
+    - Landkreis Teltow-Fläming
+    Landkreis Elbe-Elster:
+    - Landkreis Dahme-Spreewald
+    - Landkreis Meißen
+    - Landkreis Nordsachsen
+    - Landkreis Oberspreewald-Lausitz
+    - Landkreis Teltow-Fläming
+    - Landkreis Wittenberg
+    Landkreis Havelland:
+    - Kreisfreie Stadt Berlin
+    - Kreisfreie Stadt Brandenburg an der Havel
+    - Kreisfreie Stadt Potsdam
+    - Landkreis Jerichower Land
+    - Landkreis Oberhavel
+    - Landkreis Ostprignitz-Ruppin
+    - Landkreis Potsdam-Mittelmark
+    - Landkreis Stendal
+    Landkreis Märkisch-Oderland:
+    - Kreisfreie Stadt Berlin
+    - Kreisfreie Stadt Frankfurt (Oder)
+    - Landkreis Barnim
+    - Landkreis Oder-Spree
+    Landkreis Oberhavel:
+    - Kreisfreie Stadt Berlin
+    - Landkreis Barnim
+    - Landkreis Havelland
+    - Landkreis Mecklenburgische Seenplatte
+    - Landkreis Ostprignitz-Ruppin
+    - Landkreis Uckermark
+    Landkreis Oberspreewald-Lausitz:
+    - Landkreis Bautzen
+    - Landkreis Dahme-Spreewald
+    - Landkreis Elbe-Elster
+    - Landkreis Meißen
+    - Landkreis Spree-Neiße
+    Landkreis Oder-Spree:
+    - Kreisfreie Stadt Berlin
+    - Kreisfreie Stadt Frankfurt (Oder)
+    - Landkreis Dahme-Spreewald
+    - Landkreis Märkisch-Oderland
+    - Landkreis Spree-Neiße
+    Landkreis Ostprignitz-Ruppin:
+    - Landkreis Havelland
+    - Landkreis Ludwigslust-Parchim
+    - Landkreis Mecklenburgische Seenplatte
+    - Landkreis Oberhavel
+    - Landkreis Prignitz
+    - Landkreis Stendal
+    Landkreis Potsdam-Mittelmark:
+    - Kreisfreie Stadt Berlin
+    - Kreisfreie Stadt Brandenburg an der Havel
+    - Kreisfreie Stadt Potsdam
+    - Landkreis Anhalt-Bitterfeld
+    - Landkreis Havelland
+    - Landkreis Jerichower Land
+    - Landkreis Teltow-Fläming
+    - Landkreis Wittenberg
+    Landkreis Prignitz:
+    - Landkreis Ludwigslust-Parchim
+    - Landkreis Lüchow-Dannenberg
+    - Landkreis Ostprignitz-Ruppin
+    - Landkreis Stendal
+    Landkreis Spree-Neiße:
+    - Kreisfreie Stadt Cottbus
+    - Landkreis Bautzen
+    - Landkreis Dahme-Spreewald
+    - Landkreis Görlitz
+    - Landkreis Oberspreewald-Lausitz
+    - Landkreis Oder-Spree
+    Landkreis Teltow-Fläming:
+    - Kreisfreie Stadt Berlin
+    - Landkreis Dahme-Spreewald
+    - Landkreis Elbe-Elster
+    - Landkreis Potsdam-Mittelmark
+    - Landkreis Wittenberg
+    Landkreis Uckermark:
+    - Landkreis Barnim
+    - Landkreis Mecklenburgische Seenplatte
+    - Landkreis Oberhavel
+    - Landkreis Vorpommern-Greifswald
+MV:
+  nachbarn:
+    Kreisfreie Stadt Rostock:
+    - Landkreis Rostock
+    Kreisfreie Stadt Schwerin:
+    - Landkreis Ludwigslust-Parchim
+    - Landkreis Nordwestmecklenburg
+    Landkreis Mecklenburgische Seenplatte:
+    - Landkreis Ludwigslust-Parchim
+    - Landkreis Oberhavel
+    - Landkreis Ostprignitz-Ruppin
+    - Landkreis Rostock
+    - Landkreis Uckermark
+    - Landkreis Vorpommern-Greifswald
+    - Landkreis Vorpommern-Rügen
+    Landkreis Rostock:
+    - Kreisfreie Stadt Rostock
+    - Landkreis Ludwigslust-Parchim
+    - Landkreis Mecklenburgische Seenplatte
+    - Landkreis Nordwestmecklenburg
+    - Landkreis Vorpommern-Rügen
+    Landkreis Vorpommern-Rügen:
+    - Landkreis Mecklenburgische Seenplatte
+    - Landkreis Rostock
+    - Landkreis Vorpommern-Greifswald
+    Landkreis Nordwestmecklenburg:
+    - Kreis Herzogtum Lauenburg
+    - Kreisfreie Stadt Lübeck
+    - Kreisfreie Stadt Schwerin
+    - Landkreis Ludwigslust-Parchim
+    - Landkreis Rostock
+    Landkreis Vorpommern-Greifswald:
+    - Landkreis Mecklenburgische Seenplatte
+    - Landkreis Uckermark
+    - Landkreis Vorpommern-Rügen
+    Landkreis Ludwigslust-Parchim:
+    - Kreis Herzogtum Lauenburg
+    - Kreisfreie Stadt Schwerin
+    - Landkreis Lüchow-Dannenberg
+    - Landkreis Lüneburg
+    - Landkreis Mecklenburgische Seenplatte
+    - Landkreis Nordwestmecklenburg
+    - Landkreis Ostprignitz-Ruppin
+    - Landkreis Prignitz
+    - Landkreis Rostock
+SN:
+  nachbarn:
+    Kreisfreie Stadt Chemnitz:
+    - Landkreis Erzgebirgskreis
+    - Landkreis Mittelsachsen
+    - Landkreis Zwickau
+    Landkreis Erzgebirgskreis:
+    - Kreisfreie Stadt Chemnitz
+    - Landkreis Mittelsachsen
+    - Landkreis Vogtlandkreis
+    - Landkreis Zwickau
+    Landkreis Mittelsachsen:
+    - Kreisfreie Stadt Chemnitz
+    - Landkreis Altenburger Land
+    - Landkreis Erzgebirgskreis
+    - Landkreis Leipzig
+    - Landkreis Meißen
+    - Landkreis Nordsachsen
+    - Landkreis Sächsische Schweiz-Osterzgebirge
+    - Landkreis Zwickau
+    Landkreis Vogtlandkreis:
+    - Landkreis Erzgebirgskreis
+    - Landkreis Greiz
+    - Landkreis Hof
+    - Landkreis Saale-Orla-Kreis
+    - Landkreis Zwickau
+    Landkreis Zwickau:
+    - Kreisfreie Stadt Chemnitz
+    - Landkreis Altenburger Land
+    - Landkreis Erzgebirgskreis
+    - Landkreis Greiz
+    - Landkreis Mittelsachsen
+    - Landkreis Vogtlandkreis
+    Kreisfreie Stadt Dresden:
+    - Landkreis Bautzen
+    - Landkreis Meißen
+    - Landkreis Sächsische Schweiz-Osterzgebirge
+    Landkreis Bautzen:
+    - Kreisfreie Stadt Dresden
+    - Landkreis Görlitz
+    - Landkreis Meißen
+    - Landkreis Oberspreewald-Lausitz
+    - Landkreis Spree-Neiße
+    - Landkreis Sächsische Schweiz-Osterzgebirge
+    Landkreis Görlitz:
+    - Landkreis Bautzen
+    - Landkreis Spree-Neiße
+    Landkreis Meißen:
+    - Kreisfreie Stadt Dresden
+    - Landkreis Bautzen
+    - Landkreis Elbe-Elster
+    - Landkreis Mittelsachsen
+    - Landkreis Nordsachsen
+    - Landkreis Oberspreewald-Lausitz
+    - Landkreis Sächsische Schweiz-Osterzgebirge
+    Landkreis Sächsische Schweiz-Osterzgebirge:
+    - Kreisfreie Stadt Dresden
+    - Landkreis Bautzen
+    - Landkreis Meißen
+    - Landkreis Mittelsachsen
+    Kreisfreie Stadt Leipzig:
+    - Landkreis Leipzig
+    - Landkreis Nordsachsen
+    Landkreis Leipzig:
+    - Kreisfreie Stadt Leipzig
+    - Landkreis Altenburger Land
+    - Landkreis Burgenlandkreis
+    - Landkreis Mittelsachsen
+    - Landkreis Nordsachsen
+    - Landkreis Saalekreis
+    Landkreis Nordsachsen:
+    - Kreisfreie Stadt Leipzig
+    - Landkreis Anhalt-Bitterfeld
+    - Landkreis Elbe-Elster
+    - Landkreis Leipzig
+    - Landkreis Meißen
+    - Landkreis Mittelsachsen
+    - Landkreis Saalekreis
+    - Landkreis Wittenberg
+ST:
+  nachbarn:
+    Kreisfreie Stadt Dessau-Roßlau:
+    - Landkreis Anhalt-Bitterfeld
+    - Landkreis Wittenberg
+    Kreisfreie Stadt Halle (Saale):
+    - Landkreis Saalekreis
+    Kreisfreie Stadt Magdeburg:
+    - Landkreis Börde
+    - Landkreis Jerichower Land
+    - Landkreis Salzlandkreis
+    Landkreis Altmarkkreis Salzwedel:
+    - Landkreis Börde
+    - Landkreis Gifhorn
+    - Landkreis Lüchow-Dannenberg
+    - Landkreis Stendal
+    - Landkreis Uelzen
+    Landkreis Anhalt-Bitterfeld:
+    - Kreisfreie Stadt Dessau-Roßlau
+    - Landkreis Jerichower Land
+    - Landkreis Nordsachsen
+    - Landkreis Potsdam-Mittelmark
+    - Landkreis Saalekreis
+    - Landkreis Salzlandkreis
+    - Landkreis Wittenberg
+    Landkreis Börde:
+    - Kreisfreie Stadt Magdeburg
+    - Landkreis Altmarkkreis Salzwedel
+    - Landkreis Gifhorn
+    - Landkreis Harz
+    - Landkreis Helmstedt
+    - Landkreis Jerichower Land
+    - Landkreis Salzlandkreis
+    - Landkreis Stendal
+    Landkreis Burgenlandkreis:
+    - Kreisfreie Stadt Gera
+    - Landkreis Altenburger Land
+    - Landkreis Greiz
+    - Landkreis Kyffhäuserkreis
+    - Landkreis Leipzig
+    - Landkreis Saale-Holzland-Kreis
+    - Landkreis Saalekreis
+    - Landkreis Sömmerda
+    - Landkreis Weimarer Land
+    Landkreis Harz:
+    - Landkreis Börde
+    - Landkreis Goslar
+    - Landkreis Helmstedt
+    - Landkreis Mansfeld-Südharz
+    - Landkreis Nordhausen
+    - Landkreis Salzlandkreis
+    - Landkreis Wolfenbüttel
+    Landkreis Jerichower Land:
+    - Kreisfreie Stadt Magdeburg
+    - Landkreis Anhalt-Bitterfeld
+    - Landkreis Börde
+    - Landkreis Havelland
+    - Landkreis Potsdam-Mittelmark
+    - Landkreis Salzlandkreis
+    - Landkreis Stendal
+    Landkreis Mansfeld-Südharz:
+    - Landkreis Harz
+    - Landkreis Kyffhäuserkreis
+    - Landkreis Nordhausen
+    - Landkreis Saalekreis
+    - Landkreis Salzlandkreis
+    Landkreis Saalekreis:
+    - Kreisfreie Stadt Halle (Saale)
+    - Landkreis Anhalt-Bitterfeld
+    - Landkreis Burgenlandkreis
+    - Landkreis Kyffhäuserkreis
+    - Landkreis Leipzig
+    - Landkreis Mansfeld-Südharz
+    - Landkreis Nordsachsen
+    - Landkreis Salzlandkreis
+    Landkreis Salzlandkreis:
+    - Kreisfreie Stadt Magdeburg
+    - Landkreis Anhalt-Bitterfeld
+    - Landkreis Börde
+    - Landkreis Harz
+    - Landkreis Jerichower Land
+    - Landkreis Mansfeld-Südharz
+    - Landkreis Saalekreis
+    Landkreis Stendal:
+    - Landkreis Altmarkkreis Salzwedel
+    - Landkreis Börde
+    - Landkreis Havelland
+    - Landkreis Jerichower Land
+    - Landkreis Lüchow-Dannenberg
+    - Landkreis Ostprignitz-Ruppin
+    - Landkreis Prignitz
+    Landkreis Wittenberg:
+    - Kreisfreie Stadt Dessau-Roßlau
+    - Landkreis Anhalt-Bitterfeld
+    - Landkreis Elbe-Elster
+    - Landkreis Nordsachsen
+    - Landkreis Potsdam-Mittelmark
+    - Landkreis Teltow-Fläming
+TH:
+  nachbarn:
+    Kreisfreie Stadt Erfurt:
+    - Landkreis Gotha
+    - Landkreis Ilm-Kreis
+    - Landkreis Sömmerda
+    - Landkreis Weimarer Land
+    Kreisfreie Stadt Gera:
+    - Landkreis Burgenlandkreis
+    - Landkreis Greiz
+    - Landkreis Saale-Holzland-Kreis
+    Kreisfreie Stadt Jena:
+    - Landkreis Saale-Holzland-Kreis
+    - Landkreis Weimarer Land
+    Kreisfreie Stadt Suhl:
+    - Landkreis Hildburghausen
+    - Landkreis Ilm-Kreis
+    - Landkreis Schmalkalden-Meiningen
+    Kreisfreie Stadt Weimar:
+    - Landkreis Weimarer Land
+    Landkreis Eichsfeld:
+    - Landkreis Göttingen
+    - Landkreis Kyffhäuserkreis
+    - Landkreis Nordhausen
+    - Landkreis Unstrut-Hainich-Kreis
+    - Landkreis Werra-Meißner-Kreis
+    Landkreis Nordhausen:
+    - Landkreis Eichsfeld
+    - Landkreis Goslar
+    - Landkreis Göttingen
+    - Landkreis Harz
+    - Landkreis Kyffhäuserkreis
+    - Landkreis Mansfeld-Südharz
+    Landkreis Wartburgkreis:
+    - Landkreis Fulda
+    - Landkreis Gotha
+    - Landkreis Hersfeld-Rotenburg
+    - Landkreis Schmalkalden-Meiningen
+    - Landkreis Unstrut-Hainich-Kreis
+    - Landkreis Werra-Meißner-Kreis
+    Landkreis Unstrut-Hainich-Kreis:
+    - Landkreis Eichsfeld
+    - Landkreis Gotha
+    - Landkreis Kyffhäuserkreis
+    - Landkreis Sömmerda
+    - Landkreis Wartburgkreis
+    - Landkreis Werra-Meißner-Kreis
+    Landkreis Kyffhäuserkreis:
+    - Landkreis Burgenlandkreis
+    - Landkreis Eichsfeld
+    - Landkreis Mansfeld-Südharz
+    - Landkreis Nordhausen
+    - Landkreis Saalekreis
+    - Landkreis Sömmerda
+    - Landkreis Unstrut-Hainich-Kreis
+    Landkreis Schmalkalden-Meiningen:
+    - Kreisfreie Stadt Suhl
+    - Landkreis Fulda
+    - Landkreis Gotha
+    - Landkreis Hildburghausen
+    - Landkreis Ilm-Kreis
+    - Landkreis Rhön-Grabfeld
+    - Landkreis Wartburgkreis
+    Landkreis Gotha:
+    - Kreisfreie Stadt Erfurt
+    - Landkreis Ilm-Kreis
+    - Landkreis Schmalkalden-Meiningen
+    - Landkreis Sömmerda
+    - Landkreis Unstrut-Hainich-Kreis
+    - Landkreis Wartburgkreis
+    Landkreis Sömmerda:
+    - Kreisfreie Stadt Erfurt
+    - Landkreis Burgenlandkreis
+    - Landkreis Gotha
+    - Landkreis Kyffhäuserkreis
+    - Landkreis Unstrut-Hainich-Kreis
+    - Landkreis Weimarer Land
+    Landkreis Hildburghausen:
+    - Kreisfreie Stadt Suhl
+    - Landkreis Coburg
+    - Landkreis Haßberge
+    - Landkreis Ilm-Kreis
+    - Landkreis Rhön-Grabfeld
+    - Landkreis Saalfeld-Rudolstadt
+    - Landkreis Schmalkalden-Meiningen
+    - Landkreis Sonneberg
+    Landkreis Ilm-Kreis:
+    - Kreisfreie Stadt Erfurt
+    - Kreisfreie Stadt Suhl
+    - Landkreis Gotha
+    - Landkreis Hildburghausen
+    - Landkreis Saalfeld-Rudolstadt
+    - Landkreis Schmalkalden-Meiningen
+    - Landkreis Weimarer Land
+    Landkreis Weimarer Land:
+    - Kreisfreie Stadt Erfurt
+    - Kreisfreie Stadt Jena
+    - Kreisfreie Stadt Weimar
+    - Landkreis Burgenlandkreis
+    - Landkreis Ilm-Kreis
+    - Landkreis Saale-Holzland-Kreis
+    - Landkreis Saalfeld-Rudolstadt
+    - Landkreis Sömmerda
+    Landkreis Sonneberg:
+    - Landkreis Coburg
+    - Landkreis Hildburghausen
+    - Landkreis Kronach
+    - Landkreis Saalfeld-Rudolstadt
+    Landkreis Saalfeld-Rudolstadt:
+    - Landkreis Hildburghausen
+    - Landkreis Ilm-Kreis
+    - Landkreis Kronach
+    - Landkreis Saale-Holzland-Kreis
+    - Landkreis Saale-Orla-Kreis
+    - Landkreis Sonneberg
+    - Landkreis Weimarer Land
+    Landkreis Saale-Holzland-Kreis:
+    - Kreisfreie Stadt Gera
+    - Kreisfreie Stadt Jena
+    - Landkreis Burgenlandkreis
+    - Landkreis Greiz
+    - Landkreis Saale-Orla-Kreis
+    - Landkreis Saalfeld-Rudolstadt
+    - Landkreis Weimarer Land
+    Landkreis Saale-Orla-Kreis:
+    - Landkreis Greiz
+    - Landkreis Hof
+    - Landkreis Kronach
+    - Landkreis Saale-Holzland-Kreis
+    - Landkreis Saalfeld-Rudolstadt
+    - Landkreis Vogtlandkreis
+    Landkreis Greiz:
+    - Kreisfreie Stadt Gera
+    - Landkreis Altenburger Land
+    - Landkreis Burgenlandkreis
+    - Landkreis Saale-Holzland-Kreis
+    - Landkreis Saale-Orla-Kreis
+    - Landkreis Vogtlandkreis
+    - Landkreis Zwickau
+    Landkreis Altenburger Land:
+    - Landkreis Burgenlandkreis
+    - Landkreis Greiz
+    - Landkreis Leipzig
+    - Landkreis Mittelsachsen
+    - Landkreis Zwickau
