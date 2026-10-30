@@ -5,14 +5,14 @@ from openpyxl import load_workbook
 from recherche.export import BLATT_KANZLEIEN, export_excel
 from recherche.extract.kanzlei import run_pruefung
 from recherche.extract.standorte import dubletten_verdacht, standort_spalte
-from recherche.models import Ansprechpartner, Kanzlei
+from recherche.models import Ansprechpartner, Kanzlei, Konfidenz
 
 
 def _k(domain, telefon, person, ort="Kiel", name=None, n_ap=1, **extra):
     aps = [Ansprechpartner(name=person, funktion="Steuerberater")] + [
         Ansprechpartner(name=f"Person {i}", funktion="Steuerberater") for i in range(n_ap - 1)]
     return Kanzlei(lauf_bundesland="SH", domain=domain, telefon=telefon, ort=ort, kanzleiname=name or domain,
-                   ansprechpartner=aps, berufstraeger_anzahl=n_ap, **extra)
+                   ansprechpartner=aps, berufstraeger_anzahl=n_ap, konfidenz=Konfidenz.HOCH, **extra)
 
 
 SHBB = [

@@ -37,7 +37,6 @@ from ..models import AUTO_STATUS, Fund, Kanzlei, Konfidenz, Seitentyp, Status
 from ..storage import Storage
 from ..textnorm import text_normalisieren
 from .ansprechpartner import bereinigen as bereinige_ansprechpartner
-from .merge import konfidenz
 
 STANDARD_RECHTSFORMEN = ("PartG mbB", "PartG", "Einzelkanzlei")
 GRUND_PRAEFIX = "Keine Kanzlei: "
@@ -152,11 +151,8 @@ def kein_kanzlei_grund(k: Kanzlei, impressum_text: str | None,
     `suchorte`: Zahl der Suchorte der Stammdomain über alle Kandidaten (Standard: nur diese Funde)."""
     if grund := ausschluss_grund(k, impressum_text, blocklist):
         return grund
-    kammer = bool(impressum_text and _KAMMER.search(impressum_text))
-    if NAME_ABGELEITET in (k.abweichung or "") and not kammer and not _STEUER_BERUF.search(impressum_text or ""):
-        return "Branchenfremd (Name aus Ansprechpartner abgeleitet, keine Steuerberaterkammer, keine Berufsbezeichnung)"
-    if kammer:
-        return None
+    if signal_1b(k, impressum_text, funde)[0] <= 3:
+        return None  # Positivsignal 1B Rang 1–3: Kammer, Berufsbezeichnung bei einer Person, Steuerberatungsgesellschaft
     if k.berufstraeger_anzahl:
         return None
     basis = "keine Steuerberaterkammer im Impressum, kein Berufsträger"
@@ -244,15 +240,65 @@ def status_setzen(k: Kanzlei, ziel_land: str | None = None, impressum_text: str 
     return k
 
 
+# ---- Prüfkatalog 1B: Positivsignale (Rangfolge; das erste zutreffende entscheidet die Konfidenz)
+_STB_BEZEICHNUNG = re.compile(r"steuerberater(?:in)?\b|steuerbevollmächtigte?r?\b|\bstb\b", re.IGNORECASE)
+_BERUFSBEZ_IMPRESSUM = re.compile(r"berufsbezeichnung\W+(?:[^\n]{0,40}\b)?(?:steuerberater|steuerbevollm)", re.IGNORECASE)
+_STBG = re.compile(r"steuerberatungsgesellschaft", re.IGNORECASE)
+_KANZLEIWORT_1B = re.compile(r"steuerkanzlei|steuerbüro|steuerberatung|steuerberater", re.IGNORECASE)
+RANG_PRAEFIX = "1B Rang "
+_RANG_EINTRAG = re.compile(r"1B Rang \d:[^;]*(?:;\s*|$)")
+TEAM_UNPLAUSIBEL = "Teamgröße unplausibel"
+_TEAM_EINTRAG = re.compile(re.escape(TEAM_UNPLAUSIBEL) + r"[^;]*(?:;\s*|$)")
+DECKEL_WOERTER = ("Telefon ungültig", "Vorwahl passt nicht zur PLZ")  # Q4: Konfidenz höchstens mittel
+
+
+def signal_1b(k: Kanzlei, impressum_text: str | None, funde: Sequence[Fund] = ()) -> tuple[int, str]:
+    """(Rang 1–5, Signal) nach Prüfkatalog 1B. Rang 5 auch ohne jedes Signal. Kandidaten aus dem amtlichen
+    Steuerberaterverzeichnis (ohne Website) zählen wie die Kammer: das Verzeichnis ist das Berufsregister."""
+    if impressum_text and _KAMMER.search(impressum_text):
+        return 1, "Steuerberaterkammer im Impressum"
+    if any(f.quelle == "stb_verzeichnis" for f in funde):
+        return 1, "amtliches Steuerberaterverzeichnis"
+    if any(_STB_BEZEICHNUNG.search(f"{p.titel or ''} {p.funktion or ''}") for p in k.ansprechpartner) or (
+            impressum_text and _BERUFSBEZ_IMPRESSUM.search(impressum_text)):
+        return 2, "Berufsbezeichnung Steuerberater bei einer Person"
+    if _STBG.search(k.kanzleiname or "") or (impressum_text and _STBG.search(impressum_text)):
+        return 3, "Steuerberatungsgesellschaft im Impressum"
+    if k.kanzleiname and _KANZLEIWORT_1B.search(k.kanzleiname):
+        return 4, "nur Kanzleiwort im Namen (keine Kammer, keine Berufsbezeichnung)"
+    if any(_SUCHTREFFER_WORT.search(f"{f.name or ''} {f.snippet or ''}") for f in funde):
+        return 5, "nur der Suchtreffer nennt Steuerberater"
+    return 5, "kein Positivsignal"
+
+
+_KONFIDENZ_RANG = {Konfidenz.HOCH: 0, Konfidenz.MITTEL: 1, Konfidenz.NIEDRIG: 2}
+
+
+def _hoechstens(k: Konfidenz, grenze: Konfidenz) -> Konfidenz:
+    return k if _KONFIDENZ_RANG[k] >= _KONFIDENZ_RANG[grenze] else grenze
+
+
 def anwenden(k: Kanzlei, grund: str | None, impressum_gelesen: bool, ziel_land: str | None = None,
-             kammer: bool = False, impressum_text: str | None = None) -> Kanzlei:
-    """Grund, Konfidenz und Status setzen. Ein von Hand gepflegter Status bleibt (auch beim Speichern,
-    Storage.upsert_kanzlei). Name nur aus dem Ansprechpartner abgeleitet und keine Kammer → Konfidenz niedrig."""
+             kammer: bool = False, impressum_text: str | None = None, funde: Sequence[Fund] = ()) -> Kanzlei:
+    """Grund, Konfidenz (Prüfkatalog 1B) und Status setzen. Ein von Hand gepflegter Status bleibt (auch beim
+    Speichern, Storage.upsert_kanzlei).
+
+    Konfidenz aus dem ersten Positivsignal (Rang 1–3 hoch, 4 mittel, 5 niedrig); höchstens mittel bei keiner
+    Kanzlei, nicht verifizierter PLZ, Q4 (Telefon ungültig, Vorwahl passt nicht) und abgeleitetem Namen. Rang 4/5
+    steht als „1B Rang n: …" in „Abweichung" – solche Zeilen gehen ins Blatt „Zu prüfen" (qualitaet.py)."""
     rest = _GRUND_EINTRAG.sub("", k.abweichung or "").strip().rstrip(";").strip()
+    rest = _TEAM_EINTRAG.sub("", _RANG_EINTRAG.sub("", rest)).strip().rstrip(";").strip()
+    rang, signal = signal_1b(k, impressum_text, funde)
+    if rang >= 4 and not grund:
+        rest = "; ".join(x for x in (f"{RANG_PRAEFIX}{rang}: {signal}", rest) if x)
+    if k.teamgroesse is not None and (k.teamgroesse > 200 or (k.berufstraeger_anzahl or 0) > k.teamgroesse):
+        rest = "; ".join(x for x in (rest, f"{TEAM_UNPLAUSIBEL} ({k.teamgroesse} Personen, "
+                                           f"{k.berufstraeger_anzahl or 0} Berufsträger)") if x)  # Q13
     k.abweichung = (GRUND_PRAEFIX + grund + (f"; {rest}" if rest else "")) if grund else (rest or None)
-    k.konfidenz = konfidenz(k, impressum_gelesen, kanzlei=grund is None)
-    if NAME_ABGELEITET in (k.abweichung or "") and not kammer:
-        k.konfidenz = Konfidenz.NIEDRIG
+    k.konfidenz = Konfidenz.HOCH if rang <= 3 else Konfidenz.MITTEL if rang == 4 else Konfidenz.NIEDRIG
+    if grund or not k.plz_verifiziert or NAME_ABGELEITET in (k.abweichung or "") or any(
+            w in (k.abweichung or "") for w in DECKEL_WOERTER):
+        k.konfidenz = _hoechstens(k.konfidenz, Konfidenz.MITTEL)
     return status_setzen(k, ziel_land, impressum_text)
 
 
@@ -262,7 +308,7 @@ def pruefen(k: Kanzlei, seiten: dict, rechtsformen=STANDARD_RECHTSFORMEN, funde:
     text = text_normalisieren(impressum.text) if impressum else None
     grund = kein_kanzlei_grund(k, text, rechtsformen, funde, suchorte, blocklist)
     return anwenden(k, grund, impressum is not None, ziel_land, kammer=bool(text and _KAMMER.search(text)),
-                    impressum_text=text)
+                    impressum_text=text, funde=funde)
 
 
 # Baukasten-Hoster: jede Subdomain ist eine eigene Website (oft eine kleine Kanzlei)
@@ -327,6 +373,9 @@ def run_pruefung(storage: Storage, bundesland: str, rechtsformen=STANDARD_RECHTS
         if kanzlei_erkennung and k.domain and k.kandidat_id is not None:
             pruefen(k, storage.kandidat_seiten(k.kandidat_id), rechtsformen, storage.funde_kandidat(k.kandidat_id),
                     orte.get(stammdomain(k.domain), 0), ziel_land, blocklist)
+        elif not k.domain:  # ohne Website: Konfidenz nach 1B aus den Funden (amtliches Verzeichnis), Bundesland-Filter
+            anwenden(k, grund_aus_abweichung(k.abweichung) if k.status not in AUTO_STATUS else None, False, ziel_land,
+                     funde=storage.funde_kandidat(k.kandidat_id) if k.kandidat_id is not None else ())
         else:
             status_setzen(k, ziel_land)
         stat.geprueft += 1

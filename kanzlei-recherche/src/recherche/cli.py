@@ -348,7 +348,8 @@ def _extract(
 def _export(ctx: Kontext, out: Path | None) -> Path:
     pfad = out or ctx.settings.ausgabe_pfad(ctx.bundesland)
     with ctx.storage() as st:
-        pfad = export_excel(st, ctx.bundesland, pfad)
+        _ortsnamen_setzen(ctx)
+        pfad = export_excel(st, ctx.bundesland, pfad, ctx.bl_cfg.name)
         n = len(st.kanzleien(ctx.bundesland))
     console.print(f"Excel geschrieben: [bold]{pfad}[/bold] ({n} Kanzleien)")
     return pfad
@@ -472,7 +473,8 @@ def zeige_coverage(erg: CoverageErgebnis, top: int, quote_ziel: float) -> None:
         console.print(f"  gezählt: nur Kanzleien im Land (Kreis aus der extrahierten PLZ); nicht gezählt: "
                       f"{erg.keine_kanzlei} keine Kanzlei, {erg.ausserhalb} außerhalb, {erg.ohne_bundesland} ohne "
                       f"geprüfte PLZ, {erg.ausserhalb_vorab} außerhalb laut Suchtreffer (nicht gecrawlt), "
-                      f"{erg.weitere_domains} weitere Domains derselben Kanzlei (wie im Export einmal gezählt); "
+                      f"{erg.weitere_domains} weitere Domains derselben Kanzlei (wie im Export einmal gezählt), "
+                      f"{erg.zu_pruefen} im Blatt „Zu prüfen“ (recherche qualitaet); "
                       f"offen (nicht gelesen): {erg.offen} – Ursachen: recherche offen")
     else:
         console.print("  gezählt: Kandidaten (noch keine Extraktion) – nach extract zählen nur echte Kanzleien im Land")
@@ -679,6 +681,43 @@ def offen_cmd(
     console.print(f"Vermutlich außerhalb {ctx.bl_cfg.name} (alle PLZ der Suchtreffer außerhalb oder große Stadt eines "
                   f"anderen Landes im Treffer): {erg.vermutlich_ausserhalb()} – „PLZ außerhalb\" bei schon gecrawlten "
                   "Fehlern heißt: der Vorfilter hätte sie aussortiert (Kandidat vor Einführung des Vorfilters).")
+    if out:
+        console.print(f"CSV geschrieben: {als_csv(erg, out)}")
+
+
+@app.command("qualitaet")
+def qualitaet_cmd(
+    bundesland: BundeslandOpt = None,
+    db: DbOpt = None,
+    config: ConfigOpt = None,
+    out: Annotated[Path | None, typer.Option("--out", "-o", help="alle Befunde als CSV (Semikolon)")] = None,
+    beispiele: Annotated[int, typer.Option(help="Beispiele je Prüfung")] = 3,
+) -> None:
+    """Qualitätsbericht nach Prüfkatalog Abschnitt 4 (Q1–Q14): Sperren, Warnungen, Hinweise je Prüfung. Dieselben
+    Befunde stehen im Export im Blatt „Qualität", gesperrte Zeilen im Blatt „Zu prüfen"."""
+    from .qualitaet import PRUEFUNGEN, als_csv, bericht
+
+    ctx = _kontext(config, bundesland, db)
+    _ortsnamen_setzen(ctx)
+    with ctx.storage() as st:
+        try:
+            gefunden = _coverage(ctx, st).gefunden
+        except (ValueError, OSError):
+            gefunden = None
+        erg = bericht(st.kanzleien(ctx.bundesland), st.dubletten(ctx.bundesland), ctx.bl_cfg.name, gefunden)
+    anzahl = erg.anzahl()
+    t = Table(title=f"Qualitätsbericht {ctx.bundesland} (Prüfkatalog Abschnitt 4)")
+    for col in ("Nr.", "Prüfung", "Grad", "Anzahl", "Beispiele"):
+        t.add_column(col, justify="right" if col == "Anzahl" else "left")
+    for nr, (text, grad) in PRUEFUNGEN.items():
+        bsp = [b.kanzlei.domain or b.kanzlei.kanzleiname or "?" if b.kanzlei else b.text
+               for b in erg.befunde if b.nr == nr][:beispiele]
+        farbe = {"Sperre": "red", "Warnung": "yellow"}.get(grad, "")
+        t.add_row(nr, text, f"[{farbe}]{grad}[/{farbe}]" if farbe else grad, str(anzahl.get(nr, 0)), ", ".join(bsp))
+    console.print(t)
+    q14 = [b.text for b in erg.befunde if b.nr == "Q14"]
+    console.print(f"Zu prüfen (aus dem Hauptblatt verschoben): {len(erg.zu_pruefen)}"
+                  + (f"; Q14: {q14[0]} – Differenz: Zu prüfen, weitere Domains, ohne geprüfte PLZ" if q14 else ""))
     if out:
         console.print(f"CSV geschrieben: {als_csv(erg, out)}")
 

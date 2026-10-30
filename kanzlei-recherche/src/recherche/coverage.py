@@ -134,6 +134,7 @@ class CoverageErgebnis:
     modus: str = "kandidaten"  # kanzleien (nach der Extraktion) | kandidaten (vorher)
     offen: int = 0  # Kandidaten ohne Kanzlei-Zeile (noch nicht oder nicht lesbar), ohne ausserhalb_vorab
     weitere_domains: int = 0  # weitere Domains derselben Kanzlei – einmal gezählt (wie in der Versandliste)
+    zu_pruefen: int = 0  # im Bundesland, aber im Blatt „Zu prüfen" (Prüfkatalog Q5/Q6/Q12, 1B Rang 4/5)
     ausserhalb_vorab: int = 0  # nicht gecrawlt: Suchtreffer nennen nur PLZ außerhalb (Vorfilter vor dem Crawl)
     keine_kanzlei: int = 0
     ausserhalb: int = 0
@@ -207,8 +208,12 @@ def berechne(
 
         # weitere Domains derselben Kanzlei (Knüppel, wetreu …) zählen wie in der Versandliste nur einmal
         weitere = {id(k) for liste in spiegel_domains(kanzleien).values() for k in liste}
+        from .qualitaet import zu_pruefen_grund
+
+        # wie das Hauptblatt: ohne weitere Domains derselben Kanzlei und ohne „Zu prüfen" (Prüfkatalog Q14)
         gezaehlt = [k for k in kanzleien if k.kandidat_id is not None and k.status not in
-                    (Status.KEINE_KANZLEI, Status.AUSSERHALB) and k.bundesland == ziel_land and id(k) not in weitere]
+                    (Status.KEINE_KANZLEI, Status.AUSSERHALB) and k.bundesland == ziel_land and id(k) not in weitere
+                    and zu_pruefen_grund(k) is None]
         mit_zeile = {k.kandidat_id for k in kanzleien}
         ohne_zeile = [k for k in storage.kandidaten(bundesland) if k.id not in mit_zeile]
         vorab = sum(1 for k in ohne_zeile if k.crawl_status == SchrittStatus.FEHLER and "laut Suchtreffer" in (k.fehler or ""))
@@ -221,6 +226,8 @@ def berechne(
             ohne_bundesland=sum(1 for k in kanzleien if k.status not in (Status.KEINE_KANZLEI, Status.AUSSERHALB)
                                 and k.bundesland != ziel_land),
             weitere_domains=sum(1 for k in kanzleien if id(k) in weitere and k.bundesland == ziel_land),
+            zu_pruefen=sum(1 for k in kanzleien if id(k) not in weitere and k.bundesland == ziel_land
+                           and zu_pruefen_grund(k) is not None),
         )
         suchorte = {k.id: k.suchort for k in storage.kandidaten(bundesland)}
         zuordnung = _zuordnen(storage, bundesland, orte,
@@ -314,6 +321,7 @@ def als_excel(erg: CoverageErgebnis, pfad: str | Path) -> Path:
           ["keine Kanzlei", erg.keine_kanzlei], ["außerhalb Bundesland", erg.ausserhalb],
           ["ohne geprüfte PLZ", erg.ohne_bundesland], ["außerhalb laut Suchtreffer (nicht gecrawlt)", erg.ausserhalb_vorab],
           ["weitere Domains derselben Kanzlei (einmal gezählt)", erg.weitere_domains],
+          ["zu prüfen (Blatt „Zu prüfen“)", erg.zu_pruefen],
           ["offen (nicht gelesen)", erg.offen]]),
     ]  # fmt: skip
     wb.remove(wb.active)

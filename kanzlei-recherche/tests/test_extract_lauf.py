@@ -78,7 +78,8 @@ def test_extraktion_ende_zu_ende(storage, ausschluss):
     assert (kand.name, kand.telefon, kand.plz) == ("Startseite", "+49 431 9987610", "24103")
     assert kand.extract_status == SchrittStatus.FERTIG
     o = storage.kanzlei_fuer_kandidat(ohne)
-    assert (o.kanzleiname, o.website_vorhanden, o.konfidenz) == ("Kanzlei Ohneweb", False, Konfidenz.MITTEL)
+    # ohne Website, ohne Fund des amtlichen Verzeichnisses: kein Positivsignal aus 1B → niedrig (Zu prüfen)
+    assert (o.kanzleiname, o.website_vorhanden, o.konfidenz) == ("Kanzlei Ohneweb", False, Konfidenz.NIEDRIG)
     assert storage.kanzlei_fuer_kandidat(fehl) is None  # steht in „Nicht gefunden"
     (e,) = [x for x in storage.lauf_protokoll("SH") if x.schritt == "extract"]
     assert (e.adapter, e.anfragen, e.trefferzahl) == ("qwen3.5:9b", 1, 2)

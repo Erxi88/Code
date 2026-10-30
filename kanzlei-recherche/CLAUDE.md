@@ -20,11 +20,14 @@ Status-Werte (Excel-Dropdown): `neu` / `geprüft` / `kontaktiert` / `kein Intere
 Automatisch dazu `keine Kanzlei` (Kanzlei-Erkennung) und `außerhalb Bundesland` (PLZ laut OpenPLZ in
 einem anderen Land) – nicht im Dropdown, eigene Blätter; von Hand gepflegte Status überschreiben sie nie.
 
-**Konfidenz-Regel (vorläufig, wird nach dem Pilot überprüft):**
-- `hoch`: Impressum gelesen und PLZ/Ort gegen OpenPLZ verifiziert
-- `mittel`: Kernfelder (Name, Straße, PLZ, Ort, Telefon oder E-Mail) vollständig, aber nicht verifiziert
-- `niedrig`: Kernfelder fehlen
-- mit Kanzlei-Erkennung (`extract.kanzlei_pruefung`): `hoch` nur, wenn als Kanzlei erkannt
+**Konfidenz nach Prüfkatalog 1B** (ersetzt die Pilot-Regel; Rücksprache 30.10.2026) – das erste zutreffende
+Positivsignal entscheidet: Rang 1 Steuerberaterkammer im Impressum (ohne Website: Fund aus dem amtlichen
+Steuerberaterverzeichnis), Rang 2 Berufsbezeichnung Steuerberater/Steuerbevollmächtigte bei einer Person, Rang 3
+„Steuerberatungsgesellschaft" im Namen/Impressum → `hoch`; Rang 4 nur Kanzleiwort im Namen → `mittel`; Rang 5 nur
+der Suchtreffer oder kein Signal → `niedrig`. Danach höchstens `mittel` bei keiner Kanzlei, nicht verifizierter PLZ,
+Q4 (Telefon ungültig, Vorwahl passt nicht) und abgeleitetem Namen. Rang 4/5 steht als „1B Rang n: …" in
+„Abweichung"; diese Zeilen, Q5, Q6 und Q12 (niedrig) gehen ins Blatt **„Zu prüfen"**, nie ins Hauptblatt
+(`qualitaet.py`). Ein 1B-Signal Rang 1–3 verhindert „keine Kanzlei" (außer bei 1A-Ausschluss).
 
 ## Verbindliches Regelwerk: `docs/pruefkatalog.md`
 
@@ -467,9 +470,9 @@ der nächsten Quelle füllen.**
   bleiben), Buchhaltungsbüro (ohne StB/StBv/WP im Impressum), Branchenfremd (kein Positivsignal; Name aus dem
   Ansprechpartner abgeleitet ohne Kammer und Berufsbezeichnung). Namensmerkmale gelten im Kanzleinamen und in der
   **Anbieterzeile** des Impressums (Kopf bis zum Abschnitt Aufsicht/Kammer/Register/Vertretung), nicht im
-  Mitgliedschafts-/Aufsichtsteil (Rücksprache 30.10.2026). Name abgeleitet ohne Kammer → Konfidenz `niedrig`
-  (bis 1B/Q5 in Schritt 3 umgesetzt sind). Negativ-Fixtures: `tests/fixtures/negativ/*.yaml`
-  (`tests/test_pruefkatalog.py`).
+  Mitgliedschafts-/Aufsichtsteil (Rücksprache 30.10.2026). Name abgeleitet ohne Kammer und ohne
+  Berufsbezeichnung → keine Kanzlei-Einstufung, sondern „Zu prüfen" (Q5). Negativ-Fixtures:
+  `tests/fixtures/negativ/*.yaml` (`tests/test_pruefkatalog.py`).
 - **Bundesland-Filter**: Liegt die PLZ einer Kanzlei laut OpenPLZ nicht im Bundesland des Laufs, wird
   der Status `außerhalb Bundesland` (auch ohne Website; `keine Kanzlei` geht vor). Ebenso **ohne gültige deutsche
   PLZ** (keine, nicht fünfstellig oder laut OpenPLZ unbekannt; nicht bei unerreichbarem OpenPLZ) – nie im Hauptblatt,
@@ -546,12 +549,18 @@ der nächsten Quelle füllen.**
   Knüppel & Partner mit 14 Orts-Domains) sind keine Standorte: In der Versandliste steht nur die
   Zentrale („+ 13 weitere Domains: …"); im Blatt „Dubletten" ein Eintrag „weitere domains /
   zusammengeführt". Standorte mit eigener Adresse (SHBB) bleiben eigene Zeilen.
+- Blatt „Zu prüfen" (Nachpflege-Liste, Prüfkatalog 4): Zeilen mit Status `neu` und Sperre Q5 (Name abgeleitet ohne
+  Kammer/Berufsbezeichnung), Q6 (Kanzleiname mit Navigationswort, nur Ortsname, Rolle), Q12 (Konfidenz niedrig)
+  oder 1B Rang 4/5 – Grund vorn, alle Spalten; diese Zeilen fehlen im Hauptblatt und zählen nicht in `coverage`.
+- Blatt „Qualität": alle Befunde Q1–Q13 (Nr., Prüfung, Grad Sperre/Warnung/Hinweis, Kanzlei, Domain, Befund).
+  `recherche qualitaet [--out datei.csv]` zeigt dieselben Prüfungen als Tabelle mit Anzahl und Beispielen, dazu Q14
+  (coverage-Zahl gegen Hauptblatt-Zeilen im Land).
 - Blatt „Lauf-Protokoll": Suchbegriff, Trefferzahl, neue Kandidaten, Anfragen, Kosten, Laufzeit.
 
 ### CLI (`cli.py`)
 
 `recherche search | fill | coverage | crawl | extract | export | run | search-compare | orte |
-blocklist-vorschlag | kanzlei-pruefung | robots-check | suche-auswertung | offen | fixture-add | fixture-eval | fixture-prompt |
+blocklist-vorschlag | kanzlei-pruefung | qualitaet | robots-check | suche-auswertung | offen | fixture-add | fixture-eval | fixture-prompt |
 fixture-klassen-umstellen`,
 jeweils mit `--bundesland` und `--db`. **Jeder Schritt muss nach Abbruch
 wiederaufnehmbar sein**: Fortschritt steht in SQLite (Status je Domain und

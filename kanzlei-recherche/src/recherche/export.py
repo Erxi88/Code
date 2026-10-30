@@ -24,6 +24,8 @@ BLATT_KEINE_KANZLEI = "Keine Kanzlei"
 BLATT_AUSSERHALB = "Außerhalb Bundesland"
 BLATT_DUBLETTEN = "Dubletten"
 BLATT_PROTOKOLL = "Lauf-Protokoll"
+BLATT_ZU_PRUEFEN = "Zu prüfen"
+BLATT_QUALITAET = "Qualität"
 
 # Status-Dropdown gilt mindestens für so viele Zeilen (Platz für Nachträge)
 DROPDOWN_MIN_ZEILEN = 1000
@@ -82,6 +84,15 @@ NICHT_GEFUNDEN_SPALTEN: list[Spalte] = [
 KEINE_KANZLEI_SPALTEN: list[Spalte] = [
     ("Grund", 50, lambda k: grund_aus_abweichung(k.abweichung)),
     *KANZLEI_SPALTEN,
+]
+
+QUALITAET_SPALTEN: list[Spalte] = [
+    ("Nr.", 6, lambda b: b.nr),
+    ("Prüfung", 46, lambda b: b.pruefung),
+    ("Grad", 10, lambda b: b.grad),
+    ("Kanzleiname", 38, lambda b: b.kanzlei.kanzleiname if b.kanzlei else None),
+    ("Domain", 26, lambda b: b.kanzlei.domain if b.kanzlei else None),
+    ("Befund", 60, lambda b: b.text),
 ]
 
 DUBLETTEN_SPALTEN: list[Spalte] = [
@@ -168,30 +179,42 @@ def build_workbook(
     nicht_gefunden: Sequence[NichtGefunden],
     dubletten: Sequence[Dublette],
     protokoll: Sequence[LaufEintrag],
+    ziel_land: str | None = None,
 ) -> Workbook:
+    """Blätter nach Prüfkatalog: Hauptblatt nur ohne Sperre; „Zu prüfen" (Q5, Q6, Q12, 1B Rang 4/5) und „Qualität"
+    (alle Befunde Q1–Q13) – nichts wird gelöscht."""
+    from .qualitaet import bericht
+
+    qualitaet = bericht(kanzleien, dubletten, ziel_land)
     standorte = standort_spalte(list(kanzleien))
     spalten = _mit_standort(KANZLEI_SPALTEN, standorte, zentrale_spalte(list(kanzleien)))
     keine = [k for k in kanzleien if k.status == Status.KEINE_KANZLEI]
     aussen = [k for k in kanzleien if k.status == Status.AUSSERHALB]
     # weitere Domains derselben Kanzlei (gleicher Name, Telefon, Person, Adresse) nur einmal in der Versandliste
     weitere = {id(k) for liste in spiegel_domains(list(kanzleien)).values() for k in liste}
-    kanzleien = [k for k in kanzleien if k.status not in (Status.KEINE_KANZLEI, Status.AUSSERHALB) and id(k) not in weitere]
+    zu_pruefen = [k for k in kanzleien if id(k) in qualitaet.zu_pruefen and id(k) not in weitere]
+    kanzleien = [k for k in kanzleien if k.status not in (Status.KEINE_KANZLEI, Status.AUSSERHALB) and id(k) not in weitere
+                 and id(k) not in qualitaet.zu_pruefen]
     wb = Workbook()
     ws = wb.active
     ws.title = BLATT_KANZLEIEN
     _blatt(ws, spalten, kanzleien)
     _status_dropdown(ws, spalten, len(kanzleien))
+    if zu_pruefen:  # Nachpflege-Liste: Sperren Q5/Q6/Q12/1B, Grund vorn
+        _blatt(wb.create_sheet(BLATT_ZU_PRUEFEN),
+               [("Grund (zu prüfen)", 50, lambda k: qualitaet.zu_pruefen[id(k)]), *spalten], zu_pruefen)
     _blatt(wb.create_sheet(BLATT_NICHT_GEFUNDEN), NICHT_GEFUNDEN_SPALTEN, nicht_gefunden)
     if keine:
         _blatt(wb.create_sheet(BLATT_KEINE_KANZLEI), KEINE_KANZLEI_SPALTEN, keine)
     if aussen:  # bei bundesweitem Lauf später für ihr eigenes Bundesland richtig – nichts wird gelöscht
         _blatt(wb.create_sheet(BLATT_AUSSERHALB), spalten, aussen)
     _blatt(wb.create_sheet(BLATT_DUBLETTEN), DUBLETTEN_SPALTEN, dubletten)
+    _blatt(wb.create_sheet(BLATT_QUALITAET), QUALITAET_SPALTEN, qualitaet.befunde)
     _blatt(wb.create_sheet(BLATT_PROTOKOLL), PROTOKOLL_SPALTEN, protokoll)
     return wb
 
 
-def export_excel(storage: Storage, bundesland: str, pfad: str | Path) -> Path:
+def export_excel(storage: Storage, bundesland: str, pfad: str | Path, ziel_land: str | None = None) -> Path:
     """Schreibt alle Daten eines Bundeslandes in eine Excel-Datei und gibt den Pfad zurück."""
     pfad = Path(pfad)
     pfad.parent.mkdir(parents=True, exist_ok=True)
@@ -200,6 +223,7 @@ def export_excel(storage: Storage, bundesland: str, pfad: str | Path) -> Path:
         storage.nicht_gefunden(bundesland),
         storage.dubletten(bundesland),
         storage.lauf_protokoll(bundesland),
+        ziel_land,
     )
     wb.save(pfad)
     return pfad

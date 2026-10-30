@@ -74,7 +74,7 @@ def test_magazin_mit_sauberem_verlagsimpressum_ist_keine_kanzlei():
     # Titel nennt Steuerberater – zählt hier nur, weil der Treffer aus einem Ort kommt; aus vielen Orten nicht
     viele = [_fund("kiel-magazin.example", ort=f"Ort {i}", name="Die besten Steuerberater", i=i) for i in range(5)]
     pruefen(k, seiten, funde=viele)
-    assert k.status == Status.KEINE_KANZLEI and k.konfidenz == Konfidenz.MITTEL
+    assert k.status == Status.KEINE_KANZLEI and k.konfidenz == Konfidenz.NIEDRIG  # kein 1B-Signal
     grund = grund_aus_abweichung(k.abweichung)
     assert grund.startswith("Portal (keine Steuerberaterkammer") and "Domain in 5 Suchorten" in grund
     # ohne Suchtreffer genauso
@@ -143,7 +143,8 @@ def test_pruefung_bestand_excel_und_blocklist(storage, tmp_path):
     _speichern(storage, "kanzlei-am-wall.example", "Kanzlei am Wall", ["Impressum", "Kanzlei am Wall"])
     _speichern(storage, "branchenbuch.example", None, ["Impressum", "Branchenbuch GmbH"], status=Status.GEPRUEFT)
     stat = run_pruefung(storage, "SH")
-    assert (stat.geprueft, stat.keine_kanzlei, stat.herabgestuft) == (3, 2, 2)
+    # „Kanzlei am Wall" ohne Kammer und Berufsbezeichnung: 1B Rang 5 → nicht mehr hoch
+    assert (stat.geprueft, stat.keine_kanzlei, stat.herabgestuft) == (3, 2, 3)
     nach = {k.domain: k for k in storage.kanzleien("SH")}
     assert nach["kiel-magazin.example"].status == Status.KEINE_KANZLEI
     assert nach["kiel-magazin.example"].konfidenz == Konfidenz.NIEDRIG  # Kernfelder fehlen
@@ -154,7 +155,9 @@ def test_pruefung_bestand_excel_und_blocklist(storage, tmp_path):
     wb = load_workbook(pfad)
     kanzleien = [r[0] for r in wb[BLATT_KANZLEIEN].iter_rows(min_row=2, values_only=True)]
     keine = list(wb[BLATT_KEINE_KANZLEI].iter_rows(values_only=True))
-    assert len(kanzleien) == 2 and len(keine) == 2  # Kopf + Magazin, mit allen Spalten
+    # „Kanzlei am Wall" ohne Kammer/Berufsbezeichnung (1B Rang 5) steht in „Zu prüfen", der gepflegte Status bleibt
+    zu = [r[0] for r in wb["Zu prüfen"].iter_rows(min_row=2, values_only=True)]
+    assert len(kanzleien) == 1 and len(zu) == 1 and len(keine) == 2  # Kopf + Magazin, mit allen Spalten
     kopf = keine[0]
     assert kopf[0] == "Grund" and "Kanzleiname" in kopf and "Telefon" in kopf and "Domain" in kopf
     assert keine[1][kopf.index("Domain")] == "kiel-magazin.example" and "Steuerberaterkammer" in keine[1][0]
@@ -249,7 +252,8 @@ def test_ausserhalb_bundesland_eigenes_blatt_und_vorrang(storage, tmp_path):
     for domain, land, name in [("kanzlei-dresden.example", "Sachsen", "Steuerkanzlei Dresden"),
                                ("kanzlei-kiel.example", "Schleswig-Holstein", "Steuerkanzlei Kiel"),
                                ("magazin-leipzig.example", "Sachsen", None)]:
-        kid = _speichern(storage, domain, name, ["Impressum", name or "Verlag GmbH"])
+        kid = _speichern(storage, domain, name, ["Impressum", name or "Verlag GmbH",
+                                                *(["Steuerberaterkammer Schleswig-Holstein"] if name else [])])
         k = storage.kanzlei_fuer_kandidat(kid)
         storage.upsert_kanzlei(k.model_copy(update={"bundesland": land}))
     # ohne Website (Verzeichnis): nur Bundesland-Filter
@@ -324,18 +328,18 @@ def test_lohnsteuerhilfe_und_reine_anwaltskanzlei(name, impressum, personen, gru
 
 
 def test_name_abgeleitet_ohne_kammer():
-    """Gemeinde/Verein ohne Kanzleinamen: Name aus dem Ansprechpartner, keine Kammer → keine Kanzlei, niedrig."""
+    """Name aus dem Ansprechpartner ohne Kammer und Berufsbezeichnung: Kanzlei, aber 1B Rang 4 (mittel) – Q5
+    schiebt die Zeile nach „Zu prüfen"; mit Berufsbezeichnung Rang 2, abgeleiteter Name → höchstens mittel."""
     abw = "Name abgeleitet aus Ansprechpartner Ina Lund – kein Kanzleiname gefunden"
     seiten = {Seitentyp.IMPRESSUM: _seite("gemeinde-x.example", Seitentyp.IMPRESSUM,
                                           ["Impressum", "Praxis Lund", "Ina Lund", "Dorfstraße 1", "24999 X"])}
     k = pruefen(_zeile(kanzleiname="Steuerkanzlei Lund", abweichung=abw, berufstraeger_anzahl=1,
                          rechtsform="Einzelkanzlei"), seiten, ziel_land=SH)
-    assert k.status == Status.KEINE_KANZLEI and k.konfidenz == Konfidenz.NIEDRIG
-    assert grund_aus_abweichung(k.abweichung).startswith("Branchenfremd (Name aus Ansprechpartner abgeleitet")
+    assert k.status == Status.NEU and k.konfidenz == Konfidenz.MITTEL and "1B Rang 4" in k.abweichung
     mit_beruf = {Seitentyp.IMPRESSUM: _seite("lund.example", Seitentyp.IMPRESSUM,
                                              ["Impressum", "Ina Lund", "Berufsbezeichnung: Steuerberaterin"])}
     k = pruefen(_zeile(kanzleiname="Steuerkanzlei Lund", abweichung=abw, berufstraeger_anzahl=1), mit_beruf, ziel_land=SH)
-    assert k.status == Status.NEU and k.konfidenz == Konfidenz.NIEDRIG  # Kanzlei, aber ohne Kammer niedrig
+    assert k.status == Status.NEU and k.konfidenz == Konfidenz.MITTEL and "1B Rang" not in k.abweichung
 
 
 def test_blocklist_domain_keine_zeile():

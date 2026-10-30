@@ -1,6 +1,6 @@
 """`recherche offen`: Kandidaten ohne Kanzlei-Zeile nach Ursache, Weg und Länder-Hinweis – fiktive Daten."""
 
-from recherche.models import Fund, Kandidat, Kanzlei, SchrittStatus
+from recherche.models import Fund, Kandidat, Kanzlei, Konfidenz, SchrittStatus
 from recherche.offen import NEIN, PLAYWRIGHT, WIEDERHOLEN, auswerten, ursache
 from recherche.search.pipeline import Fremdorte, Ort
 
@@ -92,7 +92,7 @@ def test_coverage_zaehlt_weitere_domains_einmal(storage):
         kid = storage.add_kandidat(_k(crawl=SchrittStatus.FERTIG, domain=d))
         storage.upsert_kanzlei(Kanzlei(kandidat_id=kid, domain=d, lauf_bundesland="SH", kanzleiname="Knüppel & Partner",
                                        telefon="+49 4103 1234", plz="22880", strasse="Bahnhofstr. 1",
-                                       bundesland="Schleswig-Holstein",
+                                       bundesland="Schleswig-Holstein", konfidenz=Konfidenz.HOCH,
                                        ansprechpartner=[Ansprechpartner(name="Jan Knüppel", funktion="Steuerberater")]))
     erg = berechne(storage, "SH", [Ort("Wedel", "22880", "Kreis Pinneberg", einwohner=34000)], ziel_land="Schleswig-Holstein")
     assert (erg.gefunden, erg.weitere_domains) == (1, 2)

@@ -180,3 +180,112 @@ def test_telefon_nur_gueltige_nummern(roh, erwartet):
     from recherche.normalize import normalize_telefon
 
     assert normalize_telefon(roh) == erwartet
+
+
+# ---------------------------------------------------------------------- 1B und Qualitätsbericht (Abschnitt 4)
+
+
+def _k(**kw):
+    from recherche.models import Kanzlei
+
+    return Kanzlei(**{"lauf_bundesland": "SH", "domain": "lund.example", "kanzleiname": "Lund Beratung", "plz": "24103",
+                      "ort": "Kiel", "bundesland": SH, "plz_verifiziert": True, **kw})
+
+
+def _impressum(*zeilen):
+    return {Seitentyp.IMPRESSUM: Seite(url="https://lund.example/impressum", domain="lund.example",
+                                       seitentyp=Seitentyp.IMPRESSUM, text="\n".join(zeilen), html=_html(zeilen))}
+
+
+@pytest.mark.parametrize(("kw", "zeilen", "funde", "rang", "konfidenz"), [
+    ({}, ["Lund Beratung", "Steuerberaterkammer Schleswig-Holstein"], [], 1, "hoch"),
+    ({"ansprechpartner": [{"name": "Anke Lund", "funktion": "Steuerberaterin"}]}, ["Lund Beratung"], [], 2, "hoch"),
+    ({}, ["Lund Beratung", "Berufsbezeichnung: Steuerberater (verliehen in Deutschland)"], [], 2, "hoch"),
+    ({"kanzleiname": "Lund Steuerberatungsgesellschaft mbH"}, ["Lund"], [], 3, "hoch"),
+    ({"kanzleiname": "Steuerkanzlei Lund"}, ["Steuerkanzlei Lund"], [], 4, "mittel"),
+    ({}, ["Lund Beratung"], [{"quelle": "brave", "snippet": "Ihr Steuerberater in Kiel"}], 5, "niedrig"),
+    ({"plz_verifiziert": None}, ["Lund Beratung", "Steuerberaterkammer Schleswig-Holstein"], [], 1, "mittel"),
+    ({"abweichung": "Telefon ungültig: 0431 1 (Website)"}, ["Steuerberaterkammer"], [], 1, "mittel"),  # Q4-Deckel
+])  # fmt: skip
+def test_konfidenz_nach_1b(kw, zeilen, funde, rang, konfidenz):
+    from recherche.extract.kanzlei import signal_1b
+    from recherche.models import Ansprechpartner, Fund
+
+    kw = {**kw, "ansprechpartner": [Ansprechpartner(**p) for p in kw.get("ansprechpartner", [])]}
+    f = [Fund(bundesland="SH", quell_id=str(i), lauf_id="l", **x) for i, x in enumerate(funde)]
+    k = pruefen(_k(**kw), _impressum(*zeilen), funde=f, ziel_land=SH)
+    assert signal_1b(k, "\n".join(zeilen), f)[0] == rang and k.konfidenz.value == konfidenz, k.abweichung
+    assert ("1B Rang" in (k.abweichung or "")) is (rang >= 4)
+
+
+def test_ohne_website_aus_dem_amtlichen_verzeichnis_ist_hoch():
+    from recherche.extract.kanzlei import anwenden
+    from recherche.models import Fund
+
+    f = [Fund(bundesland="SH", quelle="stb_verzeichnis", quell_id="x", lauf_id="l", snippet="Amtliches …")]
+    k = anwenden(_k(domain=None, website_vorhanden=False), None, False, SH, funde=f)
+    assert k.konfidenz.value == "hoch" and k.status.value == "neu"
+
+
+def test_zu_pruefen_q5_q6_q12_und_1b():
+    from recherche.extract.ansprechpartner import setze_ortsnamen
+    from recherche.models import Konfidenz, Status
+    from recherche.qualitaet import zu_pruefen_grund
+
+    setze_ortsnamen(["Kiel"])
+    hoch = Konfidenz.HOCH
+    assert zu_pruefen_grund(_k(konfidenz=hoch)) is None
+    assert zu_pruefen_grund(_k(konfidenz=Konfidenz.NIEDRIG)) == "Q12 Konfidenz niedrig"
+    assert zu_pruefen_grund(_k(konfidenz=Konfidenz.NIEDRIG, status=Status.GEPRUEFT)) is None  # gepflegt bleibt
+    assert zu_pruefen_grund(_k(konfidenz=hoch, kanzleiname="Kontakt")).startswith("Q6 Navigationswort")
+    assert zu_pruefen_grund(_k(konfidenz=hoch, kanzleiname="Kiel")) == "Q6 nur Ortsname „Kiel“"
+    assert zu_pruefen_grund(_k(konfidenz=hoch, kanzleiname="Die Amtsdirektorin")).startswith("Q6 Rolle")
+    rang4 = "1B Rang 4: nur Kanzleiwort im Namen (keine Kammer, keine Berufsbezeichnung)"
+    assert zu_pruefen_grund(_k(konfidenz=Konfidenz.MITTEL, abweichung=rang4)).startswith("1B Rang 4")
+    abgeleitet = f"{rang4}; Name abgeleitet aus Ansprechpartner Ina Lund – kein Kanzleiname gefunden"
+    assert zu_pruefen_grund(_k(konfidenz=Konfidenz.MITTEL, abweichung=abgeleitet)).startswith("Q5 Name abgeleitet")
+
+
+def test_qualitaetsbericht_alle_pruefungen():
+    from recherche.models import Ansprechpartner, Dublette, Konfidenz, Status
+    from recherche.qualitaet import bericht
+
+    hoch = Konfidenz.HOCH
+    stb = [Ansprechpartner(name="Maik Lund", funktion="Steuerberater")]
+    zeilen = [
+        _k(domain="at.example", status=Status.AUSSERHALB, abweichung="Außerhalb: Ausland (.at)"),
+        _k(domain="lsthv.example", status=Status.KEINE_KANZLEI, abweichung="Keine Kanzlei: Lohnsteuerhilfeverein"),
+        _k(domain="a.example", konfidenz=hoch, abweichung="Ansprechpartner ohne Vorname: Schröder; Telefon ungültig: 0431 1",
+           email="datenschutz@a.example", strasse="Markt 1"),
+        _k(domain="b.example", konfidenz=hoch, kanzleiname="Steuerbüro B", strasse="Markt 1", abweichung="PLZ/Ort: Kiel ≠ Kie"),
+        _k(domain="c.example", konfidenz=Konfidenz.NIEDRIG),
+        _k(domain="d.example", konfidenz=hoch, teamgroesse=250, abweichung="Teamgröße unplausibel (250 Personen, 2 Berufsträger)"),
+        _k(domain="zentrale.example", kanzleiname="Nordbund StBG", konfidenz=hoch, telefon="+49 431 59360", ansprechpartner=stb),
+        _k(domain="heide.zentrale.example", kanzleiname="Nordbund Heide", konfidenz=hoch, telefon="+49 431 59360",
+           ansprechpartner=stb, strasse="Wall 2", plz="25746"),
+    ]
+    dub = [Dublette(behalten="x.example", dublette="y.example", bundesland="SH", kriterium="telefon+ansprechpartner")]
+    erg = bericht(zeilen, dub, SH, coverage_gefunden=9)
+    n = erg.anzahl()
+    assert {nr: n.get(nr, 0) for nr in ("Q1", "Q2", "Q3", "Q4", "Q7", "Q8", "Q9", "Q10", "Q11", "Q12", "Q13", "Q14")} == {
+        "Q1": 1, "Q2": 1, "Q3": 1, "Q4": 1, "Q7": 1, "Q8": 1, "Q9": 1, "Q10": 1, "Q11": 1, "Q12": 1, "Q13": 1, "Q14": 1}
+    assert list(erg.zu_pruefen.values()) == ["Q12 Konfidenz niedrig"]
+    q14 = next(b.text for b in erg.befunde if b.nr == "Q14")
+    assert q14 == "coverage 9, Hauptblatt 5 (Differenz 4)"
+
+
+def test_qualitaet_befehl(tmp_path, db_pfad):
+    from typer.testing import CliRunner
+
+    from recherche import cli
+    from recherche.models import Konfidenz
+    from recherche.storage import Storage
+
+    with Storage(db_pfad) as st:
+        st.upsert_kanzlei(_k(konfidenz=Konfidenz.NIEDRIG))
+        st.upsert_kanzlei(_k(domain="b.example", konfidenz=Konfidenz.HOCH, abweichung="Telefon ungültig: 1"))
+    out = tmp_path / "q.csv"
+    r = CliRunner().invoke(cli.app, ["qualitaet", "-b", "SH", "--db", str(db_pfad), "--out", str(out)])
+    assert r.exit_code == 0, r.output
+    assert "Qualitätsbericht SH" in r.output and "Zu prüfen (aus dem Hauptblatt verschoben): 1" in r.output
+    assert "Q12;Konfidenz niedrig;Sperre" in out.read_text(encoding="utf-8-sig")

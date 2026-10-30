@@ -56,7 +56,7 @@ def test_export(befuellt, db_pfad, tmp_path):
     r = runner.invoke(cli.app, _args("export", db_pfad, "--out", str(out)))
     assert r.exit_code == 0, r.output
     assert "20 Kanzleien" in r.output
-    assert load_workbook(out)["Kanzleien"].max_row == 21
+    assert load_workbook(out)["Kanzleien"].max_row == 19  # 2 Zeilen mit Konfidenz niedrig in „Zu prüfen"
 
 
 def test_unbekanntes_bundesland(db_pfad):
@@ -179,7 +179,9 @@ def test_crawl_extract_export(fake_web, fake_llm, db_pfad, tmp_path):
     assert runner.invoke(cli.app, _args("export", db_pfad, "--out", str(out))).exit_code == 0
     wb = load_workbook(out)
     namen = {row[0].value: row for row in wb["Kanzleien"].iter_rows(min_row=2)}
-    assert set(namen) == {"Förde Steuerberatungsgesellschaft mbH", "Steuerbüro Thomas Schütt", None}
+    assert set(namen) == {"Förde Steuerberatungsgesellschaft mbH", "Steuerbüro Thomas Schütt"}
+    # „Kanzlei Ohneweb" ohne Website und ohne amtlichen Fund: kein 1B-Signal → niedrig → „Zu prüfen" (Q12)
+    assert [r[0].value for r in wb["Zu prüfen"].iter_rows(min_row=2)] == ["1B Rang 5: kein Positivsignal"]
     ng = list(wb["Nicht gefunden"].iter_rows(min_row=2, values_only=True))
     assert ng[0][0] == "weg.example" and "0461 1" in ng[0]
     protokoll = [r[1] for r in wb["Lauf-Protokoll"].iter_rows(min_row=2, values_only=True)]

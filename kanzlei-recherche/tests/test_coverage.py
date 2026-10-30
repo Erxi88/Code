@@ -5,7 +5,7 @@ from conftest import FIXTURES
 from openpyxl import load_workbook
 
 from recherche.coverage import UNBEKANNT, als_excel, berechne, load_referenz
-from recherche.models import Fund, Kandidat, Kanzlei, Status
+from recherche.models import Fund, Kandidat, Kanzlei, Konfidenz, Status
 from recherche.search.pipeline import load_orte
 
 COV = FIXTURES / "coverage"
@@ -147,7 +147,7 @@ def test_nach_extraktion_nur_kanzleien_im_land(storage):
         (Status.NEU, None, None, None),  # PLZ nicht geprüft
     ]):  # fmt: skip
         storage.upsert_kanzlei(Kanzlei(kandidat_id=ids[i], domain=f"k{i}.example", lauf_bundesland="SH",
-                                       status=status, bundesland=land, plz=plz, ort=ort))
+                                       status=status, bundesland=land, plz=plz, ort=ort, konfidenz=Konfidenz.HOCH))
     erg = berechne(storage, "SH", orte, None, ziel_land="Schleswig-Holstein")
     assert (erg.modus, erg.gefunden, erg.offen) == ("kanzleien", 2, 1)  # k5 ohne Kanzlei-Zeile = offen
     assert (erg.keine_kanzlei, erg.ausserhalb, erg.ohne_bundesland) == (1, 1, 1)

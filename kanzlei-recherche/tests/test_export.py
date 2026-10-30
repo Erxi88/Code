@@ -8,6 +8,8 @@ from recherche.export import (
     BLATT_KANZLEIEN,
     BLATT_NICHT_GEFUNDEN,
     BLATT_PROTOKOLL,
+    BLATT_QUALITAET,
+    BLATT_ZU_PRUEFEN,
     DROPDOWN_MIN_ZEILEN,
     KANZLEI_SPALTEN,
     export_excel,
@@ -31,8 +33,19 @@ def _zeilen(ws):
     return [dict(zip(kopf, (c.value for c in row), strict=True)) for row in ws.iter_rows(min_row=2)]
 
 
-def test_vier_blaetter(wb):
-    assert wb.sheetnames == [BLATT_KANZLEIEN, BLATT_NICHT_GEFUNDEN, BLATT_DUBLETTEN, BLATT_PROTOKOLL]
+def test_blaetter(wb):
+    assert wb.sheetnames == [BLATT_KANZLEIEN, BLATT_ZU_PRUEFEN, BLATT_NICHT_GEFUNDEN, BLATT_DUBLETTEN, BLATT_QUALITAET,
+                             BLATT_PROTOKOLL]
+
+
+def test_zu_pruefen_und_qualitaet(wb):
+    """Prüfkatalog Q12: Konfidenz niedrig nie im Hauptblatt – verschoben, nicht gelöscht, Grund vorn."""
+    zeilen = _zeilen(wb[BLATT_ZU_PRUEFEN])
+    assert {z["Domain"] for z in zeilen} == {"stb-oldesloe.example", "kanzlei-thomsen.example"}
+    assert all(z["Grund (zu prüfen)"] == "Q12 Konfidenz niedrig" for z in zeilen)
+    befunde = _zeilen(wb[BLATT_QUALITAET])
+    assert _kopf(wb[BLATT_QUALITAET]) == ["Nr.", "Prüfung", "Grad", "Kanzleiname", "Domain", "Befund"]
+    assert sum(1 for b in befunde if b["Nr."] == "Q12" and b["Grad"] == "Sperre") == 2
 
 
 def test_kanzleien_kopf_und_zeilen(wb):
@@ -44,14 +57,14 @@ def test_kanzleien_kopf_und_zeilen(wb):
                     "E-Mail", "Website", "Hauptansprechpartner", "Teamgröße", "Teamgröße-Basis",
                     "Konfidenz", "Quell-URLs", "Abrufdatum", "Status"):
         assert pflicht in kopf
-    assert ws.max_row == 21
+    assert ws.max_row == 19  # 20 Testzeilen, 2 mit Konfidenz niedrig im Blatt „Zu prüfen"
 
 
 def test_kanzleien_filter_und_kopfzeile_fixiert(wb):
     ws = wb[BLATT_KANZLEIEN]
     assert ws.freeze_panes == "A2"
     assert ws.auto_filter.ref.startswith("A1:")
-    assert ws.auto_filter.ref.endswith("21")
+    assert ws.auto_filter.ref.endswith("19")
     assert ws["A1"].font.bold
 
 
@@ -103,7 +116,7 @@ def test_teamgroesse_klasse_wenn_keine_zahl(wb):
 
 
 def test_fehlende_felder_bleiben_leer(wb):
-    zeilen = {z["Domain"]: z for z in _zeilen(wb[BLATT_KANZLEIEN])}
+    zeilen = {z["Domain"]: z for z in _zeilen(wb[BLATT_ZU_PRUEFEN])}  # niedrig → Zu prüfen (Q12)
     z = zeilen["stb-oldesloe.example"]
     assert z["Kanzleiname"] is None
     assert z["Hauptansprechpartner"] is None
@@ -151,7 +164,7 @@ def test_leerer_export(tmp_path):
     with Storage(tmp_path / "leer.sqlite") as st:
         pfad = export_excel(st, "SH", tmp_path / "leer.xlsx")
     wb = load_workbook(pfad)
-    assert len(wb.sheetnames) == 4
+    assert wb.sheetnames == [BLATT_KANZLEIEN, BLATT_NICHT_GEFUNDEN, BLATT_DUBLETTEN, BLATT_QUALITAET, BLATT_PROTOKOLL]
     assert wb[BLATT_KANZLEIEN].max_row == 1
     assert len(wb[BLATT_KANZLEIEN].data_validations.dataValidation) == 1
 
@@ -164,9 +177,9 @@ def test_export_filtert_bundesland(befuellt, tmp_path):
 
 
 def test_neue_spalten(befuellt, tmp_path):
-    from recherche.models import Ansprechpartner, Kanzlei, NichtGefunden
+    from recherche.models import Ansprechpartner, Kanzlei, Konfidenz, NichtGefunden
 
-    befuellt.upsert_kanzlei(Kanzlei(lauf_bundesland="SH", kandidat_id=99, kanzleiname="Kanzlei Ohneweb",
+    befuellt.upsert_kanzlei(Kanzlei(lauf_bundesland="SH", kandidat_id=99, kanzleiname="Kanzlei Ohneweb", konfidenz=Konfidenz.HOCH,
                                     website_vorhanden=False, abweichung="Telefon: places 1 / Website 2",
                                     ansprechpartner=[Ansprechpartner(name="A", funktion="StB")], berufstraeger_anzahl=1))
     befuellt.add_nicht_gefunden(NichtGefunden(domain="weg.example", bundesland="SH", grund="Timeout", name="Kanzlei Weg",

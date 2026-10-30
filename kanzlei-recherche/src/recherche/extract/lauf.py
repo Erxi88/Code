@@ -23,6 +23,7 @@ from ..storage import Storage
 from ..textnorm import text_normalisieren
 from .base import AnbieterNichtErreichbar, Extractor, ExtraktionFehler
 from .kanzlei import (
+    anwenden,
     ausland_hinweis,
     ausland_tld,
     pruefen,
@@ -117,6 +118,8 @@ def run_extract(
             if kanzlei_rechtsformen is not None and k.domain:
                 pruefen(kanzlei, storage.kandidat_seiten(k.id), tuple(kanzlei_rechtsformen), storage.funde_kandidat(k.id),
                         suchorte.get(stammdomain(k.domain), 0), ziel_land, blocklist)
+            elif not k.domain:  # ohne Website: Konfidenz nach Prüfkatalog 1B aus den Funden
+                anwenden(kanzlei, None, False, ziel_land, funde=storage.funde_kandidat(k.id))
             else:
                 status_setzen(kanzlei, ziel_land)
         except AnbieterNichtErreichbar as e:
