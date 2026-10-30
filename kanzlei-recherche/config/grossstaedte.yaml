@@ -5,7 +5,6 @@
 # Namen, die auch Familiennamen oder Wörter sind (Hagen, Hamm, Siegen, Essen, Halle, Witten), fehlen bewusst.
 # Format: Name: Länderkürzel (wie in settings.yaml)
 Berlin: BE
-Hamburg: HH
 München: BY
 Köln: NW
 Frankfurt: HE
