@@ -10,11 +10,11 @@
 # null = nicht hinterlegt.
 
 SH:
-  quelle: null                 # z. B. "Steuerberaterkammer Schleswig-Holstein, Mitgliederstatistik"
-  stand: null                  # z. B. 2026-01-01
+  quelle: "BStBK Berufsstatistik 2025"                 # z. B. "Steuerberaterkammer Schleswig-Holstein, Mitgliederstatistik"
+  stand: 2026-01-01                  # z. B. 2026-01-01
   einheit: mitglieder
-  faktor: null                 # Kanzleien je Mitglied, nur bei einheit: mitglieder
-  gesamt: null
+  faktor: 0.36                 # Kanzleien je Mitglied, nur bei einheit: mitglieder
+  gesamt: 3020
   kreise:
     Kreisfreie Stadt Kiel: null
     Kreisfreie Stadt Lübeck: null

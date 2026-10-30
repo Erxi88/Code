@@ -43,7 +43,7 @@ discovery:
     fremdorte:
       aktiv: true
       unter_einwohner: 2000
-  max_anfragen_je_lauf: 1000         # Budget je Lauf und Adapter (bezahlte Anfragen, ohne Cache-Treffer)
+  max_anfragen_je_lauf: 2500         # Budget je Lauf und Adapter (bezahlte Anfragen, ohne Cache-Treffer)
   coverage:
     quote_ziel: 0.9                  # Lücke, wenn gefunden < erwartet * quote_ziel
     top_orte: 15
@@ -122,7 +122,7 @@ crawl:
   user_agent: "kanzlei-recherche/0.1 (Recherche-Tool; Kontakt siehe README)"
   max_seiten_je_domain: 6            # Start, Impressum, Kontakt, Team + Rateversuche
   min_text_zeichen: 300              # darunter gilt eine Seite als leer (JavaScript)
-  playwright: false                  # Rückfall für JavaScript-Seiten (setup.sh --mit-playwright)
+  playwright: true                  # Rückfall für JavaScript-Seiten (setup.sh --mit-playwright)
   playwright_timeout_s: 20
   playwright_warten_s: 2             # nach „domcontentloaded" warten (networkidle läuft oft in den Timeout)
   # Teamseite mit großem HTML, aber Text unter 2 % davon (Namen per JavaScript) → Playwright
@@ -134,7 +134,7 @@ extract:
   # Kanzleiwort im Namen (Steuer…, StB, Kanzlei, Treuhand, Revision, Wirtschaftsprüf…) oder
   # Steuerberaterkammer im Impressum; sonst Status „keine Kanzlei" (eigenes Excel-Blatt).
   # Nach dem Pilot einschalten; bestehende Daten: recherche kanzlei-pruefung
-  kanzlei_pruefung: false
+  kanzlei_pruefung: true
   kanzlei_rechtsformen: [PartG mbB, PartG, Einzelkanzlei]
   # Größenklassen der Teamgröße als Obergrenzen: 1 · 2-5 · 6-10 · 11-20 · 21-50 · 51-100 · >100.
   # Zahl, wenn ablesbar; sonst Klasse aus dem Text („über 20" → 21-50); sonst leer – keine Schätzung.
@@ -153,7 +153,7 @@ llm:
   think: false                       # Thinking-Modus immer aus
   temperature: 0.0
   timeout_s: 300
-  num_ctx: 16384                     # Kontextfenster (Ollama-Standard ist zu klein und schneidet ab)
+  num_ctx: 8192                    # Kontextfenster (Ollama-Standard ist zu klein und schneidet ab)
   retries: 1                         # erneuter Versuch bei ungültiger Antwort
   # Text aller Seiten zusammen. auto = (num_ctx − 700 − 2000 Token Reserve) × 3,0 Zeichen/Token,
   # bei num_ctx 16384 ≈ 41.000 Zeichen. Vorher wird gezielt bereinigt (extract/prompt.py).
