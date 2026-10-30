@@ -606,3 +606,22 @@ def test_standortseite_einer_kette(tmp_path, ausschluss):
                                                      "(Nordbund Steuerberatungskanzlei Heide)")
     finally:
         setze_config(KettenConfig())
+
+
+def test_titel_vor_dem_namen_vor_der_vorname_pruefung():
+    """900grad.de: „Dr. Dr. Rolf Harrie" ist vertretungsberechtigt und darf nicht als „ohne Vorname" fallen."""
+    from recherche.extract.ansprechpartner import bereinigen
+    from recherche.models import Ansprechpartner
+
+    liste, hinweise = bereinigen([Ansprechpartner(name="Dr. Dr. Rolf Harrie", funktion="Geschäftsführer"),
+                                  Ansprechpartner(name="Prof. Dr. rer. pol. Jan Hoff"),
+                                  Ansprechpartner(name="WP/StB Dipl.-Kfm. Ina Kock"),
+                                  Ansprechpartner(name="M.Sc. Tim Ott"), Ansprechpartner(name="B.A. Lea Ruge")])
+    assert [(p.name, p.titel) for p in liste] == [("Rolf Harrie", "Dr. Dr."), ("Jan Hoff", "Prof. Dr. rer. pol."),
+                                                   ("Ina Kock", "WP/StB Dipl.-Kfm."), ("Tim Ott", "M.Sc."),
+                                                   ("Lea Ruge", "B.A.")]
+    assert hinweise == []
+    # nur Titel/Berufsbezeichnung + Nachname bleibt „ohne Vorname"
+    for name in ("Dr. Schröder", "Steuerberaterin Schröder", "Herr Lund"):
+        assert bereinigen([Ansprechpartner(name=name)])[0] == []
+

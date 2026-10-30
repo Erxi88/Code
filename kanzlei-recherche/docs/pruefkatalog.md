@@ -82,7 +82,7 @@ Namensmerkmale aus 1A (Lohnsteuerhilfe, „e. V.“, Kammer/Verband, Rechtsanwal
 
 ### Ansprechpartner
 
-- Pflichtform: Vorname + Nachname (mindestens zwei Wörter, erstes Wort kein Titel allein). Nur Nachname („Steuerberaterin Schröder“) → Feld leer, Nachname in Abweichung.
+- Pflichtform: Vorname + Nachname (mindestens zwei Wörter, erstes Wort kein Titel allein). Nur Nachname („Steuerberaterin Schröder“) → Feld leer, Nachname in Abweichung. Titel und Berufskürzel vor dem Namen (Dr., Prof., Dipl.-Kfm., WP, StB, M.Sc., B.A. …) werden vorher abgeschnitten und wandern in den Titel – „Dr. Dr. Rolf Harrie“ bleibt (Rückmeldung 30.10.2026, 900grad.de).
 - Rang: Vertretungsberechtigter im Impressum → erster Berufsträger auf Teamseite → Inhaber laut Startseite. Rechtsanwälte und Notare nur, wenn kein Steuerberater benannt ist.
 - Präfixe abschneiden: „Porträt von“, „Porträtfoto von“, „Foto von“, „Bild von“, „Portrait“, „Bild:“, „Abbildung“. Suffixe abschneiden: „Steuerberater“, „StB“, „Dipl.-Kfm.“ (gehen in Titel/Funktion).
 - Verwerfen, wenn der Text enthält: „Datenschutz“, „Grundverordnung“, „Fachanwalt … [Ort]“, „Amtsdirektor“, „Amtsvorsteher“, „Bürgermeister“, „Präsident“, „Archiv“, „Regionen“, „Homepages“, „Anträge“, „Browser“, „Verein“, Ortsnamen, Ländernamen, Monatsnamen, Wochentage.

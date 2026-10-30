@@ -388,6 +388,9 @@ der nächsten Quelle füllen.**
     („Oliver Hagen" bleibt, „Jan Lund Kiel" nicht; Monatsnamen nur mit Zahl: „Mai 2024", „3. Mai" – „Hanh Mai
     Luong" bleibt); nur Nachname → verworfen („Ansprechpartner ohne Vorname");
     Rechtsanwälte/Notare hinter die Steuerberater, wenn einer benannt ist. Hinweis „Ansprechpartner verworfen: …".
+    Titel und Berufskürzel vor dem Namen (Dr., Prof., Dipl.-Kfm., WP/StB, M.Sc., B.A., LL.M. …) wandern **vor** der
+    Vorname-Prüfung in den Titel („Dr. Dr. Rolf Harrie" bleibt); Berufsbezeichnung/Anrede + Nachname („Steuerberaterin
+    Schröder", „Herr Lund") gilt als ohne Vorname.
   - Ansprechpartner = nur **Berufsträger und Leitung**; Mehrfachnennungen werden
     vereinigt (Funktionen und Titel). Reihenfolge: Vertretungsberechtigte in der
     Reihenfolge des Impressum-Abschnitts „vertretungsberechtigt/vertreten durch", dann alle

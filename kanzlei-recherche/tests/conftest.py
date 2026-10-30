@@ -59,6 +59,9 @@ def vorwahl_aus():
     from recherche.vorwahl import setze_pruefer
 
     setze_pruefer(None)
+    from recherche.ketten import KettenConfig, setze_config
+
+    setze_config(KettenConfig())  # ketten.yaml (CLI) gilt nur im Test, der sie setzt
 
 
 @pytest.fixture

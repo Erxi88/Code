@@ -9,6 +9,8 @@ Läuft nach der Zusammenführung (merge.ansprechpartner) und in `kanzlei-pruefun
   oder „Fachanwalt … <Ort>". Orts-, Länder-, Monatsnamen und Wochentage verwerfen nur als **Zusatzwort** neben
   Vor- und Nachname („Fachanwalt Elmshorn", „Kiel Holtenau") – „Oliver Hagen" und „August Petersen" bleiben
   (Rücksprache 30.10.2026).
+- Titel und Berufskürzel vor dem Namen („Dr. Dr.", „Prof.", „Dipl.-Kfm.", „WP", „StB", „M.Sc.", „B.A.") wandern vor
+  der Prüfung in den Titel („Dr. Dr. Rolf Harrie" → Rolf Harrie, Titel „Dr. Dr.").
 - Pflichtform Vorname + Nachname (mindestens zwei Wörter, das erste kein Titel); nur Nachname
   („Steuerberaterin Schröder") → verworfen, Nachname in „Abweichung".
 - Rechtsanwälte und Notare nur vorn, wenn kein Steuerberater benannt ist.
@@ -30,6 +32,8 @@ _SUFFIX_TITEL = re.compile(r"[,\s]+(dipl\.\s*-?\s*kf(?:m|fr)\.?)\s*$", re.IGNORE
 _VERWERFEN = re.compile(r"datenschutz|grundverordnung|amtsdirektor|amtsvorsteher|bürgermeister|präsident|archiv|regionen|"
                         r"homepages|anträge|browser|verein", re.IGNORECASE)
 _TITEL_WORT = re.compile(r"^(?:dr|prof|dipl|mag|ll|m\.?a|m\.?sc|b\.?a|b\.?sc|herr|frau|stb|wp|ra|rain)\b\.?", re.IGNORECASE)
+_BERUF_ANREDE = re.compile(r"^(?:steuerberater(?:in)?|steuerbevollmächtigte[rn]?|rechtsanwält(?:in)?|rechtsanwalt|"
+                          r"wirtschaftsprüfer(?:in)?|notar(?:in)?|herr|frau)$", re.IGNORECASE)
 _PARTIKEL = {"von", "van", "de", "der", "zu", "vom", "ten", "ter", "da", "di"}
 _RA_NOTAR = re.compile(r"rechtsanw|notar|anwält|anwalt", re.IGNORECASE)
 _STB = re.compile(r"steuerberat|\bstb\b|steuerbevollm|wirtschaftspr[üu]f|\bwp\b|buchprüf|\bvbp\b", re.IGNORECASE)
@@ -83,13 +87,35 @@ def verwerf_grund(p: Ansprechpartner) -> str | None:
     if len(woerter) >= 3 and (zusatz := [w for w, ja in zip(woerter[1:], sonder[1:], strict=True) if ja]):
         # Zusatzwort neben Vor- und Nachname („Jan Lund Kiel"); „Oliver Hagen" (zwei Wörter) bleibt
         return f"Zusatzwort „{zusatz[0]}“"
+    while woerter and _BERUF_ANREDE.match(woerter[0]):  # „Steuerberaterin Schröder", „Herr Lund": kein Vorname
+        woerter = woerter[1:]
     if len(woerter) < 2 or _TITEL_WORT.match(woerter[0]):
         return "ohne Vorname"
     return None
 
 
+_TITEL_VORN = re.compile(
+    r"^\s*(?:prof\.|dr\.(?:\s*(?:rer|jur|phil|oec|med)\.(?:\s*(?:pol|nat|publ)\.)?)?|dipl\.\s*-?\s*[a-zäöü]+\.?|"
+    r"diplom-[a-zäöü]+(?:in)?|ll\.\s*m\.?|m\.\s*sc\.?|b\.\s*sc\.?|m\.\s*a\.?|b\.\s*a\.?|mba|mag\.|"
+    r"(?:stb|wp|ra|rain|vbp|stbin)\b\.?(?:\s*/\s*(?:stb|wp|ra|vbp)\b\.?)*)[\s,]*", re.IGNORECASE)
+
+
+def titel_abschneiden(name: str) -> tuple[str, list[str]]:
+    """Titel und Berufskürzel vor dem Namen („Dr. Dr. Rolf Harrie", „Dipl.-Kfm. StB Eva Lund") abtrennen – vor der
+    Vor-/Nachname-Prüfung (Rückmeldung 30.10.2026, 900grad.de)."""
+    titel = []
+    while (m := _TITEL_VORN.match(name)) and m.end() < len(name):
+        titel.append(m.group(0).strip(" ,"))
+        name = name[m.end():]
+    return name.strip(), titel
+
+
 def bereinigen_eins(p: Ansprechpartner) -> Ansprechpartner:
     name, titel, funktion = _PRAEFIX.sub("", p.name).strip(), p.titel, p.funktion
+    name, vorn = titel_abschneiden(name)
+    if vorn:
+        neu = " ".join(vorn)
+        titel = titel if titel and neu.casefold() in titel.casefold() else " ".join(x for x in (neu, titel) if x)
     while True:
         if m := _SUFFIX_FUNKTION.search(name):
             funktion = ", ".join(x for x in (funktion, m.group(1)) if x) if not (funktion and m.group(1).lower() in
