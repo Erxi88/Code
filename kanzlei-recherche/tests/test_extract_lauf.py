@@ -244,3 +244,17 @@ def test_versicherung_ausserhalb_reicht_nicht(storage, ausschluss):
               "HDI Versicherung AG, HDI-Platz 1, 30659 Hannover"]
     s = Seite(url="https://n.example/impressum", domain="n.example", seitentyp=Seitentyp.IMPRESSUM, text="\n".join(zeilen))
     assert plz_in_seiten({Seitentyp.IMPRESSUM: s}, ausschluss) == ["24103"]  # Versicherungsabschnitt ist fremd
+
+
+def test_ohne_impressum_gelesen_steht_in_abweichung(storage, ausschluss):
+    """Prüfkatalog 3: ohne Impressum aus Start-/Kontaktseite gelesen → Hinweis in „Abweichung"."""
+    domain = "nordlicht-steuerberatung.example"
+    fx = Fixture.laden(BSP / domain)
+    kid = storage.add_kandidat(Kandidat(bundesland="SH", domain=domain, website=f"https://{domain}/",
+                                        crawl_status=SchrittStatus.FERTIG))
+    for typ, s in fx.seiten.items():
+        if typ != Seitentyp.IMPRESSUM:
+            storage.save_seite(s)
+            storage.setze_kandidat_seite(kid, typ, s.url)
+    run_extract(storage, "SH", None, _pruefer(), ausschluss, "lauf")
+    assert "Kein Impressum: Daten aus Start-/Kontaktseite" in storage.kanzleien("SH")[0].abweichung

@@ -282,6 +282,8 @@ def _crawl(ctx: Kontext, limit: int | None = None, wiederholen: bool = False) ->
         console.print(f"  {stat.dns} tote Domains ({DNS_GRUND}) – werden bei --wiederholen übersprungen")
     if stat.ausserhalb:
         console.print(f"  {stat.ausserhalb} nicht gecrawlt: Suchtreffer nur mit PLZ außerhalb {ctx.bl_cfg.name}")
+    for art, n in sorted(stat.impressum_rueckfall.items(), key=lambda x: -x[1]):
+        console.print(f"  {n:4d} × {art}")
     for grund, n in sorted(stat.gruende.items(), key=lambda x: -x[1]):
         console.print(f"  {n:4d} × {grund}")
 

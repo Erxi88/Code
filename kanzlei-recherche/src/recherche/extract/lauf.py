@@ -214,6 +214,10 @@ def _eine(storage: Storage, k: Kandidat, extractor, pruefer, ausschluss, stat: E
     kanzlei = zusammenfuehren(k, funde, seiten, regel, llm, pruefer.pruefe if pruefer else None, ausschluss)
     if hinweis := _robots_hinweis(storage, seiten):
         kanzlei.abweichung = "; ".join(x for x in (kanzlei.abweichung, hinweis) if x)
+    if Seitentyp.IMPRESSUM not in seiten:  # Prüfkatalog 3: ohne Impressum aus Start-/Kontaktseite gelesen
+        from ..crawl import OHNE_IMPRESSUM
+
+        kanzlei.abweichung = "; ".join(x for x in (kanzlei.abweichung, OHNE_IMPRESSUM) if x)
     return kanzlei
 
 

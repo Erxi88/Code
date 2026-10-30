@@ -340,9 +340,18 @@ def _ohne_fragment(url: str) -> str:
 
 
 IMPRESSUM_RATEN = ("/impressum", "/impressum/", "/impressum.html")
-# zusätzlich bei crawl --wiederholen
-IMPRESSUM_RATEN_GRUENDLICH = ("/impressum.php", "/imprint", "/kontakt/impressum", "/rechtliches/",
-                              "/impressum-datenschutz/", "/legal-notice")
+# zusätzlich bei crawl --wiederholen (Prüfkatalog 3: vollständige Pfadliste; eigenes Budget, damit Kontakt/Team bleiben)
+IMPRESSUM_RATEN_GRUENDLICH = ("/impressum.php", "/imprint", "/rechtliches", "/rechtliches/", "/rechtliche-hinweise",
+                              "/anbieterkennzeichnung", "/legal", "/legal-notice", "/kontakt/impressum",
+                              "/impressum-datenschutz/")
+# Kontakt-/Datenschutzseite als Impressum nur mit echter Anbieterkennzeichnung („siehe Impressum" genügt nicht)
+_IMPRESSUM_STRENG = re.compile(
+    r"angaben\s+gem(?:ä|ae)ß\s*§\s*5|§\s*5\s*(?:tmg|ddg)|anbieterkennzeichnung|§\s*18\s*(?:abs\.?\s*2\s*)?mstv|"
+    r"^\s*impressum\s*$", re.IGNORECASE | re.MULTILINE)
+_DATENSCHUTZ_LINK = re.compile(r"datenschutz|privacy", re.IGNORECASE)
+# eine Adresse mit PLZ und Ort – dann lohnt das Lesen ohne Impressum (Start-/Kontaktseite)
+_PLZ_ORT = re.compile(r"\b\d{5}\s+[A-ZÄÖÜ][a-zäöüß]")
+OHNE_IMPRESSUM = "Kein Impressum: Daten aus Start-/Kontaktseite"
 # Seite ist ein Impressum (Soft-404-Prüfung beim Raten)
 _IMPRESSUM_INHALT = re.compile(
     r"impressum|imprint|anbieterkennzeichnung|legal notice|angaben gemäß\s*§\s*5|§\s*5\s*(?:tmg|ddg)|§\s*18\s*mstv", re.I
@@ -443,6 +452,7 @@ class CrawlErgebnis:
     url: str | None = None  # betroffene URL für das Blatt „Nicht gefunden"
     anfragen: int = 0
     hinweis: str | None = None  # gelesen, aber z. B. robots.txt nicht abrufbar
+    impressum_hinweis: str | None = None  # Impressum über einen Rückfall gefunden oder ohne Impressum gelesen
 
     @property
     def ok(self) -> bool:
@@ -799,6 +809,8 @@ class Crawler:
         probiert: list[str] = []
         if Seitentyp.IMPRESSUM not in erg.seiten:
             raten = IMPRESSUM_RATEN + (IMPRESSUM_RATEN_GRUENDLICH if self.gruendlich else ())
+            if self.gruendlich:
+                budget += len(IMPRESSUM_RATEN_GRUENDLICH)  # die zusätzlichen Pfade verbrauchen nicht das Seitenbudget
             for pfad in raten:
                 url = urljoin(basis, pfad)
                 if url in geladen:
@@ -810,13 +822,56 @@ class Crawler:
                 if abruf.ok and _IMPRESSUM_INHALT.search(abruf.text or "") and abruf.text != start.text:
                     erg.seiten[Seitentyp.IMPRESSUM] = abruf
                     break
+        if self.gruendlich and Seitentyp.IMPRESSUM not in erg.seiten:
+            budget = max(budget, 0) + 3  # Kontakt, Team, Team2 trotz der zusätzlichen Rateversuche
         for typ in (Seitentyp.KONTAKT, Seitentyp.TEAM, Seitentyp.TEAM2):
             if (url := gefunden.get(typ)) and (abruf := await laden(url, typ)) and abruf.ok:
                 erg.seiten[typ] = abruf
         if Seitentyp.IMPRESSUM not in erg.seiten:
+            budget = max(budget, 0) + 2  # Datenschutzseite und Menü-Link aus Playwright (nur ohne Impressum)
+            await self._impressum_rueckfall(erg, start, basis, site, link_html, laden, probiert)
+        if Seitentyp.IMPRESSUM not in erg.seiten and erg.grund is None and erg.impressum_hinweis is None:
             link = f"Link {urlsplit(gefunden[Seitentyp.IMPRESSUM]).path} ohne Erfolg, " if Seitentyp.IMPRESSUM in gefunden else ""
             erg.grund = f"Kein Impressum gefunden ({link}probiert: {', '.join(probiert) or '–'})"
             erg.url = basis
+
+    async def _impressum_rueckfall(self, erg: CrawlErgebnis, start: Abruf, basis: str, site: str, link_html: str,
+                                   laden, probiert: list[str]) -> None:
+        """Prüfkatalog 3, Impressum-Suche ohne Treffer über Link und Pfade:
+        1. Kontakt- oder Datenschutzseite mit Anbieterkennzeichnung („Angaben gemäß § 5 DDG", Überschrift „Impressum")
+           gilt als Impressum;
+        2. Playwright: Startseite rendern und den Impressum-Link im JavaScript-Menü suchen (nur crawl.playwright);
+        3. Startseite + Kontaktseite mit Adresse (PLZ Ort) werden ohne Impressum gelesen (Hinweis in „Abweichung").
+        Erst danach „Kein Impressum gefunden"."""
+        kontakt = erg.seiten.get(Seitentyp.KONTAKT)
+        datenschutz = next((u for u, t in links(link_html, basis) if gleiche_site(u, site)
+                            and (_DATENSCHUTZ_LINK.search(t or "") or _DATENSCHUTZ_LINK.search(urlsplit(u).path))), None)
+        kandidaten = [kontakt] if kontakt else []
+        if datenschutz and (abruf := await laden(_ohne_fragment(datenschutz), Seitentyp.IMPRESSUM)):
+            probiert.append(urlsplit(datenschutz).path or "/")
+            if abruf.ok:
+                kandidaten.append(abruf)
+        for abruf in kandidaten:
+            if _IMPRESSUM_STRENG.search(abruf.text or ""):
+                erg.seiten[Seitentyp.IMPRESSUM] = abruf
+                erg.impressum_hinweis = f"Impressum auf {urlsplit(abruf.url).path or '/'}"
+                return
+        if self.cfg.playwright and not (start.playwright or "").startswith("gerendert"):
+            renderer = self._renderer or (lambda u: playwright_render(
+                u, self.cfg.playwright_timeout_s, self.cfg.user_agent, self.cfg.playwright_warten_s))
+            try:
+                html = await renderer(start.final_url or start.url)
+            except Exception as e:  # Playwright fehlt, Timeout …
+                log.info("%s: Playwright für Menü-Links fehlgeschlagen: %s", site, e)
+                html = None
+            probiert.append("Playwright-Menü")
+            if html and (url := finde_unterseiten(html, basis, site).get(Seitentyp.IMPRESSUM)):
+                if (abruf := await laden(url, Seitentyp.IMPRESSUM)) and abruf.ok:
+                    erg.seiten[Seitentyp.IMPRESSUM] = abruf
+                    erg.impressum_hinweis = "Impressum-Link aus dem gerenderten Menü"
+                    return
+        if any(_PLZ_ORT.search(a.text or "") for a in (start, kontakt) if a):
+            erg.impressum_hinweis = f"{OHNE_IMPRESSUM} (probiert: {', '.join(probiert) or '–'})"
 
     # -------------------------------------------------------------- Lauf
 
@@ -836,7 +891,7 @@ class Crawler:
             self.speichern(k, erg, bundesland)
             stat.zaehlen(erg)
             if fortschritt:
-                zusatz = f", {erg.hinweis}" if erg.hinweis else ""
+                zusatz = "".join(f", {h}" for h in (erg.hinweis, erg.impressum_hinweis) if h)
                 fortschritt(f"{erg.domain}: {'ok' if erg.ok else erg.grund} ({len(erg.seiten)} Seiten{zusatz})")
 
         await asyncio.gather(*(einer(k) for k in kandidaten))
@@ -877,11 +932,16 @@ class CrawlStatistik:
     trotz_robots: int = 0  # gelesen, obwohl robots.txt nicht abrufbar war
     dns: int = 0  # tote Domains
     ausserhalb: int = 0  # nicht gecrawlt: Suchtreffer nur mit PLZ außerhalb des Bundeslandes
+    impressum_rueckfall: dict[str, int] = field(default_factory=dict)  # Impressum über Kontakt/Datenschutz/Menü, ohne
 
     def zaehlen(self, erg: CrawlErgebnis) -> None:
         if erg.ok:
             self.fertig += 1
             self.trotz_robots += erg.hinweis is not None
+            if erg.impressum_hinweis:
+                kurz = re.sub(r"\s*\(.*\)$", "", erg.impressum_hinweis)
+                kurz = "Impressum auf Kontakt-/Datenschutzseite" if kurz.startswith("Impressum auf") else kurz
+                self.impressum_rueckfall[kurz] = self.impressum_rueckfall.get(kurz, 0) + 1
             return
         self.dns += erg.grund is not None and DNS_GRUND in erg.grund
         self.nicht_gefunden += 1

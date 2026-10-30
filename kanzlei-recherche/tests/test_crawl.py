@@ -613,3 +613,70 @@ def test_robots_check_zeigt_frames_und_rendern():
     text = "\n".join(asyncio.run(robots_check(CFG, "frame.example", client=web.client(), rendern=True, renderer=renderer)))
     assert "Frames/Weiterleitungen im HTML: https://frame.example/haupt.html" in text
     assert "fast leer, Crawler folgt" in text and "Playwright: " in text and "Steuerkanzlei Frame" in text
+
+
+# ---------------------------------------------------------------------- Impressum-Suche (Prüfkatalog 3, Schritt 5)
+
+START_MIT_KONTAKT = ("<body><h1>Kanzlei Lund</h1><p>" + "Steuerberatung in Kiel. " * 30 + "</p>"
+                     "<a href='/kontakt'>Kontakt</a><a href='/datenschutz'>Datenschutz</a><a href='/team'>Team</a></body>")
+
+
+def test_kontaktseite_mit_anbieterkennzeichnung_ist_impressum(storage):
+    seiten = {"https://a.example/": (200, START_MIT_KONTAKT),
+              "https://a.example/kontakt": (200, "<body><h2>Kontakt</h2><p>Angaben gemäß § 5 DDG</p>"
+                                                 "<p>Wall 5</p><p>24103 Kiel</p></body>")}
+    web, clock, ids = _setup(storage, seiten, ("a.example", {}))
+    assert _crawl(storage, web, clock).fertig == 1
+    assert storage.kandidat_seiten(ids[0])[Seitentyp.IMPRESSUM].url == "https://a.example/kontakt"
+
+
+def test_datenschutzseite_mit_impressum_ueberschrift(storage):
+    seiten = {"https://a.example/": (200, START_MIT_KONTAKT),
+              "https://a.example/kontakt": (200, "<body><h2>Kontakt</h2><p>Schreiben Sie uns – siehe Impressum</p></body>"),
+              "https://a.example/datenschutz": (200, "<body><h2>Impressum</h2><p>Kanzlei Lund, Wall 5, 24103 Kiel</p>"
+                                                     "<h2>Datenschutz</h2></body>")}
+    web, clock, ids = _setup(storage, seiten, ("a.example", {}))
+    assert _crawl(storage, web, clock).fertig == 1
+    assert storage.kandidat_seiten(ids[0])[Seitentyp.IMPRESSUM].url == "https://a.example/datenschutz"
+
+
+def test_playwright_findet_impressum_im_javascript_menue(storage):
+    seiten = {"https://a.example/": (200, START_OHNE_IMPRESSUM),
+              "https://a.example/rechtliches/anbieter": (200, "<body><h1>Impressum</h1><p>Wall 5, 24103 Kiel</p></body>")}
+    gerendert = START_OHNE_IMPRESSUM.replace("</body>", "<nav><a href='/rechtliches/anbieter'>Impressum</a></nav></body>")
+
+    async def renderer(url):
+        return gerendert
+
+    web, clock, ids = _setup(storage, seiten, ("a.example", {}))
+    cfg = CFG.model_copy(update={"playwright": True})
+    assert _crawl(storage, web, clock, cfg=cfg, renderer=renderer).fertig == 1
+    assert storage.kandidat_seiten(ids[0])[Seitentyp.IMPRESSUM].url == "https://a.example/rechtliches/anbieter"
+
+
+def test_ohne_impressum_mit_adresse_auf_kontaktseite_gelesen(storage):
+    seiten = {"https://a.example/": (200, START_MIT_KONTAKT),
+              "https://a.example/kontakt": (200, "<body><h2>Kontakt</h2><p>Wall 5</p><p>24103 Kiel</p>"
+                                                 "<p>Telefon 0431 123450</p></body>")}
+    web, clock, ids = _setup(storage, seiten, ("a.example", {}))
+    stat = _crawl(storage, web, clock)
+    assert stat.fertig == 1 and storage.nicht_gefunden("SH") == []
+    assert stat.impressum_rueckfall == {"Kein Impressum: Daten aus Start-/Kontaktseite": 1}
+    assert Seitentyp.IMPRESSUM not in storage.kandidat_seiten(ids[0])
+
+
+def test_gruendlich_probiert_alle_pfade_und_liest_trotzdem_kontakt(storage):
+    seiten = {"https://a.example/": (200, START_MIT_KONTAKT),
+              "https://a.example/kontakt": (200, "<body><h2>Kontakt</h2><p>Schreiben Sie uns</p></body>")}
+    web, clock, ids = _setup(storage, seiten, ("a.example", {}))
+    import asyncio
+
+    async def lauf():
+        c = Crawler(CFG, storage, set(), client=web.client(), clock=clock, sleep=clock.sleep, gruendlich=True)
+        return await c.run(storage.kandidaten("SH", crawl_status=SchrittStatus.OFFEN, nur_mit_website=True), "SH")
+
+    asyncio.run(lauf())
+    grund = storage.nicht_gefunden("SH")[0].grund
+    for pfad in ("/rechtliche-hinweise", "/anbieterkennzeichnung", "/legal", "/datenschutz"):
+        assert pfad in grund
+    assert Seitentyp.KONTAKT in storage.kandidat_seiten(ids[0])

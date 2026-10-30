@@ -222,6 +222,15 @@ der nächsten Quelle füllen.**
   Impressum gilt eine Seite mit „Impressum", „Imprint", „Anbieterkennzeichnung" oder „Angaben
   gemäß § 5" (Soft-404 wird erkannt). Linktexte auch „Rechtliches", „Rechtliche Hinweise",
   „Imprint". Der Grund im Blatt nennt die probierten Pfade.
+  **Impressum-Suche nach Prüfkatalog 3 (Schritt 5):** `crawl --wiederholen` probiert die vollständige Pfadliste
+  (`.php`, `/imprint`, `/rechtliches`, `/rechtliche-hinweise`, `/anbieterkennzeichnung`, `/legal`, `/legal-notice`,
+  `/kontakt/impressum` …) mit eigenem Budget, Kontakt/Team werden trotzdem gelesen. Ohne Treffer, in dieser
+  Reihenfolge: Kontakt- oder Datenschutzseite mit Anbieterkennzeichnung („Angaben gemäß § 5", § 5 DDG/TMG,
+  § 18 MStV, Überschrift „Impressum" – „siehe Impressum" genügt nicht) gilt als Impressum; Playwright rendert die
+  Startseite und sucht den Impressum-Link im JavaScript-Menü (nur `crawl.playwright`); nennen Start- oder
+  Kontaktseite eine Adresse mit PLZ, wird ohne Impressum gelesen („Kein Impressum: Daten aus Start-/Kontaktseite" in
+  „Abweichung", Konfidenz nach 1B ohne Kammer-Signal). Erst danach „Kein Impressum gefunden". Ohne Impressum bis zu zwei
+  Abrufe mehr (Datenschutz, Menü-Link). Für die 454 Fälle: `crawl --wiederholen`, dann `extract`.
 - Max. 1 Request/Sekunde je Domain – **auch Weiterleitungen und robots.txt** (Weiter-
   leitungen werden selbst verfolgt) –, viele Domains parallel (`crawl.parallel_domains`),
   Timeout 15 s, 2 Retries mit Backoff, User-Agent aus `settings.yaml`.

@@ -39,7 +39,7 @@ EXTRACT_WIEDERHOLEN = "extract --wiederholen"
 NEIN = "nein"
 
 # zusätzliche Impressum-Pfade von crawl --wiederholen (crawl.py); fehlen sie in „probiert", lohnt ein zweiter Lauf
-_GRUENDLICHE_PFADE = ("/imprint", "/impressum.php", "/kontakt/impressum")
+_GRUENDLICHE_PFADE = ("/imprint", "/impressum.php", "/kontakt/impressum", "/anbieterkennzeichnung", "Playwright-Menü")
 
 
 def ursache(k: Kandidat, playwright_an: bool) -> tuple[str, str]:
