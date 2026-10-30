@@ -86,7 +86,12 @@ der nächsten Quelle füllen.**
   Bestand). `recherche orte` legt die Zusatz-Suchorte nur mit Einwohnerzahlen (GV-ISys) an.
 - **Danach `recherche coverage`** (nach der Extraktion zählen nur Kanzleien mit Status Kanzlei und
   Bundesland laut PLZ = Lauf-Bundesland, Kreis aus der extrahierten PLZ; „keine Kanzlei", „außerhalb",
-  „ohne geprüfte PLZ" und „offen" (nicht gelesen) stehen getrennt; vorher zählen die Kandidaten):
+  „ohne geprüfte PLZ", „außerhalb laut Suchtreffer (nicht gecrawlt)" und „offen" (nicht gelesen) stehen getrennt;
+  vorher zählen die Kandidaten). `recherche offen [--out datei.csv]` schlüsselt die offenen nach Ursache auf
+  (nie gecrawlt, Timeout/Verbindung, HTTP 403/404/5xx, DNS, robots-Verbot, Portal, Seite ohne Text, kein
+  Impressum, nicht extrahiert …), mit dem Weg (`crawl --wiederholen`, Playwright, `extract`, nein) und dem
+  Länder-Hinweis der Suchtreffer (PLZ außerhalb / im Land / keine; große Stadt eines anderen Landes; Suchort
+  unter 5.000 EW):
   gefundene Kanzleien je Kreis gegen
   `config/referenz_kammern.yaml` (Einheit `kanzleien` oder `mitglieder` × `faktor`, Land
   gesamt und optional je Kreis; Rest nach Einwohnern verteilt), Anteil je Quelle und
@@ -508,7 +513,7 @@ der nächsten Quelle füllen.**
 ### CLI (`cli.py`)
 
 `recherche search | fill | coverage | crawl | extract | export | run | search-compare | orte |
-blocklist-vorschlag | kanzlei-pruefung | robots-check | suche-auswertung | fixture-add | fixture-eval | fixture-prompt |
+blocklist-vorschlag | kanzlei-pruefung | robots-check | suche-auswertung | offen | fixture-add | fixture-eval | fixture-prompt |
 fixture-klassen-umstellen`,
 jeweils mit `--bundesland` und `--db`. **Jeder Schritt muss nach Abbruch
 wiederaufnehmbar sein**: Fortschritt steht in SQLite (Status je Domain und

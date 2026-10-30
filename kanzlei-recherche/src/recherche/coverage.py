@@ -27,7 +27,7 @@ import yaml
 from openpyxl import Workbook
 from openpyxl.styles import Font
 
-from .models import Status
+from .models import SchrittStatus, Status
 from .search.pipeline import Ort
 from .storage import Storage
 
@@ -132,7 +132,8 @@ class CoverageErgebnis:
     nur_eine_quelle: int
     referenz: Referenz | None = None
     modus: str = "kandidaten"  # kanzleien (nach der Extraktion) | kandidaten (vorher)
-    offen: int = 0  # Kandidaten ohne Kanzlei-Zeile (noch nicht oder nicht lesbar)
+    offen: int = 0  # Kandidaten ohne Kanzlei-Zeile (noch nicht oder nicht lesbar), ohne ausserhalb_vorab
+    ausserhalb_vorab: int = 0  # nicht gecrawlt: Suchtreffer nennen nur PLZ außerhalb (Vorfilter vor dem Crawl)
     keine_kanzlei: int = 0
     ausserhalb: int = 0
     ohne_bundesland: int = 0  # PLZ nicht geprüft/unbekannt – nicht gezählt
@@ -204,9 +205,12 @@ def berechne(
         gezaehlt = [k for k in kanzleien if k.kandidat_id is not None and k.status not in
                     (Status.KEINE_KANZLEI, Status.AUSSERHALB) and k.bundesland == ziel_land]
         mit_zeile = {k.kandidat_id for k in kanzleien}
+        ohne_zeile = [k for k in storage.kandidaten(bundesland) if k.id not in mit_zeile]
+        vorab = sum(1 for k in ohne_zeile if k.crawl_status == SchrittStatus.FEHLER and "laut Suchtreffer" in (k.fehler or ""))
         zusatz = dict(
             modus="kanzleien",
-            offen=sum(1 for k in storage.kandidaten(bundesland) if k.id not in mit_zeile),
+            offen=len(ohne_zeile) - vorab,
+            ausserhalb_vorab=vorab,
             keine_kanzlei=sum(1 for k in kanzleien if k.status == Status.KEINE_KANZLEI),
             ausserhalb=sum(1 for k in kanzleien if k.status == Status.AUSSERHALB),
             ohne_bundesland=sum(1 for k in kanzleien if k.status not in (Status.KEINE_KANZLEI, Status.AUSSERHALB)
@@ -302,7 +306,8 @@ def als_excel(erg: CoverageErgebnis, pfad: str | Path) -> Path:
         ("Zählung", ["Kennzahl", "Anzahl"],
          [["gezählt als", erg.modus], ["gefunden (gezählt)", erg.gefunden], ["erwartet", _r(erg.erwartet)],
           ["keine Kanzlei", erg.keine_kanzlei], ["außerhalb Bundesland", erg.ausserhalb],
-          ["ohne geprüfte PLZ", erg.ohne_bundesland], ["offen (nicht gelesen)", erg.offen]]),
+          ["ohne geprüfte PLZ", erg.ohne_bundesland], ["außerhalb laut Suchtreffer (nicht gecrawlt)", erg.ausserhalb_vorab],
+          ["offen (nicht gelesen)", erg.offen]]),
     ]  # fmt: skip
     wb.remove(wb.active)
     for titel, kopf, zeilen in blaetter:

@@ -453,7 +453,8 @@ def zeige_coverage(erg: CoverageErgebnis, top: int, quote_ziel: float) -> None:
     if erg.modus == "kanzleien":
         console.print(f"  gezählt: nur Kanzleien im Land (Kreis aus der extrahierten PLZ); nicht gezählt: "
                       f"{erg.keine_kanzlei} keine Kanzlei, {erg.ausserhalb} außerhalb, {erg.ohne_bundesland} ohne "
-                      f"geprüfte PLZ; offen (nicht gelesen): {erg.offen}")
+                      f"geprüfte PLZ, {erg.ausserhalb_vorab} außerhalb laut Suchtreffer (nicht gecrawlt); "
+                      f"offen (nicht gelesen): {erg.offen} – Ursachen: recherche offen")
     else:
         console.print("  gezählt: Kandidaten (noch keine Extraktion) – nach extract zählen nur echte Kanzleien im Land")
 
@@ -622,6 +623,45 @@ def suche_auswertung(
                   "(Crawl-Fehler oder noch nicht extrahiert).")
     if out:
         console.print(f"CSV geschrieben: {als_csv(liste, out)}")
+
+
+@app.command("offen")
+def offen_cmd(
+    bundesland: BundeslandOpt = None,
+    db: DbOpt = None,
+    config: ConfigOpt = None,
+    out: Annotated[Path | None, typer.Option("--out", "-o", help="alle Kandidaten mit Ursache als CSV (Semikolon)")] = None,
+    beispiele: Annotated[int, typer.Option(help="Beispiel-Domains je Ursache")] = 3,
+) -> None:
+    """Kandidaten ohne Kanzlei-Zeile („offen" in coverage) nach Ursache, womit sie noch zu holen sind und was die
+    Suchtreffer über das Bundesland sagen (PLZ wie im Vorfilter vor dem Crawl, große Städte anderer Länder)."""
+    from .offen import als_csv, auswerten
+
+    ctx = _kontext(config, bundesland, db)
+    s = ctx.settings
+    with ctx.storage() as st:
+        pruefer = PlzPruefer(s.openplz.url, cache=st)
+        fremdorte = Fremdorte.laden(s.pfad(s.pfade.grossstaedte), ctx.bundesland, unter_einwohner=10**9)
+        erg = auswerten(st, ctx.bundesland, ctx.orte(None), lambda plz: pruefer.pruefe(plz, None).bundesland,
+                        ctx.bl_cfg.name, fremdorte, playwright_an=s.crawl.playwright)
+    if not erg.eintraege:
+        console.print("Keine offenen Kandidaten – alle haben eine Kanzlei-Zeile.")
+        return
+    t = Table(title=f"{len(erg.eintraege)} Kandidaten ohne Kanzlei-Zeile ({ctx.bundesland}) nach Ursache")
+    for col in ("Ursache", "Anzahl", "holbar mit", "PLZ außerhalb", "PLZ im Land", "keine PLZ", "fremde Großstadt",
+                "Suchort < 5.000 EW", "Beispiele"):
+        t.add_column(col, justify="right" if col not in ("Ursache", "holbar mit", "Beispiele") else "left")
+    for u, holbar, c in erg.je_ursache():
+        bsp = [e.domain or e.name or "?" for e in erg.eintraege if e.ursache == u][:beispiele]
+        t.add_row(u, str(c["gesamt"]), holbar, str(c["PLZ außerhalb"]), str(c["PLZ im Land"]), str(c["keine PLZ"]),
+                  str(c["fremdort"]), str(c["unter 5.000 EW"]), ", ".join(bsp))
+    console.print(t)
+    console.print("Zusammen nach Weg: " + ", ".join(f"{h}: {n}" for h, n in erg.je_holbar().most_common()))
+    console.print(f"Vermutlich außerhalb {ctx.bl_cfg.name} (alle PLZ der Suchtreffer außerhalb oder große Stadt eines "
+                  f"anderen Landes im Treffer): {erg.vermutlich_ausserhalb()} – „PLZ außerhalb\" bei schon gecrawlten "
+                  "Fehlern heißt: der Vorfilter hätte sie aussortiert (Kandidat vor Einführung des Vorfilters).")
+    if out:
+        console.print(f"CSV geschrieben: {als_csv(erg, out)}")
 
 
 @app.command("kanzlei-pruefung")
