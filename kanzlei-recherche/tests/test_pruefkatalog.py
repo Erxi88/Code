@@ -113,7 +113,10 @@ def test_ansprechpartner_praefixe_und_suffixe(name, titel, funktion, erwartet):
     ("Fachanwalt für Familienrecht Elmshorn", None, False),
     ("Ina Lund", "Amtsdirektorin", False),
     ("Archiv", None, False),
-    ("Dezember Montag", None, False),
+    ("Montag Dienstag", None, False),  # nur Wochentage
+    ("Hanh Mai Luong", "Steuerberaterin", True),  # Monatsname ohne Zahl ist ein Name (Rücksprache 30.10.2026)
+    ("Jan Lund 3. Mai", None, False),  # Monatsname mit Zahl ist ein Datum
+    ("Jan Lund Mai 2024", None, False),
     ("Schröder", "Steuerberaterin", False),  # nur Nachname
     ("Dr. Schröder", None, False),  # erstes Wort ein Titel
     ("W. Drews", "Steuerberaterin", True),  # Initiale ist ein Vorname
@@ -375,3 +378,27 @@ def test_nachbarkreise_aus_wikidata_und_gv(tmp_path):
     assert "SH: ohne Nachbarpaar" in ausgabe and "Kreisfreie Stadt Lübeck" in ausgabe
     assert "HH: ohne Nachbarpaar" in ausgabe and "Hamburg" in ausgabe
     assert not kopie.exists() and (tmp_path / "nachbarkreise.yaml.bak").exists()
+
+
+# ---------------------------------------------------------------------- Rückmeldung sh_gesamt_v2 (30.10.2026)
+
+
+@pytest.mark.parametrize(("name", "impressum", "personen", "grund"), [
+    ("Steuerberaterverband Nordland e.V.", ["Impressum", "Steuerberaterverband Nordland e.V.", "Steuerberaterkammer Nordland"],
+     [], "Institution"),  # nicht „Lohnsteuerhilfeverein" – Institution geht vor
+    ("Steuerberater Gemeinde Musterbek", ["Impressum", "Gemeinde Musterbek", "Der Bürgermeister", "Dorfstraße 1"], [], "Behörde"),
+    ("Steuerberater Ole Lund", ["Impressum", "Handels- und Gewerbeverein Musterstadt e.V.", "Markt 1"], [], "Verein/Partei"),
+    ("Lohnsteuerhilfe Nord e. V.", ["Impressum", "Lohnsteuerhilfe Nord e. V."], [], "Lohnsteuerhilfeverein"),
+    # Rang 2/3 verhindert den schwachen Verein-Ausschluss über „VR …" im Impressum (franz-sahm.de, taxlegis.de)
+    ("Sahm Steuerberatungsgesellschaft mbH", ["Impressum", "Sahm Steuerberatungsgesellschaft mbH", "Geschäftsführer: Franz Sahm",
+     "Mitglied im Steuerberaterverband e.V., VR 1234"], [{"name": "Franz Sahm", "funktion": "Steuerberater"}], None),
+    ("Steuerkanzlei Passau", ["Impressum", "Steuerkanzlei Passau", "Zuständige Kammer: Steuerberaterkammer Niedersachsen",
+     "Partner im Netzwerk e.V. (Vereinsregister Hannover)"], [{"name": "Jörg Passau", "funktion": "Steuerberater"}], None),
+])  # fmt: skip
+def test_ausschluss_reihenfolge_und_rang(name, impressum, personen, grund):
+    from recherche.extract.kanzlei import ausschluss_grund
+    from recherche.models import Ansprechpartner
+
+    k = _k(kanzleiname=name, ansprechpartner=[Ansprechpartner(**p) for p in personen])
+    ergebnis = ausschluss_grund(k, "\n".join(impressum))
+    assert (ergebnis.split(" (")[0] if ergebnis else None) == grund

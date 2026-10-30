@@ -51,9 +51,18 @@ def setze_ortsnamen(namen: Iterable[str]) -> None:
     _ortsnamen = {n.casefold() for n in namen if n} | _ortsnamen
 
 
-def _sonderwort(w: str) -> bool:
+def _sonderwort(w: str, nachbarn: tuple[str, ...] = ()) -> bool:
+    """Orts-, Länder-, Wochentagsname – Monatsname nur mit einer Zahl daneben („Mai 2024", „3. Mai"); „Hanh Mai
+    Luong" ist ein Name (Rücksprache 30.10.2026)."""
     w = w.casefold().strip(".,;:()")
-    return w in _ortsnamen or w in LAENDER or w in MONATE or w in WOCHENTAGE
+    if w in MONATE:
+        return any(re.match(r"^\d", n) for n in nachbarn)
+    return w in _ortsnamen or w in LAENDER or w in WOCHENTAGE
+
+
+def _sonderwoerter(woerter: list[str]) -> list[bool]:
+    return [_sonderwort(w, tuple(woerter[j] for j in (i - 1, i + 1) if 0 <= j < len(woerter)))
+            for i, w in enumerate(woerter)]
 
 
 def _woerter(name: str) -> list[str]:
@@ -65,14 +74,15 @@ def verwerf_grund(p: Ansprechpartner) -> str | None:
     text = " ".join(x for x in (p.name, p.titel, p.funktion) if x)
     if m := _VERWERFEN.search(text):
         return m.group(0)
-    if re.search(r"fachanwalt", text, re.I) and any(_sonderwort(w) for w in _woerter(text)):
+    if re.search(r"fachanwalt", text, re.I) and any(_sonderwoerter(_woerter(text))):
         return "Fachanwalt mit Ortsname"
     woerter = [w for w in _woerter(p.name) if w.casefold() not in _PARTIKEL]
-    if woerter and all(_sonderwort(w) for w in woerter):
+    sonder = _sonderwoerter(woerter)
+    if woerter and all(sonder):
         return "Orts-/Länder-/Monatsname statt Name"
-    if len(woerter) >= 3 and (sonder := [w for w in woerter[1:] if _sonderwort(w)]):
+    if len(woerter) >= 3 and (zusatz := [w for w, ja in zip(woerter[1:], sonder[1:], strict=True) if ja]):
         # Zusatzwort neben Vor- und Nachname („Jan Lund Kiel"); „Oliver Hagen" (zwei Wörter) bleibt
-        return f"Zusatzwort „{sonder[0]}“"
+        return f"Zusatzwort „{zusatz[0]}“"
     if len(woerter) < 2 or _TITEL_WORT.match(woerter[0]):
         return "ohne Vorname"
     return None

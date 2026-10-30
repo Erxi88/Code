@@ -14,17 +14,19 @@ Die Zielmenge sind Steuerberaterkanzleien im Sinne der Kammerstatistik: Standort
 
 | Kategorie | Erkennungsmerkmal | Zielblatt / Grund |
 |---|---|---|
-| Lohnsteuerhilfeverein | „Lohnsteuerhilfe“, „Lohnsteuerhilfeverein“, „Lohnsteuerberatungsverbund“, „e. V.“/„e.V.“ im Namen oder Impressum | Keine Kanzlei – „Lohnsteuerhilfeverein“ |
+| Lohnsteuerhilfeverein | „Lohnsteuerhilfe“, „Lohnsteuerhilfeverein“, „Lohnsteuerberatungsverbund“ im Namen oder in der Anbieterzeile („e. V.“ allein → Verein, s. u.) | Keine Kanzlei – „Lohnsteuerhilfeverein“ |
 | Reine Rechtsanwaltskanzlei | „Rechtsanwalt/Rechtsanwälte/Anwaltskanzlei“ im Namen, kein „Steuerberater“ in Name, Impressum oder Berufsbezeichnung | Keine Kanzlei – „Rechtsanwaltskanzlei“ |
 | Buchhaltungsbüro ohne Berufsträger | „Buchhaltung“, „Bilanzbuchhalter“, „Buchführungsservice“ ohne StB/StBv/WP im Impressum | Keine Kanzlei – „Buchhaltungsbüro“ |
 | Kammer, Verband, Versorgungswerk | „Steuerberaterkammer“, „Steuerberaterverband“, „Versorgungswerk“, „Bundessteuerberaterkammer“ im Namen oder in der Anbieterzeile des Impressums. Eine Kammer- oder Verbandsadresse allein schließt nicht aus – es gilt Abschnitt 2 (nur Abweichungshinweis) | Keine Kanzlei – „Institution“ |
 | Behörde, Gemeinde, Amt | Domain gemeinde-*, amt-*, stadt-*, kreis-*; „Amtsdirektor(in)“, „Amtsvorsteher“, „Bürgermeister“ als Person – die Rolle nur, wenn das Impressum weder eine Steuerberaterkammer noch eine StB-Berufsbezeichnung nennt (ein Steuerberater, der zugleich Amtsvorsteher ist, bleibt Kanzlei; die Person wird als Ansprechpartner verworfen) | Keine Kanzlei – „Behörde“ |
-| Partei, Verein, Kirche, Schule | spd-*, cdu-*, gruene-*, *-verein, kirche-*, schule-*; Vereinsregister im Impressum | Keine Kanzlei – „Verein/Partei“ |
+| Partei, Verein, Kirche, Schule | spd-*, cdu-*, gruene-*, *-verein, kirche-*, schule-*; „e. V.“, „…verein“, „Partei“ im Namen oder in der Anbieterzeile; Vereinsregister im Impressum nur ohne Positivsignal 1B Rang 1–3 (Mitgliedsverbände im Impressum) | Keine Kanzlei – „Verein/Partei“ |
 | Portal, Verzeichnis, Jobbörse, Software | Blocklist (config/domain_blocklist.txt) plus Muster: *linklisten*, *firmenkataloge*, *jobs.*, *karriere.* als Hauptdomain | Keine Kanzlei – „Portal“ |
 | Andere Branche | Osteopathie, IT-Systemhaus, Unternehmensberatung ohne StB, Bank, Versicherung – kein Berufsträger, keine Kammer | Keine Kanzlei – „Branchenfremd“ |
 | Ausland | TLD .at .ch .li .tirol .wien .swiss; PLZ 4-stellig; Ort in AT/CH-Ortsliste; „Wirtschaftstreuhänder“, „Mag.“+„Steuerberater“ ohne deutsche PLZ | Außerhalb – „Ausland“ (ohne LLM) |
 
 Gemischte Kanzleien (Steuerberater + Rechtsanwälte, StB + WP, Sozietät mit Notar) sind Kanzleien, sobald ein Steuerberater benannt ist.
+
+Reihenfolge der Kategorien: Portal → Institution → Lohnsteuerhilfeverein → Behörde („Gemeinde X“, „Amt X“, Gemeindeverwaltung im Namen/Anbieter, Domain) → Verein/Partei → Rechtsanwaltskanzlei → Buchhaltungsbüro (Rücksprache 30.10.2026: „Steuerberaterverband … e.V.“ ist Institution, Gemeinde Behörde, Gewerbeverein Verein).
 
 Namensmerkmale aus 1A (Lohnsteuerhilfe, „e. V.“, Kammer/Verband, Rechtsanwalt, Buchhaltung) gelten im Kanzleinamen und in der Anbieterzeile des Impressums, nicht im Aufsichts- oder Mitgliedschaftsteil („Mitglied im Steuerberaterverband … e. V.“) – Rücksprache 30.10.2026.
 

@@ -385,7 +385,8 @@ der nächsten Quelle füllen.**
     „Steuerberater"/„StB" → Funktion, „Dipl.-Kfm." → Titel; verworfen bei Datenschutz, Grundverordnung,
     Amtsdirektor, Amtsvorsteher, Bürgermeister, Präsident, Archiv, Regionen, Homepages, Anträge, Browser, Verein,
     „Fachanwalt … <Ort>"; Orts-/Länder-/Monatsnamen und Wochentage nur als Zusatzwort neben Vor- und Nachname
-    („Oliver Hagen" bleibt, „Jan Lund Kiel" nicht); nur Nachname → verworfen („Ansprechpartner ohne Vorname");
+    („Oliver Hagen" bleibt, „Jan Lund Kiel" nicht; Monatsnamen nur mit Zahl: „Mai 2024", „3. Mai" – „Hanh Mai
+    Luong" bleibt); nur Nachname → verworfen („Ansprechpartner ohne Vorname");
     Rechtsanwälte/Notare hinter die Steuerberater, wenn einer benannt ist. Hinweis „Ansprechpartner verworfen: …".
   - Ansprechpartner = nur **Berufsträger und Leitung**; Mehrfachnennungen werden
     vereinigt (Funktionen und Titel). Reihenfolge: Vertretungsberechtigte in der
@@ -471,11 +472,13 @@ der nächsten Quelle füllen.**
   Prüfung ohne LLM auf bereits extrahierte Kanzleien an (auch zurück zu `neu`). Big-Four-
   Gesellschaften („… Wirtschaftsprüfungsgesellschaft", Berufsträger) gelten als Kanzlei – die
   gehören auf die Blocklist.
-  **Ausschluss vorab (Prüfkatalog 1A)**, Grund = Kategorie: Portal (Blocklist, *linklisten*, *firmenkataloge*,
-  jobs./karriere.-Subdomain), Lohnsteuerhilfeverein („Lohnsteuerhilfe…", „Lohnsteuerberatungsverbund", „e. V."),
-  Institution (Steuerberaterkammer/-verband, Versorgungswerk), Behörde (Domain gemeinde-/amt-/stadt-/kreis-; Rolle
+  **Ausschluss vorab (Prüfkatalog 1A)**, Grund = Kategorie, in dieser Reihenfolge: Portal (Blocklist, *linklisten*,
+  *firmenkataloge*, jobs./karriere.-Subdomain), Institution (Steuerberaterkammer/-verband, Versorgungswerk),
+  Lohnsteuerhilfeverein („Lohnsteuerhilfe…", „Lohnsteuerberatungsverbund"; „e. V." allein → Verein), Behörde
+  („Gemeinde X"/„Amt X"/Gemeindeverwaltung in Name oder Anbieterzeile, Domain gemeinde-/amt-/stadt-/kreis-; Rolle
   Amtsdirektor/Amtsvorsteher/Bürgermeister nur ohne Kammer und ohne StB-Berufsbezeichnung – ein Steuerberater, der
-  auch Amtsvorsteher ist, bleibt), Verein/Partei (spd-/cdu-/gruene-/kirche-/schule-, *-verein*, Vereinsregister),
+  auch Amtsvorsteher ist, bleibt), Verein/Partei (spd-/cdu-/gruene-/kirche-/schule-, *-verein*, „e. V."/„…verein"/
+  „Partei" in Name oder Anbieterzeile; Vereinsregister im Impressum nur ohne 1B Rang 1–3 – Mitgliedsverbände),
   Rechtsanwaltskanzlei (Anwalt/Notar ohne Steuerberater in Name, Impressum oder Berufsbezeichnung; gemischte
   bleiben), Buchhaltungsbüro (ohne StB/StBv/WP im Impressum), Branchenfremd (kein Positivsignal; Name aus dem
   Ansprechpartner abgeleitet ohne Kammer und Berufsbezeichnung). Namensmerkmale gelten im Kanzleinamen und in der

@@ -54,8 +54,11 @@ _SCHEIN_NAME = re.compile(
 _KAMMER = re.compile(r"steuerberaterkammer|kammer\s+der\s+steuerberater", re.IGNORECASE)
 # ---- Prüfkatalog 1A: Ausschluss vor den Positivsignalen, Merkmale im Namen oder in der Anbieterzeile des
 # Impressums (Rücksprache 30.10.2026: nicht im Aufsichts-/Mitgliedschaftsteil – „Mitglied im … e. V.")
-_LOHNSTEUERHILFE = re.compile(r"lohnsteuerhilfe|lohnsteuerberatungsverbund|\be\.\s?v\.(?!\w)|eingetragener\s+verein",
-                              re.IGNORECASE)
+_LOHNSTEUERHILFE = re.compile(r"lohnsteuerhilfe|lohnsteuerberatungsverbund", re.IGNORECASE)
+# „e. V." allein ist kein Lohnsteuerhilfeverein (Steuerberaterverband, Gewerbeverein): Kategorie nach den übrigen Wörtern
+_VEREIN_NAME = re.compile(r"\be\.\s?v\.(?!\w)|eingetragener\s+verein|\w*verein\b|\bpartei\b", re.IGNORECASE)
+_BEHOERDE_NAME = re.compile(r"^\s*(?:gemeinde|samtgemeinde|amt|stadt|landkreis|kreis)\s+[A-ZÄÖÜ]|\bgemeinde\s+[A-ZÄÖÜ]|"
+                            r"gemeindeverwaltung|stadtverwaltung|amtsverwaltung|kreisverwaltung|\bbürgerbüro\b", re.MULTILINE)
 _ANWALT = re.compile(r"rechtsanw[aä]lt|anwaltskanzlei|anwalt|anwält|notar", re.IGNORECASE)
 _BUCHHALTUNG = re.compile(r"buchhaltung|bilanzbuchhalter|buchführungsservice|buchführungsbüro|lohnbuchhaltung", re.IGNORECASE)
 _INSTITUTION = re.compile(r"steuerberaterkammer|steuerberaterverband|versorgungswerk|bundessteuerberaterkammer|"
@@ -126,16 +129,23 @@ def ausschluss_grund(k: Kanzlei, impressum_text: str | None, blocklist: set[str]
     erste = domain.split(".")[0] if domain else ""
     if _PORTAL_DOMAIN.search(domain) or (erste in ("jobs", "karriere") and domain.count(".") >= 2):
         return f"Portal ({domain})"
-    if _LOHNSTEUERHILFE.search(kopf):
-        return "Lohnsteuerhilfeverein"
+    # Reihenfolge: Institution vor Lohnsteuerhilfe vor Behörde vor Verein („Steuerberaterverband … e.V." ist
+    # Institution, „Gemeinde Klein Bennebek" Behörde, „Gewerbeverein … e.V." Verein – Rücksprache 30.10.2026)
     if _INSTITUTION.search(kopf):
         return f"Institution ({_INSTITUTION.search(kopf).group(0)})"
-    if _BEHOERDE_DOMAIN.search(erste) or (_BEHOERDE_ROLLE.search(f"{anbieter}\n{personen}\n{k.abweichung or ''}")
-                                          and not kammer and not _STEUER_BERUF.search(impressum_text or "")):
-        # eine Rolle allein schließt einen Steuerberater nicht aus („Steuerberater und Amtsvorsteher")
+    if _LOHNSTEUERHILFE.search(kopf):
+        return "Lohnsteuerhilfeverein"
+    if _BEHOERDE_DOMAIN.search(erste) or _BEHOERDE_NAME.search(kopf):
         return "Behörde"
-    if _VEREIN_DOMAIN.search(domain) or _VEREINSREGISTER.search(impressum_text or ""):
+    if _VEREIN_DOMAIN.search(domain) or _VEREIN_NAME.search(kopf):
         return "Verein/Partei"
+    # schwache Merkmale (Text außerhalb von Name und Anbieterzeile): ein Positivsignal 1B Rang 1–3 geht vor
+    stark = signal_1b(k, impressum_text)[0] <= 3
+    if not stark and _BEHOERDE_ROLLE.search(f"{anbieter}\n{personen}\n{k.abweichung or ''}") and not kammer \
+            and not _STEUER_BERUF.search(impressum_text or ""):
+        return "Behörde"  # eine Rolle allein schließt einen Steuerberater nicht aus („Steuerberater und Amtsvorsteher")
+    if not stark and _VEREINSREGISTER.search(impressum_text or ""):
+        return "Verein/Partei"  # „VR 123" kann auch ein Mitgliedsverband im Impressum sein (Sahm, taxlegis)
     if _ANWALT.search(kopf) and not steuer:
         return "Rechtsanwaltskanzlei (kein Steuerberater in Name, Impressum oder Berufsbezeichnung)"
     if _BUCHHALTUNG.search(kopf) and not _STEUER_BERUF.search(impressum_text or ""):

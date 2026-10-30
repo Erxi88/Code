@@ -94,7 +94,7 @@ def name_grund(k: Kanzlei) -> str | None:
         return None
     if m := _NAVIGATION.search(name):
         return f"Navigationswort „{m.group(0)}“"
-    if all(ap._sonderwort(w) for w in name.split()):
+    if all(ap._sonderwoerter(name.split())):
         return f"nur Ortsname „{name}“"
     if _ROLLE.match(name):
         return f"Rolle „{name}“"
