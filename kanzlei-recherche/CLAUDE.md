@@ -26,6 +26,15 @@ einem anderen Land) – nicht im Dropdown, eigene Blätter; von Hand gepflegte S
 - `niedrig`: Kernfelder fehlen
 - mit Kanzlei-Erkennung (`extract.kanzlei_pruefung`): `hoch` nur, wenn als Kanzlei erkannt
 
+## Verbindliches Regelwerk: `docs/pruefkatalog.md`
+
+**`docs/pruefkatalog.md` ist ab 30.10.2026 verbindlich** für Kanzlei-Erkennung (Ausschluss 1A, Positivsignale 1B),
+Feldregeln (Name, Adresse/Bundesland, Telefon, E-Mail, Ansprechpartner, Teamgröße), Domain-/Crawl-Regeln,
+Qualitätsbericht (`recherche qualitaet`, Q1–Q14) und Abnahme vor jedem Volllauf. Die Regeln sind Pflicht, nicht
+Vorschlag; jede Regel bekommt einen Test. Weicht diese Datei oder der Code davon ab, gilt der Katalog. Abweichungen,
+Widersprüche oder technisch nicht umsetzbare Regeln **nur nach Rücksprache** – nie stillschweigend abschwächen.
+Umsetzung in der Reihenfolge aus Abschnitt 8, ein Thema je Commit.
+
 ## Technische Regeln
 
 Lokale Verarbeitung (Crawling, Ollama) ohne laufende Kosten. Die Discovery nutzt
