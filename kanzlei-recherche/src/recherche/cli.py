@@ -454,7 +454,8 @@ def zeige_coverage(erg: CoverageErgebnis, top: int, quote_ziel: float) -> None:
     if erg.modus == "kanzleien":
         console.print(f"  gezählt: nur Kanzleien im Land (Kreis aus der extrahierten PLZ); nicht gezählt: "
                       f"{erg.keine_kanzlei} keine Kanzlei, {erg.ausserhalb} außerhalb, {erg.ohne_bundesland} ohne "
-                      f"geprüfte PLZ, {erg.ausserhalb_vorab} außerhalb laut Suchtreffer (nicht gecrawlt); "
+                      f"geprüfte PLZ, {erg.ausserhalb_vorab} außerhalb laut Suchtreffer (nicht gecrawlt), "
+                      f"{erg.weitere_domains} weitere Domains derselben Kanzlei (wie im Export einmal gezählt); "
                       f"offen (nicht gelesen): {erg.offen} – Ursachen: recherche offen")
     else:
         console.print("  gezählt: Kandidaten (noch keine Extraktion) – nach extract zählen nur echte Kanzleien im Land")
