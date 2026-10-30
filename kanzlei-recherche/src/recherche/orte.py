@@ -239,8 +239,8 @@ def _zeilen_csv(pfad: Path) -> list[list]:
     return [list(r) for r in csv.reader(io.StringIO(text), delimiter=trenner)]
 
 
-def lade_gv(pfad: Path, spalten: GvSpalten, land_schluessel: str, blatt: str | None = None) -> GvDaten:
-    """GV-ISys-Auszug (XLSX oder CSV) einlesen, nur Zeilen des Bundeslandes."""
+def lade_gv(pfad: Path, spalten: GvSpalten, land_schluessel: str | None, blatt: str | None = None) -> GvDaten:
+    """GV-ISys-Auszug (XLSX oder CSV) einlesen, nur Zeilen des Bundeslandes (None: alle Länder)."""
     merkmal = spalten.satzart or spalten.name
     zeilen = _zeilen_xlsx(pfad, blatt, merkmal) if pfad.suffix.lower() in (".xlsx", ".xlsm") else _zeilen_csv(pfad)
     # Kopfzeile: erste Zeile mit dem Merkmal; mehrzeilige Köpfe bis zur ersten Datenzeile zusammenfassen
@@ -284,7 +284,7 @@ def lade_gv(pfad: Path, spalten: GvSpalten, land_schluessel: str, blatt: str | N
             gem = _ziffern(wert(z, "gem"), 3)
             kreis_schl = f"{land}{rb}{kreis}" if land and kreis else None
             ags = f"{kreis_schl}{gem}" if kreis_schl and gem else None
-        if land != land_schluessel:
+        if land_schluessel is not None and land != land_schluessel:
             continue
         satzart = _ziffern(wert(z, "satzart"), 2) if idx["satzart"] is not None else SATZART_GEMEINDE
         name = str(wert(z, "name") or "").strip()

@@ -729,6 +729,56 @@ def qualitaet_cmd(
         console.print(f"CSV geschrieben: {als_csv(erg, out)}")
 
 
+@app.command("nachbarkreise")
+def nachbarkreise_cmd(
+    wikidata: Annotated[Path, typer.Option("--wikidata", help="SPARQL-Ergebnis (XML) der Kreis-Nachbarschaften (P47)")],
+    config: ConfigOpt = None,
+    gv: Annotated[str | None, typer.Option("--gv", help="GV-ISys-Datei (Standard: orte.gv_isys.quelle)")] = None,
+    out: Annotated[Path | None, typer.Option("--out", "-o", help="Ziel (Standard: pfade.nachbarkreise)")] = None,
+    loeschen: Annotated[bool, typer.Option("--xml-loeschen", help="XML nach erfolgreichem Schreiben löschen")] = False,
+) -> None:
+    """config/nachbarkreise.yaml für alle Bundesländer aus Wikidata + GV-ISys erzeugen (Q4 Vorwahl ↔ PLZ):
+    nur aktuelle Kreise, Namen aus GV-ISys, symmetrisch; Abgleich mit der bisherigen Datei, Kreise ohne Nachbarn."""
+    from .nachbarkreise import erzeugen, wikidata_paare
+    from .orte import OrteFehler, gv_quelle_laden, lade_gv
+
+    s = load_settings(config)
+    ziel = out or s.pfad(s.pfade.nachbarkreise)
+    quelle = gv or s.orte.gv_isys.quelle
+    if not quelle:
+        _fehler("Keine GV-ISys-Quelle: orte.gv_isys.quelle in settings.yaml setzen oder --gv angeben")
+    try:
+        pfad = gv_quelle_laden(quelle if gv or quelle.startswith(("http://", "https://")) else str(s.pfad(quelle)),
+                               s.pfad("data/gv_isys"))
+        kreise = lade_gv(pfad, s.orte.gv_isys.spalten, None, s.orte.gv_isys.blatt).kreise
+    except OrteFehler as e:
+        _fehler(str(e))
+    bisher = yaml.safe_load(ziel.read_text(encoding="utf-8-sig")) if ziel.exists() else {}
+    paare = wikidata_paare(wikidata)
+    erg = erzeugen(paare, kreise, bisher)
+    console.print(f"Wikidata: {len(paare)} Paare; GV-ISys: {len(kreise)} Kreise; "
+                  f"{len(erg.altkreise)} Schlüssel nicht (mehr) im GV-ISys verworfen (Altkreise)")
+    for land, (nur_neu, nur_alt) in erg.abweichungen.items():
+        if not nur_neu and not nur_alt:
+            console.print(f"[green]{land}: identisch mit der bisherigen Liste[/green]")
+        for p in sorted(nur_neu, key=sorted):
+            console.print(f"[yellow]{land}: neu aus Wikidata[/yellow] {' – '.join(sorted(p))}")
+        for p in sorted(nur_alt, key=sorted):
+            console.print(f"[yellow]{land}: nur in der bisherigen Liste[/yellow] {' – '.join(sorted(p))}")
+    for land, liste in erg.ohne_paar.items():
+        console.print(f"[red]{land}: ohne Nachbarpaar[/red] {', '.join(liste)}")
+    if not erg.ohne_paar:
+        console.print("Alle Kreise haben mindestens einen Nachbarn.")
+    if ziel.exists():
+        ziel.with_suffix(".yaml.bak").write_text(ziel.read_text(encoding="utf-8"), encoding="utf-8")
+    ziel.write_text(erg.als_yaml(), encoding="utf-8")
+    console.print(f"Geschrieben: [bold]{ziel}[/bold] ({sum(len(d['nachbarn']) for d in erg.daten.values())} Kreise)"
+                  + (", Sicherung *.yaml.bak" if bisher else ""))
+    if loeschen:
+        wikidata.unlink()
+        console.print(f"{wikidata} gelöscht.")
+
+
 @app.command("kanzlei-pruefung")
 def kanzlei_pruefung(
     bundesland: BundeslandOpt = None,

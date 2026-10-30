@@ -1,0 +1,17 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!-- fiktiver Ausschnitt im Format des Wikidata-SPARQL-Ergebnisses (P47) -->
+<sparql xmlns='http://www.w3.org/2005/sparql-results#'>
+<head><variable name='ak'/><variable name='aLabel'/><variable name='bk'/><variable name='bLabel'/></head>
+<results>
+<result><binding name='ak'><literal>01001</literal></binding><binding name='bk'><literal>01059</literal></binding><binding name='aLabel'><literal xml:lang='de'>Flensburg</literal></binding><binding name='bLabel'><literal xml:lang='de'>Kreis Schleswig-Flensburg</literal></binding></result>
+<result><binding name='ak'><literal>01002</literal></binding><binding name='bk'><literal>01058</literal></binding><binding name='aLabel'><literal xml:lang='de'>Kiel</literal></binding><binding name='bLabel'><literal xml:lang='de'>Kreis Rendsburg-Eckernförde</literal></binding></result>
+<result><binding name='ak'><literal>01051</literal></binding><binding name='bk'><literal>01054</literal></binding><binding name='aLabel'><literal xml:lang='de'>Kreis Dithmarschen</literal></binding><binding name='bLabel'><literal xml:lang='de'>Kreis Nordfriesland</literal></binding></result>
+<result><binding name='ak'><literal>01054</literal></binding><binding name='bk'><literal>01051</literal></binding><binding name='aLabel'><literal xml:lang='de'>Kreis Nordfriesland</literal></binding><binding name='bLabel'><literal xml:lang='de'>Kreis Dithmarschen</literal></binding></result>
+<result><binding name='ak'><literal>01051</literal></binding><binding name='bk'><literal>01059</literal></binding><binding name='aLabel'><literal xml:lang='de'>Kreis Dithmarschen</literal></binding><binding name='bLabel'><literal xml:lang='de'>Kreis Schleswig-Flensburg</literal></binding></result>
+<result><binding name='ak'><literal>01054</literal></binding><binding name='bk'><literal>01059</literal></binding><binding name='aLabel'><literal xml:lang='de'>Kreis Nordfriesland</literal></binding><binding name='bLabel'><literal xml:lang='de'>Kreis Schleswig-Flensburg</literal></binding></result>
+<result><binding name='ak'><literal>01058</literal></binding><binding name='bk'><literal>01059</literal></binding><binding name='aLabel'><literal xml:lang='de'>Kreis Rendsburg-Eckernförde</literal></binding><binding name='bLabel'><literal xml:lang='de'>Kreis Schleswig-Flensburg</literal></binding></result>
+<result><binding name='ak'><literal>01051</literal></binding><binding name='bk'><literal>01058</literal></binding><binding name='aLabel'><literal xml:lang='de'>Kreis Dithmarschen</literal></binding><binding name='bLabel'><literal xml:lang='de'>Kreis Rendsburg-Eckernförde</literal></binding></result>
+<result><binding name='ak'><literal>01037</literal></binding><binding name='bk'><literal>01054</literal></binding><binding name='aLabel'><literal xml:lang='de'>Kreis Husum (aufgelöst)</literal></binding><binding name='bLabel'><literal xml:lang='de'>Kreis Nordfriesland</literal></binding></result>
+<result><binding name='ak'><literal>01002</literal></binding><binding name='bk'><literal>01002</literal></binding><binding name='aLabel'><literal xml:lang='de'>Kiel</literal></binding><binding name='bLabel'><literal xml:lang='de'>Kiel</literal></binding></result>
+</results>
+</sparql>

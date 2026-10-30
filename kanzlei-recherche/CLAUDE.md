@@ -291,6 +291,10 @@ der nächsten Quelle füllen.**
     **Vorwahl ↔ PLZ (Q4, `vorwahl.py`)**: BNetzA-Verzeichnis (`pfade.vorwahlen`, neueste CSV) → Ortsnetzname →
     Gemeinde der Ortsliste → Kreis; passt bei gleichem Kreis oder Nachbarkreis (`config/nachbarkreise.yaml`,
     symmetrisch; SH: 040 immer zulässig) – Rücksprache 30.10.2026, weil Ortsnetze nicht an Kreisgrenzen enden.
+    Die YAML erzeugt `recherche nachbarkreise --wikidata <SPARQL-XML> [--gv …] [--xml-loeschen]` für alle Länder
+    aus Wikidata (P47, Kreisschlüssel P440): nur im GV-ISys aktuelle Kreise (Altkreise verworfen), Namen aus
+    GV-ISys, symmetrisch, auch über Landesgrenzen; `immer_zulaessig` bleibt; Abgleich mit der bisherigen Datei
+    (SH-Handliste vom 30.10.2026 stimmt mit Wikidata überein) und Liste der Kreise ohne Nachbarpaar; Sicherung `.bak`.
     Ortsnetz ohne Gemeinde-Treffer: Warnung nur bei fremder Vorwahlzone (02357 bei Kiel). Mobil/Service ungeprüft.
     Sonst „Vorwahl passt nicht zur PLZ: …" in „Abweichung", Konfidenz höchstens mittel; gesetzt in
     `kanzlei-pruefung` und `extract` (auch auf gespeicherte Zeilen). Neben
@@ -566,7 +570,7 @@ der nächsten Quelle füllen.**
 ### CLI (`cli.py`)
 
 `recherche search | fill | coverage | crawl | extract | export | run | search-compare | orte |
-blocklist-vorschlag | kanzlei-pruefung | qualitaet | robots-check | suche-auswertung | offen | fixture-add | fixture-eval | fixture-prompt |
+blocklist-vorschlag | kanzlei-pruefung | qualitaet | nachbarkreise | robots-check | suche-auswertung | offen | fixture-add | fixture-eval | fixture-prompt |
 fixture-klassen-umstellen`,
 jeweils mit `--bundesland` und `--db`. **Jeder Schritt muss nach Abbruch
 wiederaufnehmbar sein**: Fortschritt steht in SQLite (Status je Domain und

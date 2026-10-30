@@ -338,3 +338,40 @@ def test_vorwahl_hinweis_in_der_kanzlei_pruefung(vorwahl_pruefer):
     k.telefon = "+49 431 1234567"
     k = pruefen(k, seiten, ziel_land=SH)
     assert "Vorwahl" not in (k.abweichung or "") and k.konfidenz.value == "hoch"
+
+
+# ---------------------------------------------------------------------- Nachbarkreise aus Wikidata + GV-ISys
+
+
+def test_nachbarkreise_aus_wikidata_und_gv(tmp_path):
+    import yaml as _yaml
+    from typer.testing import CliRunner
+
+    from recherche import cli
+
+    gv = Path(__file__).parent / "fixtures" / "gv_isys" / "ausschnitt_sh.csv"
+    xml = Path(__file__).parent / "fixtures" / "nachbarkreise" / "wikidata_ausschnitt.xml"
+    kopie = tmp_path / "wikidata.xml"
+    kopie.write_bytes(xml.read_bytes())
+    ziel = tmp_path / "nachbarkreise.yaml"
+    ziel.write_text(_yaml.safe_dump({"SH": {"immer_zulaessig": ["040"], "nachbarn": {
+        "Kreis Dithmarschen": ["Kreis Nordfriesland", "Kreis Rendsburg-Eckernförde"],
+        "Kreis Nordfriesland": ["Kreis Rendsburg-Eckernförde"]}}}, allow_unicode=True), encoding="utf-8")
+    r = CliRunner().invoke(cli.app, ["nachbarkreise", "--wikidata", str(kopie), "--gv", str(gv), "--out", str(ziel),
+                                     "--xml-loeschen"])
+    assert r.exit_code == 0, r.output
+    ausgabe = " ".join(r.output.split())  # rich bricht lange Zeilen um
+    daten = _yaml.safe_load(ziel.read_text(encoding="utf-8"))
+    sh = daten["SH"]
+    assert sh["immer_zulaessig"] == ["040"]  # Ausnahme aus der alten Datei bleibt
+    assert sh["nachbarn"]["Kreis Dithmarschen"] == ["Kreis Nordfriesland", "Kreis Rendsburg-Eckernförde",
+                                                     "Kreis Schleswig-Flensburg"]
+    assert "Kreis Dithmarschen" in sh["nachbarn"]["Kreis Schleswig-Flensburg"]  # symmetrisch
+    assert "Kreisfreie Stadt Kiel" in sh["nachbarn"]["Kreis Rendsburg-Eckernförde"]  # Namen aus GV-ISys
+    assert not any("Husum" in k or "Husum" in str(v) for k, v in sh["nachbarn"].items())  # Altkreis verworfen
+    assert "1 Schlüssel nicht (mehr) im GV-ISys verworfen" in ausgabe
+    assert "SH: neu aus Wikidata" in ausgabe and "Kreis Dithmarschen – Kreis Schleswig-Flensburg" in ausgabe
+    assert "SH: nur in der bisherigen Liste" in ausgabe and "Kreis Nordfriesland – Kreis Rendsburg-Eckernförde" in ausgabe
+    assert "SH: ohne Nachbarpaar" in ausgabe and "Kreisfreie Stadt Lübeck" in ausgabe
+    assert "HH: ohne Nachbarpaar" in ausgabe and "Hamburg" in ausgabe
+    assert not kopie.exists() and (tmp_path / "nachbarkreise.yaml.bak").exists()
