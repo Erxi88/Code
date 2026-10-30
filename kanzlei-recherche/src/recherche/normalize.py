@@ -20,10 +20,9 @@ _TRENNER = re.compile(r"[\s/\-–.()]+")
 def normalize_telefon(roh: str | None) -> str | None:
     """Deutsche Rufnummer → '+49 <Vorwahl> <Rufnummer>' (Vorwahl ohne führende 0).
 
-    Die Vorwahl wird an der ersten Trennstelle der Eingabe erkannt, z. B.
-    '0431 / 12 34 56' → '+49 431 123456'. Ohne erkennbare Trennung (tel:-Links
-    '+494614808625') oder mit einstelliger „Vorwahl" trennt das Vorwahlverzeichnis von
-    `phonenumbers` ('+49 461 4808625'); ohne das Paket bleibt die Nummer ungetrennt.
+    Die Vorwahl kommt aus dem Vorwahlverzeichnis von `phonenumbers`, wenn die Nummer dort gültig ist
+    ('0 41 53 / 5 97 40' → '+49 4153 59740', nicht '+49 41 5359740'); sonst von der ersten Trennstelle
+    der Eingabe ('0431 / 12 34 56' → '+49 431 123456'); ohne Paket und ohne Trennung bleibt sie ungetrennt.
     Unplausible Eingaben → None.
     """
     if not roh:
@@ -55,6 +54,8 @@ def normalize_telefon(roh: str | None) -> str | None:
     # (Zahlenkolonnen, SVG-Pfade: „+49 140625…")
     if not (ziffern[0] in "23456789" or ziffern[:2] in ("15", "16", "17", "18")):
         return None
+    if getrennt := _vorwahl_trennen(ziffern, nur_gueltig=True):
+        return getrennt  # Vorwahlverzeichnis vor der Schreibweise der Seite („0 41 53 / 5 97 40")
     if len(gruppen) >= 2 and len(gruppen[0]) >= 2:
         return f"{land} {gruppen[0]} {''.join(gruppen[1:])}"
     if getrennt := _vorwahl_trennen(ziffern):
@@ -62,8 +63,9 @@ def normalize_telefon(roh: str | None) -> str | None:
     return f"{land}{ziffern}"
 
 
-def _vorwahl_trennen(ziffern: str) -> str | None:
-    """Nationale Rufnummer ohne 0 → '+49 <Vorwahl> <Rufnummer>' über das Vorwahlverzeichnis."""
+def _vorwahl_trennen(ziffern: str, nur_gueltig: bool = False) -> str | None:
+    """Nationale Rufnummer ohne 0 → '+49 <Vorwahl> <Rufnummer>' über das Vorwahlverzeichnis (phonenumbers,
+    INTERNATIONAL). `nur_gueltig`: nur Nummern, die laut Verzeichnis gültig sind (sonst zählt die Schreibweise)."""
     try:
         import phonenumbers
     except ImportError:  # optional – ohne Paket bleibt die Nummer ungetrennt
@@ -72,7 +74,7 @@ def _vorwahl_trennen(ziffern: str) -> str | None:
         nummer = phonenumbers.parse("+49" + ziffern)
     except phonenumbers.NumberParseException:
         return None
-    if not phonenumbers.is_possible_number(nummer):
+    if not (phonenumbers.is_valid_number(nummer) if nur_gueltig else phonenumbers.is_possible_number(nummer)):
         return None
     teile = phonenumbers.format_number(nummer, phonenumbers.PhoneNumberFormat.INTERNATIONAL).split()
     if len(teile) < 3 or teile[0] != "+49":

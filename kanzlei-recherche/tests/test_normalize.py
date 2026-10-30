@@ -7,6 +7,8 @@ from recherche.normalize import normalize_telefon
     ("roh", "erwartet"),
     [
         ("0431 / 12 34 56", "+49 431 123456"),
+        ("0 41 53 / 5 97 40", "+49 4153 59740"),  # Zweiergruppen: Vorwahl aus dem Verzeichnis, nicht „41"
+        ("+49 (0) 41 02 / 8 00 40", "+49 4102 80040"),
         ("0431-123456", "+49 431 123456"),
         ("(0431) 123456", "+49 431 123456"),
         ("Tel.: 04841 66 90 25", "+49 4841 669025"),
