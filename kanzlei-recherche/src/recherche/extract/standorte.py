@@ -49,6 +49,11 @@ def gruppen(kanzleien: list[Kanzlei]) -> tuple[list[list[Kanzlei]], list[tuple[K
             je_domain[stammdomain(k.domain)].append(k)
         if k.telefon and (t := telefon_key(k.telefon)):
             je_telefon[t].append(k)
+    from ..ketten import config
+
+    for k in kanzleien:  # Standorte einer Kette aus ketten.yaml (auch Pfad-Standorte ohne eigene Domain)
+        if c := config().kette(k):
+            je_domain[f"kette:{c.schluessel}"].append(k)
     for liste in je_domain.values():
         for k in liste[1:]:
             verbinden(k, liste[0])

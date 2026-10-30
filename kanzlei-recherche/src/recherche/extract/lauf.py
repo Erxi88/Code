@@ -19,6 +19,7 @@ from urllib.parse import urlsplit
 from ..crawl import links, meta_texte
 from ..models import Kandidat, LaufEintrag, SchrittStatus, Seitentyp, Status
 from ..normalize import PlzPruefer, normalize_telefon
+from ..search.pipeline import normalize_domain
 from ..storage import Storage
 from ..textnorm import text_normalisieren
 from .base import AnbieterNichtErreichbar, Extractor, ExtraktionFehler
@@ -64,13 +65,13 @@ class ExtractStatistik:
         return self.llm_laufzeit_s / self.llm_aufrufe if self.llm_aufrufe else None
 
 
-def regeln_fuer(seiten, ausschluss: Ausschluss, domain: str | None):
+def regeln_fuer(seiten, ausschluss: Ausschluss, domain: str | None, website: str | None = None):
     """Regel-Extraktion: Impressum zuerst, Kontakt- und Startseite für fehlende Felder."""
     from ..ketten import standortseite
 
     impressum = seiten.get(Seitentyp.IMPRESSUM)
     typen = (Seitentyp.IMPRESSUM, Seitentyp.KONTAKT, Seitentyp.START)
-    if standortseite(domain, None, (impressum.final_url or impressum.url) if impressum else None):
+    if standortseite(domain, website, (impressum.final_url or impressum.url) if impressum else None):
         # Standort einer Kette (Prüfkatalog 9 / Q11): Telefon, Adresse, E-Mail von der Standortseite, Impressum der
         # Zentrale nur als Rückfall
         typen = (Seitentyp.KONTAKT, Seitentyp.START, Seitentyp.IMPRESSUM)
@@ -123,10 +124,11 @@ def run_extract(
     for k in offen:
         try:
             kanzlei = _eine(storage, k, extractor, pruefer, ausschluss, stat, ziel_land)
-            if kanzlei_rechtsformen is not None and k.domain:
+            site = k.domain or normalize_domain(k.website or "")
+            if kanzlei_rechtsformen is not None and site:
                 pruefen(kanzlei, storage.kandidat_seiten(k.id), tuple(kanzlei_rechtsformen), storage.funde_kandidat(k.id),
-                        suchorte.get(stammdomain(k.domain), 0), ziel_land, blocklist)
-            elif not k.domain:  # ohne Website: Konfidenz nach Prüfkatalog 1B aus den Funden
+                        suchorte.get(stammdomain(site), 0), ziel_land, blocklist)
+            elif not site:  # ohne Website: Konfidenz nach Prüfkatalog 1B aus den Funden
                 anwenden(kanzlei, None, False, ziel_land, funde=storage.funde_kandidat(k.id))
             else:
                 status_setzen(kanzlei, ziel_land)
@@ -176,7 +178,7 @@ def _eine(storage: Storage, k: Kandidat, extractor, pruefer, ausschluss, stat: E
         stat.ohne_website += 1
         return zusammenfuehren(k, funde, {}, None, None, pruefer.pruefe if pruefer else None, ausschluss)
     seiten = storage.kandidat_seiten(k.id)
-    regel = regeln_fuer(seiten, ausschluss, k.domain)
+    regel = regeln_fuer(seiten, ausschluss, k.domain, k.website)
     llm = None
     if extractor is not None and seiten and ziel_land and pruefer:
         # Vorprüfung ohne LLM: liegt die PLZ (Discovery bzw. Impressum-Regel) außerhalb des Bundeslandes,

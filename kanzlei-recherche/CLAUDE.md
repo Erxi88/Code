@@ -572,6 +572,14 @@ der nächsten Quelle füllen.**
   Vertretungsberechtigten der Zentrale („Ansprechpartner-Rang: Standortleitung …"); Kanzleiname = Anbieter aus dem
   Impressum („SHBB Steuerberatungsgesellschaft mbH"), der Name der Standortseite als „Standortbezeichnung: …" in
   „Abweichung" und in „Zentrale/Standort" („Standort von SHBB … (SHBB Steuerberatungskanzlei Heide)").
+- **Standortlisten-Crawler** (`ketten_crawl.py`, `recherche ketten -b SH [--kette shbb]`, Prüfkatalog 9): je Kette
+  aus `config/ketten.yaml` die Übersichtsseite (`uebersicht`; robots.txt beachtet, Antwort in `api_cache` unter
+  „kette") lesen, Links auf `link_muster` sammeln (ohne Query/Fragment, ohne Zentrale, je URL einmal) und je Standort
+  einen Kandidaten mit Fund (Quelle „kette", „Standort der Kette X (Zentrale Y)") anlegen, dazu die Zentrale.
+  Wiederholbar ohne Dubletten. Standortmuster `subdomain`/`domain` → eigene Domain; `pfad` → Kandidat ohne Domain
+  (Domain UNIQUE gehört der Zentrale), Website = Standort-URL; crawl beginnt dort, extract wendet Kanzlei-Prüfung und
+  Standortseiten-Regel über die Website an. Alle Zeilen einer Kette aus ketten.yaml bilden eine Standort-Gruppe.
+  Danach `crawl` und `extract`.
 - Spalte **„Kanzleityp"** (hinter „Zentrale", `ketten.py`, Prüfkatalog 9): Großgesellschaft (Namensmuster/Domain
   aus `config/ketten.yaml`) vor Kette (Eintrag in `ketten.yaml` oder ≥ 3 Standorte mit derselben Impressum-URL bzw.
   Standort-Gruppe mit ≥ 3 Zeilen) vor Einzelkanzlei (Rechtsform) vor Mittelstand. Jede Kette steht im
@@ -591,7 +599,7 @@ der nächsten Quelle füllen.**
 
 ### CLI (`cli.py`)
 
-`recherche search | fill | coverage | crawl | extract | export | run | search-compare | orte |
+`recherche search | fill | coverage | ketten | crawl | extract | export | run | search-compare | orte |
 blocklist-vorschlag | kanzlei-pruefung | qualitaet | stichprobe | nachbarkreise | robots-check | suche-auswertung | offen | fixture-add | fixture-eval | fixture-prompt |
 fixture-klassen-umstellen`,
 jeweils mit `--bundesland` und `--db`. **Jeder Schritt muss nach Abbruch

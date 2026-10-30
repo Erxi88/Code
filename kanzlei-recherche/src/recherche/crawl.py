@@ -734,7 +734,10 @@ class Crawler:
     async def _crawl(self, k: Kandidat, domain: str, erg: CrawlErgebnis) -> None:
         startkandidaten = [f"https://{domain}/", f"http://{domain}/"]
         if k.website and _ohne_fragment(k.website) not in startkandidaten:
-            startkandidaten.append(_ohne_fragment(k.website))
+            if k.domain is None:  # Standort einer Kette unter einem Pfad (Prüfkatalog 9): dort beginnen, nicht bei der Zentrale
+                startkandidaten.insert(0, _ohne_fragment(k.website))
+            else:
+                startkandidaten.append(_ohne_fragment(k.website))
         start: Abruf | None = None
         for url in startkandidaten:
             abruf = await self.hole(url, domain, Seitentyp.START)

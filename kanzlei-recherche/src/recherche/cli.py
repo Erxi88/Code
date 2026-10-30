@@ -782,6 +782,42 @@ def nachbarkreise_cmd(
         console.print(f"{wikidata} gelöscht.")
 
 
+@app.command("ketten")
+def ketten_cmd(
+    bundesland: BundeslandOpt = None,
+    db: DbOpt = None,
+    config: ConfigOpt = None,
+    kette: Annotated[str | None, typer.Option("--kette", help="nur diese Kette (Schlüssel aus ketten.yaml, z. B. shbb)")] = None,
+) -> None:
+    """Standortlisten-Crawler (Prüfkatalog 9): je Kette aus config/ketten.yaml die Übersichtsseite lesen und je
+    Standort einen Kandidaten anlegen, verknüpft mit der Zentrale. Danach crawl und extract."""
+    import httpx
+
+    from .ketten import KettenConfig
+    from .ketten_crawl import standort_links, standorte_anlegen, uebersicht_laden
+
+    ctx = _kontext(config, bundesland, db)
+    cfg = KettenConfig.laden(ctx.settings.pfad(ctx.settings.pfade.ketten))
+    auswahl = [c for c in cfg.ketten if kette is None or c.schluessel == kette]
+    if not auswahl:
+        _fehler(f"Keine Kette {kette!r} in ketten.yaml" if kette else "Keine Ketten in ketten.yaml")
+    lauf_id = _lauf_id()
+    ua = ctx.settings.crawl.user_agent
+    with ctx.storage() as st, httpx.Client(timeout=ctx.settings.crawl.timeout_s, follow_redirects=True,
+                                           headers={"User-Agent": ua}) as client:
+        for c in auswahl:
+            if not c.uebersicht:
+                console.print(f"{c.schluessel}: keine Übersichts-URL – übersprungen")
+                continue
+            html = uebersicht_laden(c, client, ua, st, melden=lambda t: console.print(f"[yellow]{t}[/yellow]"))
+            if html is None:
+                continue
+            urls = standort_links(html, c.uebersicht, c)
+            stat = standorte_anlegen(st, ctx.bundesland, c, urls, lauf_id)
+            console.print(f"{c.name}: {stat.standorte} Standorte, {stat.neu} neu, {stat.bekannt} bekannt")
+    console.print("Weiter mit: recherche crawl, dann recherche extract")
+
+
 @app.command("stichprobe")
 def stichprobe_cmd(
     bundesland: BundeslandOpt = None,
