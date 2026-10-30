@@ -15,7 +15,7 @@ def test_stufe_a_standard_ist_brave(settings):
     a = stufe_a_adapter(settings)
     assert isinstance(a, BraveAdapter)
     assert (a.cfg.per_page, a.cfg.country, a.cfg.search_lang, a.cfg.kosten_je_1000) == (20, "DE", "de", 5.0)
-    assert a.max_anfragen == 1000
+    assert a.max_anfragen == settings.discovery.max_anfragen_je_lauf  # Budget je Lauf aus settings.yaml
 
 
 def test_stufe_a_umschaltbar(settings):

@@ -1,4 +1,5 @@
 import json
+import re
 
 import pytest
 from conftest import FIXTURES
@@ -106,7 +107,7 @@ def test_orte_bestehende_startliste_wird_nicht_ueberschrieben(fake_openplz, db_p
     vorher = startliste.read_bytes()
     r = runner.invoke(cli.app, _orte_args(db_pfad, tmp_path))
     assert r.exit_code == 2 and "existiert bereits" in r.output
-    assert "bisher 80, neu 8 Gemeinden" in r.output and "entfallen (Namen prüfen)" in r.output
+    assert re.search(r"bisher \d+, neu 8 Gemeinden", r.output) and "entfallen (Namen prüfen)" in r.output  # Start- oder volle Liste
     assert startliste.read_bytes() == vorher
 
 
@@ -278,7 +279,7 @@ def test_fixture_prompt_live_und_speichern(monkeypatch, tmp_path):
     r = runner.invoke(cli.app, ["fixture-prompt", "--domain", "hansen-steuerberatung.example", "--live", "--speichern"])
     assert r.exit_code == 0, r.output
     assert "Ollama qwen3.5:9b: 1200 Prompt-Token" in r.output and "Zeichen/Token" in r.output
-    assert gesendet[0]["options"]["num_ctx"] == 16384
+    assert gesendet[0]["options"]["num_ctx"] == load_settings().llm.num_ctx
     ziel = load_settings().pfad("data") / "prompt_hansen-steuerberatung.example.txt"
     assert ziel.exists() and "=== SYSTEM ===" in ziel.read_text()
     ziel.unlink()
@@ -323,8 +324,8 @@ def test_fixture_add(monkeypatch, tmp_path):
     shutil.rmtree(standard / "b.example")
 
 
-def test_search_stufe_a_mit_kostenlog_und_wiederaufnahme(fakes, db_pfad):
-    args = _args("search", db_pfad, "--orte", "Kiel,Husum")
+def test_search_stufe_a_mit_kostenlog_und_wiederaufnahme(fakes, db_pfad, tmp_path):
+    args = _args("search", db_pfad, "--orte", "Kiel,Husum", "--config", str(_coverage_config(tmp_path)))
     r = runner.invoke(cli.app, args)
     assert r.exit_code == 0, r.output
     assert "Websuche (Stufe A) mit brave" in r.output
@@ -384,14 +385,14 @@ def test_fill_deaktivierte_quelle(db_pfad):
     assert r.exit_code == 2 and "deaktiviert" in r.output
 
 
-def _coverage_config(tmp_path):
-    """settings.yaml-Kopie mit Test-Ortsliste und -Referenz."""
+def _coverage_config(tmp_path, referenz="referenz.yaml"):
+    """settings.yaml-Kopie mit Test-Ortsliste und -Referenz (unabhängig von den lokal gepflegten Dateien)."""
     cfg = tmp_path / "config"
-    cfg.mkdir()
+    cfg.mkdir(exist_ok=True)
     s = load_settings()
     text = (s.basis_dir / "config" / "settings.yaml").read_text(encoding="utf-8")
     text = text.replace("orte_datei: config/orte_SH.csv", f"orte_datei: {FIXTURES / 'coverage' / 'orte.csv'}")
-    text = text.replace("referenz: config/referenz_kammern.yaml", f"referenz: {FIXTURES / 'coverage' / 'referenz.yaml'}")
+    text = text.replace("referenz: config/referenz_kammern.yaml", f"referenz: {FIXTURES / 'coverage' / referenz}")
     text = text.replace("queries: config/queries.yaml", f"queries: {s.basis_dir / 'config' / 'queries.yaml'}")
     text = text.replace("blocklist: config/domain_blocklist.txt", f"blocklist: {s.basis_dir / 'config' / 'domain_blocklist.txt'}")
     (cfg / "settings.yaml").write_text(text, encoding="utf-8")
@@ -419,8 +420,8 @@ def test_coverage(db_pfad, tmp_path):
     assert out.exists()
 
 
-def test_coverage_ohne_referenz(db_pfad):
-    r = runner.invoke(cli.app, _args("coverage", db_pfad))
+def test_coverage_ohne_referenz(db_pfad, tmp_path):
+    r = runner.invoke(cli.app, _args("coverage", db_pfad, "--config", str(_coverage_config(tmp_path, "referenz_leer.yaml"))))
     assert r.exit_code == 0
     assert "Keine (vollständigen) Referenzzahlen" in r.output
 
@@ -433,8 +434,9 @@ def test_fill_luecken(fakes, db_pfad, tmp_path):
     assert fakes["places"].aufrufe == ["Kiel", "Eckernförde", "Rendsburg", "Kronshagen", "Niebüll", "Husum", "Sylt"]
 
 
-def test_fill_luecken_ohne_referenz(fakes, db_pfad):
-    r = runner.invoke(cli.app, _args("fill", db_pfad, "--quelle", "places", "--luecken"))
+def test_fill_luecken_ohne_referenz(fakes, db_pfad, tmp_path):
+    r = runner.invoke(cli.app, _args("fill", db_pfad, "--quelle", "places", "--luecken",
+                                     "--config", str(_coverage_config(tmp_path, "referenz_leer.yaml"))))
     assert r.exit_code == 2 and "Keine Orte unter der Referenz" in r.output
 
 

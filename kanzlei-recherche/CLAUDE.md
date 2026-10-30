@@ -162,7 +162,8 @@ der nächsten Quelle füllen.**
   Landeshauptstadt" → „Kiel"), niedrigste PLZ in `plz`, übrige in `plz_weitere`.
 - Kreis und Einwohner aus dem GV-ISys von Destatis (XLSX oder CSV, Pfad oder URL in
   `orte.gv_isys.quelle`, Spaltennamen einstellbar; Satzart 40 = Kreis, 60 = Gemeinde),
-  Zuordnung über den AGS. Kreisnamen im Format der Referenzdatei („Kreis Dithmarschen",
+  Zuordnung über den AGS. Gleiche Namen: in verschiedenen Kreisen mit dem Kreis („Hasselberg
+  (Schleswig-Flensburg)"), im selben Kreis mit dem Namenszusatz („Garding (Stadt)", „Garding (Kirchspiel)"). Kreisnamen im Format der Referenzdatei („Kreis Dithmarschen",
   „Kreisfreie Stadt Kiel").
 - Ausgabe `config/orte_<BL>.csv` (`ort;plz;kreis;einwohner;ags;plz_weitere;gemeinde;
   stadtteil`). **Eine bestehende Datei wird nie ungefragt überschrieben** (`--force`,
@@ -512,6 +513,8 @@ Schemaversion über `PRAGMA user_version` (aktuell 4, `adresszusatz`); ältere D
   offenen Fragen vorlegen und abstimmen.
 - **Kleine Commits** mit klaren Nachrichten, ein Thema je Commit.
 - **pytest muss grün sein** vor jedem Commit (`pytest` im Ordner `kanzlei-recherche/`).
+- Tests hängen nicht an den lokal gepflegten Dateien in `config/` (Ortsliste, Referenz, Budget, num_ctx):
+  eigene Test-Konfigurationen oder Werte aus der geladenen Konfiguration.
 - **Tests nur gegen Fixtures** (`tests/fixtures/`): keine Netzwerkzugriffe, kein
   Ollama, keine Suchmaschine in Tests. Externe Clients werden injiziert und in
   Tests durch Fakes mit gespeicherten Beispielantworten ersetzt.

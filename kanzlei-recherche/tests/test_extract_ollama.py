@@ -51,7 +51,7 @@ def test_payload(cfg):
     assert p["think"] is False
     assert p["format"] == llm_schema()
     assert p["stream"] is False
-    assert p["options"] == {"temperature": 0.0, "num_ctx": 16384}
+    assert p["options"] == {"temperature": 0.0, "num_ctx": cfg.num_ctx}  # num_ctx immer gesetzt
     assert p["model"] == cfg.modell == "qwen3.5:9b"
     inhalt = p["messages"][1]["content"]
     assert inhalt.startswith("### IMPRESSUM (https://a.example/impressum)")

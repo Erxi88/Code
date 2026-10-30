@@ -58,11 +58,10 @@ def test_queries_fuer_ort():
 
 
 def test_config_dateien(settings):
-    orte = load_orte(settings.pfad(settings.bundesland("SH").orte_datei))
-    assert 60 <= len(orte) <= 80
+    orte = load_orte(settings.pfad(settings.bundesland("SH").orte_datei))  # Startliste oder volle Gemeindeliste
+    assert len(orte) >= 60
     assert len({o.name for o in orte}) == len(orte)
     assert all(o.plz.isdigit() and len(o.plz) == 5 and o.kreis for o in orte)
-    assert all(o.einwohner is None for o in orte)  # Spalte vorgesehen, Werte folgen (orte/GV-ISys)
     assert {"Kiel", "Flensburg", "Lübeck", "Neumünster", "Husum"} <= {o.name for o in orte}
     assert len(load_vorlagen(settings.pfad(settings.pfade.queries))) >= 2
 

@@ -137,6 +137,12 @@ class Gemeinde:
     plz: list[str] = field(default_factory=list)
     ortsnamen: dict[str, set[str]] = field(default_factory=lambda: defaultdict(set))  # PLZ → Ortsnamen
     kreis_openplz: str | None = None
+    zusatz: str | None = None  # „Kirchspiel" aus „Garding, Kirchspiel" – unterscheidet Namensgleiche im selben Kreis
+
+
+def namens_zusatz(name: str) -> str | None:
+    """'Garding, Kirchspiel' → 'Kirchspiel'; 'Kiel, Landeshauptstadt' → 'Landeshauptstadt'."""
+    return name.split(",", 1)[1].strip() or None if "," in name else None
 
 
 def gemeinden_aus_localities(localities: Iterable[dict]) -> dict[str, Gemeinde]:
@@ -151,7 +157,8 @@ def gemeinden_aus_localities(localities: Iterable[dict]) -> dict[str, Gemeinde]:
         if g is None:
             d = loc.get("district") or {}
             kreis = kreis_bezeichnung(d["name"], d.get("type")) if d.get("name") else None
-            g = gemeinden[ags] = Gemeinde(ags, gemeinde_name(m.get("name") or loc.get("name") or ags), kreis_openplz=kreis)
+            roh = m.get("name") or loc.get("name") or ags
+            g = gemeinden[ags] = Gemeinde(ags, gemeinde_name(roh), kreis_openplz=kreis, zusatz=namens_zusatz(roh))
         if plz and plz not in g.plz:
             g.plz.append(plz)
         if plz and loc.get("name"):
@@ -168,6 +175,7 @@ def gemeinden_aus_localities(localities: Iterable[dict]) -> dict[str, Gemeinde]:
 class GvDaten:
     einwohner: dict[str, int] = field(default_factory=dict)  # AGS → Einwohner
     namen: dict[str, str] = field(default_factory=dict)  # AGS → Gemeindename
+    zusaetze: dict[str, str] = field(default_factory=dict)  # AGS → Namenszusatz („Kirchspiel", „Stadt")
     kreise: dict[str, str] = field(default_factory=dict)  # Kreisschlüssel (5 Stellen) → Bezeichnung
     kreis_je_ags: dict[str, str] = field(default_factory=dict)  # nur CSV mit Kreisname-Spalte
     kreisfrei: set[str] = field(default_factory=set)  # Kreisschlüssel kreisfreier Städte
@@ -290,6 +298,8 @@ def lade_gv(pfad: Path, spalten: GvSpalten, land_schluessel: str, blatt: str | N
                 gv.einwohner[ags] = ew
             if name:
                 gv.namen[ags] = gemeinde_name(name)
+                if zusatz := namens_zusatz(name):
+                    gv.zusaetze[ags] = zusatz
             if (kn := wert(z, "kreisname")) and str(kn).strip():
                 gv.kreis_je_ags[ags] = str(kn).strip()
     if not gv.einwohner:
@@ -367,14 +377,20 @@ def orte_erzeugen(
         for ags in sorted(set(gv.einwohner) - set(gemeinden)):
             erg.warnungen.append(f"{gv.namen.get(ags, ags)} ({ags}): im GV-ISys, aber nicht in OpenPLZ – nicht übernommen")
 
-    # gleiche Namen in verschiedenen Kreisen eindeutig machen
+    # gleiche Namen eindeutig machen: in verschiedenen Kreisen mit dem Kreis, im selben Kreis mit dem
+    # Namenszusatz („Garding (Stadt)" / „Garding (Kirchspiel)"), sonst dem AGS
     zaehler: dict[str, int] = defaultdict(int)
+    je_kreis: dict[tuple[str, str], int] = defaultdict(int)
     for ort, _, _ in zeilen:
         zaehler[ort.name.casefold()] += 1
+        je_kreis[(ort.name.casefold(), ort.kreis or "")] += 1
     eindeutig = []
     for ort, g, kreisfrei in zeilen:
         if zaehler[ort.name.casefold()] > 1:
-            neu = f"{ort.name} ({_kreis_kurz(ort.kreis)})"
+            if je_kreis[(ort.name.casefold(), ort.kreis or "")] > 1:
+                neu = f"{ort.name} ({(gv.zusaetze.get(ort.ags) if gv else None) or g.zusatz or ort.ags})"
+            else:
+                neu = f"{ort.name} ({_kreis_kurz(ort.kreis)})"
             erg.warnungen.append(f"Name {ort.name!r} mehrfach – als {neu!r} geführt")
             ort = Ort(**{**ort.__dict__, "name": neu})
         eindeutig.append((ort, g, kreisfrei))

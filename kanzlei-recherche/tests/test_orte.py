@@ -248,8 +248,10 @@ def test_csv_roundtrip(ergebnis, tmp_path):
 
 
 def test_startliste_bleibt_lesbar(settings):
-    orte = load_orte(settings.pfad(settings.bundesland("SH").orte_datei))
+    """Alte Startliste (80 Orte, nur ort;plz;kreis;einwohner) bleibt lesbar – die echte Liste ist inzwischen ersetzt."""
+    orte = load_orte(FIXTURES / "orte" / "startliste_alt.csv")
     assert len(orte) == 80 and all(o.ags is None and not o.ist_zusatz for o in orte)
+    assert load_orte(settings.pfad(settings.bundesland("SH").orte_datei))  # aktuelle Liste lesbar
 
 
 def test_orte_filtern_mit_zusatzorten(ergebnis):
@@ -275,3 +277,12 @@ def test_stufen_verteilung(ergebnis):
     assert v["unter 2.000 Einwohner"] == (2, 2, 1)  # Wesselburenerkoog (1.999), Hasselberg/SL (420)
     assert v["ab 20.000 Einwohner"] == (6, 24, 3)  # inkl. Hasselberg/RD mit genau 20.000
     assert v["Zusatz-Suchorte"] == (5, 11, 2)
+
+
+def test_gleiche_namen_im_selben_kreis_mit_namenszusatz():
+    """Garding (Stadt) und Garding, Kirchspiel liegen beide in Nordfriesland – der Kreis unterscheidet nicht."""
+    locs = [{"postalCode": "25836", "name": "Garding", "municipality": {"key": ags, "name": name},
+             "district": {"name": "Nordfriesland", "type": "Kreis"}}
+            for ags, name in (("01054036", "Garding, Stadt"), ("01054035", "Garding, Kirchspiel"))]
+    erg = orte_erzeugen(gemeinden_aus_localities(locs), None)
+    assert sorted(o.name for o in erg.gemeinden) == ["Garding (Kirchspiel)", "Garding (Stadt)"]
