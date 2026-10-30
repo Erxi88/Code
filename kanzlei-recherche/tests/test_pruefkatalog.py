@@ -632,3 +632,19 @@ def test_titel_vor_dem_namen_vor_der_vorname_pruefung():
     for name in ("Dr. Schröder", "Steuerberaterin Schröder", "Herr Lund"):
         assert bereinigen([Ansprechpartner(name=name)])[0] == []
 
+
+def test_fixture_eval_laedt_ketten_yaml(tmp_path):
+    """fixture-eval/-prompt wenden die Standortseiten-Regel wie der Lauf an: ketten.yaml wird geladen – auch wenn
+    meta.json keine Impressum-URL der Zentrale nennt (Standard-URL auf der Standort-Subdomain)."""
+    from recherche.cli import _fixture_regeln_laden
+    from recherche.config import Settings
+    from recherche.ketten import standortseite
+
+    (tmp_path / "ketten.yaml").write_text(
+        "ketten:\n  nordbund:\n    name: Nordbund Steuerberatungsgesellschaft mbH\n    zentrale: nordbund.example\n",
+        encoding="utf-8")
+    s = Settings()
+    s.pfade.ketten = str(tmp_path / "ketten.yaml")
+    assert not standortseite("heide.nordbund.example", None, "https://heide.nordbund.example/impressum")
+    _fixture_regeln_laden(s)
+    assert standortseite("heide.nordbund.example", None, "https://heide.nordbund.example/impressum")

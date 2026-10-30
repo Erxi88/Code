@@ -917,6 +917,13 @@ def fixture_klassen_umstellen(
                       "setzen (Vorschlag prüfen) oder leer lassen.[/yellow]")
 
 
+def _fixture_regeln_laden(s: Settings) -> None:
+    """Ketten (ketten.yaml: Standortseiten-Regel Q11) für fixture-eval/-prompt – dieselben Regeln wie im Lauf."""
+    from .ketten import KettenConfig, setze_config
+
+    setze_config(KettenConfig.laden(s.pfad(s.pfade.ketten)))
+
+
 @app.command("fixture-eval")
 def fixture_eval(
     config: ConfigOpt = None,
@@ -929,6 +936,7 @@ def fixture_eval(
 
     --live zeichnet nur für echt/ auf; die fiktiven Beispiele nur mit ausdrücklichem --nur beispiele."""
     s = load_settings(config)
+    _fixture_regeln_laden(s)
     ordner = {"beispiele": s.pfad(s.pfade.fixtures_beispiele), "echt": s.pfad(s.pfade.fixtures_echt)}
     if live and nur is None:
         nur = "echt"
@@ -963,6 +971,7 @@ def fixture_prompt(
     """Was vom HTML beim Modell ankommt: Größen je Bereinigungsstufe, Kürzung, Token – ohne Inhalte
     (Personennamen nur mit --namen)."""
     s = load_settings(config)
+    _fixture_regeln_laden(s)
     fx = fixture_finden(domain, [s.pfad(s.pfade.fixtures_echt), s.pfad(s.pfade.fixtures_beispiele)])
     if fx is None:
         _fehler(f"Fixture {domain} nicht gefunden (recherche fixture-add --domain {domain})")
