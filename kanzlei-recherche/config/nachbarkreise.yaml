@@ -3,6 +3,8 @@
 # Namen aus GV-ISys). Ortsnetze enden nicht an Kreisgrenzen (Kronshagen → 0431 Kiel); eine Vorwahl aus einem
 # Nachbarkreis passt. Symmetrisch, auch über Landesgrenzen. immer_zulaessig: Vorwahlen ohne Prüfung
 # (Hamburg 040 für SH, Rücksprache 30.10.2026). SH gegen die geprüfte Handliste vom 30.10.2026 abgeglichen.
+# Von Hand ergänzt: Kreisfreie Stadt Hanau (seit 01.01.2026 kreisfrei, in Wikidata noch ohne P47) –
+# Main-Kinzig-Kreis und Landkreis Offenbach (Rückmeldung 30.10.2026).
 SH:
   immer_zulaessig:
   - '040'
@@ -825,6 +827,7 @@ HE:
     - Landkreis Wetteraukreis
     Landkreis Main-Kinzig-Kreis:
     - Kreisfreie Stadt Frankfurt am Main
+    - Kreisfreie Stadt Hanau
     - Kreisfreie Stadt Offenbach am Main
     - Landkreis Aschaffenburg
     - Landkreis Bad Kissingen
@@ -848,6 +851,7 @@ HE:
     Landkreis Offenbach:
     - Kreisfreie Stadt Darmstadt
     - Kreisfreie Stadt Frankfurt am Main
+    - Kreisfreie Stadt Hanau
     - Kreisfreie Stadt Offenbach am Main
     - Landkreis Aschaffenburg
     - Landkreis Darmstadt-Dieburg
@@ -948,6 +952,9 @@ HE:
     - Landkreis Schwalm-Eder-Kreis
     - Landkreis Unstrut-Hainich-Kreis
     - Landkreis Wartburgkreis
+    Kreisfreie Stadt Hanau:
+    - Landkreis Main-Kinzig-Kreis
+    - Landkreis Offenbach
 RP:
   nachbarn:
     Kreisfreie Stadt Koblenz:
