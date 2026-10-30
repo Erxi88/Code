@@ -402,3 +402,82 @@ def test_ausschluss_reihenfolge_und_rang(name, impressum, personen, grund):
     k = _k(kanzleiname=name, ansprechpartner=[Ansprechpartner(**p) for p in personen])
     ergebnis = ausschluss_grund(k, "\n".join(impressum))
     assert (ergebnis.split(" (")[0] if ergebnis else None) == grund
+
+
+# ---------------------------------------------------------------------- Stichprobe (Abschnitt 5)
+
+
+def _hauptzeilen(n):
+    from recherche.models import Konfidenz
+
+    return [_k(id=i, domain=f"k{i:02}.example", kanzleiname=f"Steuerkanzlei {i}", konfidenz=Konfidenz.HOCH,
+               telefon="+49 431 1234567", quell_urls=[f"https://k{i:02}.example/impressum"]) for i in range(n)]
+
+
+def test_stichprobe_reproduzierbar_nur_hauptblatt():
+    from recherche.models import Konfidenz, Status
+    from recherche.stichprobe import ziehen
+
+    zeilen = _hauptzeilen(60) + [_k(id=99, domain="zu.example", konfidenz=Konfidenz.NIEDRIG),
+                                 _k(id=98, domain="weg.example", konfidenz=Konfidenz.HOCH, status=Status.KEINE_KANZLEI)]
+    a, b = ziehen(zeilen, 50, seed=1), ziehen(list(reversed(zeilen)), 50, seed=1)
+    assert len(a) == 50 and [k.domain for k in a] == [k.domain for k in b]  # Reihenfolge der Eingabe egal
+    assert not {"zu.example", "weg.example"} & {k.domain for k in a}  # Zu prüfen / keine Kanzlei nie
+    assert [k.domain for k in ziehen(zeilen, 50, seed=2)] != [k.domain for k in a]
+
+
+def _ausfuellen(pfad, falsch_name=0, kanzlei_nein=0, offen=False):
+    from openpyxl import load_workbook
+
+    wb = load_workbook(pfad)
+    ws = wb["Stichprobe"]
+    kopf = [c.value for c in ws[1]]
+    for r in range(2, ws.max_row + 1):
+        for spalte in (c for c in kopf if c.endswith("– Prüfung")):
+            ws.cell(row=r, column=kopf.index(spalte) + 1, value="richtig")
+        ws.cell(row=r, column=kopf.index("Kanzlei?") + 1, value="ja")
+        ws.cell(row=r, column=kopf.index("Ausland?") + 1, value="nein")
+    for r in range(2, 2 + falsch_name):
+        ws.cell(row=r, column=kopf.index("Name – Prüfung") + 1, value="falsch")
+    for r in range(2, 2 + kanzlei_nein):
+        ws.cell(row=r, column=kopf.index("Kanzlei?") + 1, value="nein")
+    if offen:
+        ws.cell(row=2, column=kopf.index("Telefon – Prüfung") + 1).value = None  # cell(value=None) ändert nichts
+    wb.save(pfad)
+
+
+@pytest.mark.parametrize(("falsch", "nein", "offen", "bestanden"), [
+    (2, 0, False, True), (3, 0, False, False), (0, 1, False, False), (0, 0, True, False),
+])  # fmt: skip
+def test_stichprobe_abnahmekriterium(tmp_path, falsch, nein, offen, bestanden):
+    from recherche.stichprobe import auswerten, schreiben, ziehen
+
+    pfad = schreiben(ziehen(_hauptzeilen(60), 50, 1), tmp_path / "s.xlsx", "SH", 1)
+    _ausfuellen(pfad, falsch, nein, offen)
+    erg = auswerten(pfad)
+    assert (erg.zeilen, erg.grenze, erg.falsch["Name"], erg.bestanden) == (50, 2, falsch, bestanden)
+
+
+def test_stichprobe_befehl(tmp_path, db_pfad):
+    from openpyxl import load_workbook
+    from typer.testing import CliRunner
+
+    from recherche import cli
+    from recherche.storage import Storage
+
+    with Storage(db_pfad) as st:
+        for k in _hauptzeilen(12):
+            st.upsert_kanzlei(k.model_copy(update={"id": None}))
+    out = tmp_path / "stichprobe.xlsx"
+    r = CliRunner().invoke(cli.app, ["stichprobe", "-b", "SH", "--db", str(db_pfad), "-n", "10", "--seed", "3", "--out", str(out)])
+    assert r.exit_code == 0, r.output
+    ws = load_workbook(out)["Stichprobe"]
+    kopf = [c.value for c in ws[1]]
+    assert ws.max_row == 11 and "Quell-URLs" in kopf and "Telefon – Prüfung" in kopf
+    assert len(ws.data_validations.dataValidation) == 7  # 5 Kernfelder + Kanzlei? + Ausland?
+    _ausfuellen(out)
+    r = CliRunner().invoke(cli.app, ["stichprobe", "--auswerten", str(out)])
+    assert r.exit_code == 0 and "Abnahme bestanden" in r.output
+    _ausfuellen(out, falsch_name=1)  # 10 Zeilen: erlaubt 0 falsch
+    r = CliRunner().invoke(cli.app, ["stichprobe", "--auswerten", str(out)])
+    assert r.exit_code == 1 and "nicht bestanden" in r.output

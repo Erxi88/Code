@@ -779,6 +779,49 @@ def nachbarkreise_cmd(
         console.print(f"{wikidata} gelöscht.")
 
 
+@app.command("stichprobe")
+def stichprobe_cmd(
+    bundesland: BundeslandOpt = None,
+    db: DbOpt = None,
+    config: ConfigOpt = None,
+    n: Annotated[int, typer.Option("-n", help="Zahl der Zeilen")] = 50,
+    seed: Annotated[int, typer.Option(help="Zufallsstartwert (reproduzierbar; nach dem Volllauf einen zweiten)")] = 1,
+    out: Annotated[Path | None, typer.Option("--out", "-o", help="Excel-Datei (Standard: neben dem Export)")] = None,
+    auswerten: Annotated[Path | None, typer.Option("--auswerten", help="ausgefüllte Stichprobe auswerten")] = None,
+) -> None:
+    """Abnahme (Prüfkatalog 5): n zufällige Zeilen des Hauptblatts mit Prüfspalten (richtig/falsch/leer je Kernfeld,
+    Kanzlei?, Ausland?) – oder mit --auswerten das Ergebnis gegen das Abnahmekriterium."""
+    from .stichprobe import KERNFELDER, schreiben, ziehen
+    from .stichprobe import auswerten as auswerten_datei
+
+    if auswerten:
+        erg = auswerten_datei(auswerten)
+        t = Table(title=f"Stichprobe {auswerten.name}: {erg.zeilen} Zeilen, erlaubt je Kernfeld {erg.grenze} falsch")
+        for col in ("Kernfeld", "falsch", "leer", "ungeprüft"):
+            t.add_column(col, justify="left" if col == "Kernfeld" else "right")
+        for f, _ in KERNFELDER:
+            t.add_row(f, str(erg.falsch[f]), str(erg.leer[f]), str(erg.ungeprueft[f]))
+        console.print(t)
+        console.print(f"Keine Kanzlei: {erg.keine_kanzlei} · Ausland: {erg.ausland}")
+        if erg.bestanden:
+            console.print("[green]Abnahme bestanden[/green] – Volllauf nach Freigabe möglich.")
+        else:
+            console.print("[red]Abnahme nicht bestanden:[/red] " + "; ".join(erg.gruende))
+            raise typer.Exit(1)
+        return
+    ctx = _kontext(config, bundesland, db)
+    _ortsnamen_setzen(ctx)
+    with ctx.storage() as st:
+        liste = ziehen(st.kanzleien(ctx.bundesland), n, seed)
+    if not liste:
+        _fehler("Keine Zeilen im Hauptblatt – erst extract und kanzlei-pruefung")
+    ziel = out or ctx.settings.ausgabe_pfad(ctx.bundesland).with_name(
+        f"stichprobe_{ctx.bundesland}_seed{seed}_{datetime.now():%Y-%m-%d}.xlsx")
+    pfad = schreiben(liste, ziel, ctx.bundesland, seed)
+    console.print(f"Stichprobe geschrieben: [bold]{pfad}[/bold] ({len(liste)} Zeilen, Seed {seed}). "
+                  f"Je Kernfeld richtig/falsch/leer eintragen, dann: recherche stichprobe --auswerten {pfad}")
+
+
 @app.command("kanzlei-pruefung")
 def kanzlei_pruefung(
     bundesland: BundeslandOpt = None,

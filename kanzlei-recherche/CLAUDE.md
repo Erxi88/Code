@@ -569,11 +569,16 @@ der nächsten Quelle füllen.**
   `recherche qualitaet [--out datei.csv]` zeigt dieselben Prüfungen als Tabelle mit Anzahl und Beispielen, dazu Q14
   (coverage-Zahl gegen Hauptblatt-Zeilen im Land).
 - Blatt „Lauf-Protokoll": Suchbegriff, Trefferzahl, neue Kandidaten, Anfragen, Kosten, Laufzeit.
+- **Stichprobe** (Prüfkatalog 5, `stichprobe.py`): `recherche stichprobe -b SH -n 50 --seed 1 [--out …]` zieht n
+  zufällige Hauptblatt-Zeilen (wie im Export, reproduzierbar über den Seed) in eine eigene Datei mit Blatt
+  „Stichprobe": je Kernfeld (Name, Straße, PLZ/Ort, Telefon, Ansprechpartner) Wert + Auswahl richtig/falsch/leer,
+  „Kanzlei?", „Ausland?", Quell-URLs. `recherche stichprobe --auswerten datei.xlsx`: bestanden bei höchstens 4 %
+  falschen Werten je Kernfeld (2 von 50), 0 keine Kanzlei, 0 Ausland und keiner leeren Prüfzelle (sonst Exit 1).
 
 ### CLI (`cli.py`)
 
 `recherche search | fill | coverage | crawl | extract | export | run | search-compare | orte |
-blocklist-vorschlag | kanzlei-pruefung | qualitaet | nachbarkreise | robots-check | suche-auswertung | offen | fixture-add | fixture-eval | fixture-prompt |
+blocklist-vorschlag | kanzlei-pruefung | qualitaet | stichprobe | nachbarkreise | robots-check | suche-auswertung | offen | fixture-add | fixture-eval | fixture-prompt |
 fixture-klassen-umstellen`,
 jeweils mit `--bundesland` und `--db`. **Jeder Schritt muss nach Abbruch
 wiederaufnehmbar sein**: Fortschritt steht in SQLite (Status je Domain und
