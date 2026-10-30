@@ -1,0 +1,19 @@
+# Nachbarkreise je Bundesland für die Vorwahl-PLZ-Prüfung (Q4, src/recherche/vorwahl.py).
+# Ortsnetze enden nicht an Kreisgrenzen (Kronshagen → 0431 Kiel); eine Vorwahl aus einem Nachbarkreis passt.
+# Symmetrisch gelesen: A → B genügt. Kreisnamen wie in config/orte_<BL>.csv. immer_zulaessig: Vorwahlen ohne
+# Prüfung (Hamburg 040 für das SH-Umland, Rücksprache 30.10.2026).
+SH:
+  immer_zulaessig: ["040"]
+  nachbarn:
+    Kreisfreie Stadt Flensburg: [Kreis Schleswig-Flensburg]
+    Kreisfreie Stadt Kiel: [Kreis Rendsburg-Eckernförde, Kreis Plön]
+    Kreisfreie Stadt Lübeck: [Kreis Ostholstein, Kreis Stormarn, Kreis Herzogtum Lauenburg]
+    Kreisfreie Stadt Neumünster: [Kreis Rendsburg-Eckernförde, Kreis Segeberg, Kreis Plön]
+    Kreis Dithmarschen: [Kreis Nordfriesland, Kreis Rendsburg-Eckernförde, Kreis Steinburg]
+    Kreis Herzogtum Lauenburg: [Kreis Stormarn]
+    Kreis Nordfriesland: [Kreis Schleswig-Flensburg, Kreis Rendsburg-Eckernförde]
+    Kreis Ostholstein: [Kreis Plön, Kreis Segeberg, Kreis Stormarn]
+    Kreis Pinneberg: [Kreis Segeberg, Kreis Steinburg]
+    Kreis Plön: [Kreis Rendsburg-Eckernförde, Kreis Segeberg]
+    Kreis Rendsburg-Eckernförde: [Kreis Schleswig-Flensburg, Kreis Segeberg, Kreis Steinburg]
+    Kreis Segeberg: [Kreis Stormarn, Kreis Steinburg]

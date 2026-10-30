@@ -289,3 +289,52 @@ def test_qualitaet_befehl(tmp_path, db_pfad):
     assert r.exit_code == 0, r.output
     assert "Qualitätsbericht SH" in r.output and "Zu prüfen (aus dem Hauptblatt verschoben): 1" in r.output
     assert "Q12;Konfidenz niedrig;Sperre" in out.read_text(encoding="utf-8-sig")
+
+
+# ---------------------------------------------------------------------- Q4 Vorwahl ↔ PLZ (BNetzA)
+
+VORWAHLEN = Path(__file__).parent / "fixtures" / "vorwahlen"
+
+
+@pytest.fixture
+def vorwahl_pruefer():
+    from recherche.vorwahl import VorwahlPruefer
+
+    orte = [Ort("Kiel", "24103", "Kreisfreie Stadt Kiel", plz_weitere=("24105",)),
+            Ort("Kronshagen", "24119", "Kreis Rendsburg-Eckernförde"),
+            Ort("Pinneberg", "25421", "Kreis Pinneberg"), Ort("Quickborn (Pinneberg)", "25451", "Kreis Pinneberg"),
+            Ort("Quickborn (Dithmarschen)", "25712", "Kreis Dithmarschen"), Ort("Husum", "25813", "Kreis Nordfriesland"),
+            Ort("Fehmarn", "23769", "Kreis Ostholstein"), Ort("Burg (Dithmarschen)", "25712", "Kreis Dithmarschen"),
+            Ort("Sylt", "25980", "Kreis Nordfriesland")]
+    return VorwahlPruefer.laden(VORWAHLEN / "onb_ausschnitt.csv", orte, VORWAHLEN / "nachbarkreise.yaml", "SH")
+
+
+@pytest.mark.parametrize(("telefon", "plz", "passt"), [
+    ("+49 431 1234567", "24103", True),  # gleicher Kreis
+    ("+49 431 1234567", "24119", True),  # Kronshagen: Nachbarkreis von Kiel (Rücksprache 30.10.2026)
+    ("+49 40 1234567", "25421", True),  # Hamburg 040 für SH zulässig
+    ("+49 4106 123456", "25451", True),  # „Quickborn Kr Pinneberg" → Quickborn im Kreis Pinneberg
+    ("+49 2357 123456", "24103", False),  # Herscheid (NRW) bei Kiel: Vorwahlzone passt nicht
+    ("+49 4841 123456", "24103", False),  # Husum bei Kiel: Kreis Nordfriesland ist kein Nachbar von Kiel
+    ("+49 4371 123456", "23769", True),  # „Burg auf Fehmarn" ist nicht Burg (Dithmarschen) – nicht entscheidbar
+    ("+49 4651 123456", "25980", True),  # Westerland ↔ Sylt: kein Gemeinde-Treffer, Zone 4 passt
+    ("+49 171 1234567", "24103", True),  # Mobil wird nicht geprüft
+])  # fmt: skip
+def test_vorwahl_passt_zur_plz(vorwahl_pruefer, telefon, plz, passt):
+    assert (vorwahl_pruefer.pruefen(telefon, plz) is None) is passt
+
+
+def test_vorwahl_hinweis_in_der_kanzlei_pruefung(vorwahl_pruefer):
+    from recherche.qualitaet import bericht
+    from recherche.vorwahl import setze_pruefer
+
+    setze_pruefer(vorwahl_pruefer)
+    seiten = _impressum("Lund Beratung", "Steuerberaterkammer Schleswig-Holstein")
+    k = pruefen(_k(telefon="+49 2357 123456"), seiten, ziel_land=SH)
+    assert "Vorwahl passt nicht zur PLZ: 02357 (Herscheid Westf)" in k.abweichung and k.konfidenz.value == "mittel"
+    k = pruefen(k, seiten, ziel_land=SH)
+    assert k.abweichung.count("Vorwahl passt nicht") == 1  # wiederholte Prüfung setzt den Hinweis nicht doppelt
+    assert [b.nr for b in bericht([k]).befunde] == ["Q4"]
+    k.telefon = "+49 431 1234567"
+    k = pruefen(k, seiten, ziel_land=SH)
+    assert "Vorwahl" not in (k.abweichung or "") and k.konfidenz.value == "hoch"

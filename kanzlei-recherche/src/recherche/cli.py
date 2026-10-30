@@ -147,6 +147,13 @@ def _ortsnamen_setzen(ctx: Kontext) -> None:
     staedte = list((yaml.safe_load(pfad.read_text(encoding="utf-8-sig")) or {}).keys()) if pfad.exists() else []
     setze_ortsnamen([o.name.split(" (")[0] for o in orte] + [str(x) for x in staedte])
     setze_ortsliste(orte)  # Zahlendreher-Korrektur der PLZ
+    # Q4 Vorwahl ↔ PLZ: neuestes BNetzA-Verzeichnis im Ordner, Nachbarkreise je Bundesland
+    from .vorwahl import VorwahlPruefer, setze_pruefer
+
+    ordner = ctx.settings.pfad(ctx.settings.pfade.vorwahlen)
+    dateien = sorted(ordner.glob("*.csv")) if ordner.is_dir() else ([ordner] if ordner.is_file() else [])
+    setze_pruefer(VorwahlPruefer.laden(dateien[-1], orte, ctx.settings.pfad(ctx.settings.pfade.nachbarkreise),
+                                       ctx.bundesland) if dateien and orte else None)
 
 
 def _adapter_pruefen(adapter: SearchAdapter, explizit: bool) -> None:

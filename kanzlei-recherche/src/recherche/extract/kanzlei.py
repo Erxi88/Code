@@ -33,6 +33,7 @@ import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
+from .. import vorwahl
 from ..models import AUTO_STATUS, Fund, Kanzlei, Konfidenz, Seitentyp, Status
 from ..storage import Storage
 from ..textnorm import text_normalisieren
@@ -250,6 +251,7 @@ _RANG_EINTRAG = re.compile(r"1B Rang \d:[^;]*(?:;\s*|$)")
 TEAM_UNPLAUSIBEL = "Teamgröße unplausibel"
 _TEAM_EINTRAG = re.compile(re.escape(TEAM_UNPLAUSIBEL) + r"[^;]*(?:;\s*|$)")
 DECKEL_WOERTER = ("Telefon ungültig", "Vorwahl passt nicht zur PLZ")  # Q4: Konfidenz höchstens mittel
+_VORWAHL_EINTRAG = re.compile(r"Vorwahl passt nicht zur PLZ[^;]*(?:;\s*|$)")
 
 
 def signal_1b(k: Kanzlei, impressum_text: str | None, funde: Sequence[Fund] = ()) -> tuple[int, str]:
@@ -288,6 +290,9 @@ def anwenden(k: Kanzlei, grund: str | None, impressum_gelesen: bool, ziel_land: 
     steht als „1B Rang n: …" in „Abweichung" – solche Zeilen gehen ins Blatt „Zu prüfen" (qualitaet.py)."""
     rest = _GRUND_EINTRAG.sub("", k.abweichung or "").strip().rstrip(";").strip()
     rest = _TEAM_EINTRAG.sub("", _RANG_EINTRAG.sub("", rest)).strip().rstrip(";").strip()
+    rest = _VORWAHL_EINTRAG.sub("", rest).strip().rstrip(";").strip()
+    if (vp := vorwahl.pruefer()) and (hinweis := vp.pruefen(k.telefon, k.plz)):
+        rest = "; ".join(x for x in (rest, hinweis) if x)  # Q4: Konfidenz höchstens mittel
     rang, signal = signal_1b(k, impressum_text, funde)
     if rang >= 4 and not grund:
         rest = "; ".join(x for x in (f"{RANG_PRAEFIX}{rang}: {signal}", rest) if x)

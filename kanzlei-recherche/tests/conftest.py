@@ -52,6 +52,15 @@ def kein_netz(monkeypatch):
     monkeypatch.setattr(httpx.AsyncHTTPTransport, "handle_async_request", verboten)
 
 
+@pytest.fixture(autouse=True)
+def vorwahl_aus():
+    """Die Vorwahl-Prüfung (Q4) ist modulweit gesetzt (CLI): nach jedem Test wieder aus."""
+    yield
+    from recherche.vorwahl import setze_pruefer
+
+    setze_pruefer(None)
+
+
 @pytest.fixture
 def db_pfad(tmp_path) -> Path:
     return tmp_path / "test.sqlite"

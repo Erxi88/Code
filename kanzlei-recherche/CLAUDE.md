@@ -287,7 +287,13 @@ der nächsten Quelle füllen.**
   - Telefon (Prüfkatalog 2): Festnetz vor Mobil (015/016/017) vor 0800/0180; innerhalb der Klasse tel:-Link →
     Schema.org (`telephone`) → Impressum-Text → Kontaktseite → übrige Seiten (tel:-Links mit einer Nummer aus einem
     Fremd-Abschnitt zählen nicht). Nur laut `phonenumbers` gültige Nummern, Gruppierung immer aus der Bibliothek
-    (INTERNATIONAL); ungültig → leer und „Telefon ungültig: …" in „Abweichung". Fax („Fax", „Telefax", „F:") nie. Neben
+    (INTERNATIONAL); ungültig → leer und „Telefon ungültig: …" in „Abweichung". Fax („Fax", „Telefax", „F:") nie.
+    **Vorwahl ↔ PLZ (Q4, `vorwahl.py`)**: BNetzA-Verzeichnis (`pfade.vorwahlen`, neueste CSV) → Ortsnetzname →
+    Gemeinde der Ortsliste → Kreis; passt bei gleichem Kreis oder Nachbarkreis (`config/nachbarkreise.yaml`,
+    symmetrisch; SH: 040 immer zulässig) – Rücksprache 30.10.2026, weil Ortsnetze nicht an Kreisgrenzen enden.
+    Ortsnetz ohne Gemeinde-Treffer: Warnung nur bei fremder Vorwahlzone (02357 bei Kiel). Mobil/Service ungeprüft.
+    Sonst „Vorwahl passt nicht zur PLZ: …" in „Abweichung", Konfidenz höchstens mittel; gesetzt in
+    `kanzlei-pruefung` und `extract` (auch auf gespeicherte Zeilen). Neben
     „Tel/Telefon/Fon" zählen „Telefonnummer", „Rufnummer", „Zentrale", „Büro", ☎ und im
     Impressum jede unbeschriftete Nummernzeile mit Vorwahl (nicht hinter „Fax"). Liefert der
     bereinigte Text kein Festnetz, wird es aus dem rohen HTML genommen (Text und tel:-Links,
