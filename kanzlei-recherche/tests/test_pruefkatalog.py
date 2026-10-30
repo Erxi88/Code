@@ -648,3 +648,91 @@ def test_fixture_eval_laedt_ketten_yaml(tmp_path):
     assert not standortseite("heide.nordbund.example", None, "https://heide.nordbund.example/impressum")
     _fixture_regeln_laden(s)
     assert standortseite("heide.nordbund.example", None, "https://heide.nordbund.example/impressum")
+
+
+# ---------------------------------------------------------------------- Durchwahl / E-Mail am Ansprechpartner
+
+
+def test_zentrale_minus_null_schlaegt_durchwahl():
+    from recherche.extract.rules import beste_telefon, zentrale_nummer
+
+    assert zentrale_nummer("+49 481 8588270", ["+49 481 8588270", "+49 481 85880"]) == "+49 481 85880"
+    assert beste_telefon(["+49 481 8588270", "+49 481 85880"]) == "+49 481 85880"
+    assert beste_telefon(["+49 481 8588270", "+49 481 77770"]) == "+49 481 8588270"  # andere Stammnummer
+
+
+def test_allgemeine_email_vor_personenadresse():
+    from recherche.extract.rules import allgemeine_email, beste_email
+
+    assert allgemeine_email("info@heide.nordbund.example") and allgemeine_email("kanzlei@lund.example")
+    assert allgemeine_email("heide@nordbund.example", "heide.nordbund.example")
+    assert not allgemeine_email("swegener@heide.nordbund.example") and not allgemeine_email("info.lund@lund.example")
+    assert beste_email(["swegener@heide.nordbund.example", "info@heide.nordbund.example"],
+                       "heide.nordbund.example", ()) == "info@heide.nordbund.example"
+
+
+def _nordbund_standort(ausschluss):
+    """SHBB-Aufbau (fiktiv): Leiter-Kachel mit Durchwahl und Personenadresse vor dem Kontaktblock; das Impressum der
+    Zentrale nennt im Kopf nur die Standortbezeichnung."""
+    from recherche.ketten import KettenConfig, setze_config
+
+    setze_config(KettenConfig.laden_aus({"ketten": {"nordbund": {
+        "name": "Nordbund Steuerberatungsgesellschaft mbH", "zentrale": "nordbund.example"}}}))
+    start = ["Nordbund Steuerberatungskanzlei Heide", "Ihr Ansprechpartner", "Sven Wegener", "Leiter", "Steuerberater",
+             "Telefon 0481 8588270", "E-Mail swegener@heide.nordbund.example",
+             "Kontakt", "Markt 1", "25746 Heide", "Telefon 0481 8588-0", "E-Mail info@heide.nordbund.example"]
+    impressum = ["Impressum", "Nordbund Steuerberatungskanzlei Heide", "Vertreten durch die Geschäftsführer",
+                 "Maik Muster", "Sitz der Gesellschaft: Kiel, Amtsgericht Kiel HRB 1234",
+                 "Nordbund Steuerberatungsgesellschaft mbH ist Mitglied der Steuerberaterkammer Schleswig-Holstein"]
+    seiten = {
+        Seitentyp.START: Seite(url="https://heide.nordbund.example/", domain="heide.nordbund.example",
+                               seitentyp=Seitentyp.START, text="\n".join(start), html=_html(start)),
+        Seitentyp.IMPRESSUM: Seite(url="https://www.nordbund.example/impressum", domain="nordbund.example",
+                                   seitentyp=Seitentyp.IMPRESSUM, text="\n".join(impressum), html=_html(impressum)),
+    }
+    llm = LlmErgebnis(kanzleiname="Nordbund Steuerberatungskanzlei Heide",
+                      personen=[LlmPerson(name="Maik Muster", funktion="Geschäftsführer"),
+                                LlmPerson(name="Sven Wegener", funktion="Leiter, Steuerberater")])
+    kandidat = Kandidat(id=7, bundesland="SH", domain="heide.nordbund.example", website="https://heide.nordbund.example/")
+    return zusammenfuehren(kandidat, [], seiten, regeln_fuer(seiten, ausschluss, kandidat.domain), llm,
+                           lambda p, o: PlzPruefung(True, SH, ort_kanonisch=o), ausschluss)
+
+
+def test_kette_kanzlei_kontakt_vom_kontaktblock_durchwahl_beim_leiter(ausschluss):
+    from recherche.export import KANZLEI_SPALTEN
+
+    k = _nordbund_standort(ausschluss)
+    assert (k.telefon, k.email) == ("+49 481 85880", "info@heide.nordbund.example")
+    h = k.hauptansprechpartner
+    assert (h.name, h.durchwahl, h.email) == ("Sven Wegener", "+49 481 8588270", "swegener@heide.nordbund.example")
+    spalten = {t: f(k) for t, _, f in KANZLEI_SPALTEN}
+    assert spalten["Durchwahl Ansprechpartner"] == "+49 481 8588270"
+    assert spalten["E-Mail Ansprechpartner"] == "swegener@heide.nordbund.example"
+
+
+def test_teamseite_durchwahl_und_personenadresse_bleiben_beim_ansprechpartner(ausschluss):
+    impressum = ["Impressum", "Lund & Kittel Steuerberater PartG mbB", "Markt 1", "24103 Kiel", "Telefon 0431 55500",
+                 "E-Mail kanzlei@lund-kittel.example", "Partner: Ole Lund, Eva Kittel",
+                 "Zuständige Kammer: Steuerberaterkammer Schleswig-Holstein"]
+    team = ["Unser Team", "Ole Lund", "Steuerberater, Partner", "Durchwahl 0431 555012", "o.lund@lund-kittel.example",
+            "Eva Kittel", "Steuerberaterin, Partnerin", "Telefon 0431 555013"]
+    seiten = {
+        Seitentyp.IMPRESSUM: Seite(url="https://lund-kittel.example/impressum", domain="lund-kittel.example",
+                                   seitentyp=Seitentyp.IMPRESSUM, text="\n".join(impressum), html=_html(impressum)),
+        Seitentyp.TEAM: Seite(url="https://lund-kittel.example/team", domain="lund-kittel.example",
+                              seitentyp=Seitentyp.TEAM, text="\n".join(team), html=_html(team)),
+    }
+    kandidat = Kandidat(id=8, bundesland="SH", domain="lund-kittel.example", website="https://lund-kittel.example/")
+    k = zusammenfuehren(kandidat, [], seiten, regeln_fuer(seiten, ausschluss, kandidat.domain), None,
+                        lambda p, o: PlzPruefung(True, SH, ort_kanonisch=o), ausschluss)
+    assert (k.telefon, k.email) == ("+49 431 55500", "kanzlei@lund-kittel.example")
+    assert [(p.name, p.durchwahl, p.email) for p in k.ansprechpartner[:2]] == [
+        ("Ole Lund", "+49 431 555012", "o.lund@lund-kittel.example"), ("Eva Kittel", "+49 431 555013", None)]
+
+
+def test_ansprechpartner_kontakt_bleibt_bei_bereinigung():
+    from recherche.extract.ansprechpartner import bereinigen
+    from recherche.models import Ansprechpartner
+
+    liste, _ = bereinigen([Ansprechpartner(name="Dr. Ole Lund", durchwahl="+49 431 555012", email="o.lund@x.example")])
+    assert (liste[0].name, liste[0].durchwahl, liste[0].email) == ("Ole Lund", "+49 431 555012", "o.lund@x.example")

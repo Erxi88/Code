@@ -62,7 +62,10 @@ class KettenConfig:
     def laden(cls, pfad: str | Path | None) -> KettenConfig:
         if not pfad or not Path(pfad).exists():
             return cls()
-        daten = yaml.safe_load(Path(pfad).read_text(encoding="utf-8-sig")) or {}
+        return cls.laden_aus(yaml.safe_load(Path(pfad).read_text(encoding="utf-8-sig")) or {})
+
+    @classmethod
+    def laden_aus(cls, daten: dict) -> KettenConfig:
         gross = [Grossgesellschaft(g["name"], [re.compile(m, re.IGNORECASE) for m in g.get("muster") or []],
                                    [d.lower() for d in g.get("domains") or []])
                  for g in daten.get("grossgesellschaften") or []]

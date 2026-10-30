@@ -306,7 +306,16 @@ der nächsten Quelle füllen.**
     nicht Attribute/Skripte), bei mehreren Standorten die Nummer nächst der Kanzlei-PLZ.
     Mobil nur als Rückfall. Gültig ist nur eine Rufnummer mit Ortsnetz 2–9, Mobil 15–17 oder
     Service 18 (Zahlenkolonnen und SVG-Pfade sind keine Nummern).
-  - E-Mail: Impressum-Text vor Navigation/Fußzeile vor mailto-Links.
+  - E-Mail: Impressum-Text vor Navigation/Fußzeile vor mailto-Links; allgemeine Adressen (info@, kanzlei@, mail@,
+    kontakt@, <ort>@) vor Personenadressen, auch von späteren Seiten.
+  - **Kanzlei-Kontakt vs. Ansprechpartner** (Rückmeldung SHBB 30.10.2026): Telefon und E-Mail in einem Personen-Eintrag
+    (`rules.personen_kontexte`: Name mit Funktion bis zur nächsten Person, höchstens 6 Zeilen, endet an Kontakt-/
+    Adressüberschrift oder PLZ-Zeile; „Durchwahl"/„direkt") zählen fürs Kanzlei-Feld nur ohne andere Nummer/Adresse
+    (Hinweis „Telefon: Durchwahl … übergangen" / „E-Mail: Personenadresse … übergangen"). Sie gehen an den
+    Ansprechpartner (`Ansprechpartner.durchwahl`/`.email`, im JSON der Zeile, kein Schema; Teamseiten, bei Standorten
+    auch Start/Kontakt; Personenadresse auch über den Namen „swegener@" ↔ Sven Wegener; gleich dem Kanzlei-Kontakt →
+    leer) → Spalten „Durchwahl Ansprechpartner" und „E-Mail Ansprechpartner" (Hauptansprechpartner). Zentrale „-0"
+    schlägt Durchwahlen derselben Stammnummer. fixture-eval-Sollwerte `durchwahl`, `email_ansprechpartner`.
 - Stufe 2 LLM über Ollama (`ollama.py`, URL und Modell aus `settings.yaml`) auf allen
   Seiten: Name, Rechtsform, Personen (Name, Titel, Funktion), genannte
   Mitarbeiterzahl/Größenklasse; Adresse/Telefon/E-Mail nur als Rückfall.

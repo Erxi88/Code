@@ -53,6 +53,8 @@ KANZLEI_SPALTEN: list[Spalte] = [
     ("Hauptansprechpartner", 26, lambda k: _ap(k, "name")),
     ("Titel", 14, lambda k: _ap(k, "titel")),
     ("Funktion", 22, lambda k: _ap(k, "funktion")),
+    ("Durchwahl Ansprechpartner", 18, lambda k: _ap(k, "durchwahl")),
+    ("E-Mail Ansprechpartner", 30, lambda k: _ap(k, "email")),
     ("Weitere Ansprechpartner", 45, lambda k: "; ".join(a.anzeige() for a in k.ansprechpartner[1:]) or None),
     ("Berufsträger (Anzahl)", 11, lambda k: k.berufstraeger_anzahl),
     ("Teamgröße", 10, lambda k: k.teamgroesse_anzeige),
@@ -122,7 +124,7 @@ PROTOKOLL_SPALTEN: list[Spalte] = [
 
 _KOPF_FONT = Font(bold=True, color="FFFFFF")
 _KOPF_FILL = PatternFill("solid", fgColor="1F4E78")
-_TEXT_SPALTEN = {"PLZ", "Telefon"}  # als Text, damit Excel nichts umformatiert
+_TEXT_SPALTEN = {"PLZ", "Telefon", "Durchwahl Ansprechpartner"}  # als Text, damit Excel nichts umformatiert
 
 
 def _blatt(ws: Worksheet, spalten: Sequence[Spalte], zeilen: Sequence[Any]) -> None:

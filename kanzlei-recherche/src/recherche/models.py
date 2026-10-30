@@ -83,6 +83,9 @@ class Ansprechpartner(BaseModel):
     name: str
     titel: str | None = None
     funktion: str | None = None
+    # Kontakt direkt beim Personen-Eintrag (Teamseite/Kachel) – nicht die Kanzlei-Zentrale (Rückmeldung SHBB 30.10.2026)
+    durchwahl: str | None = None
+    email: str | None = None
 
     def anzeige(self) -> str:
         teile = [self.titel, self.name] if self.titel else [self.name]

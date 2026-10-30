@@ -78,6 +78,7 @@ Namensmerkmale aus 1A (Lohnsteuerhilfe, „e. V.“, Kammer/Verband, Rechtsanwal
 - Bevorzugt die Adresse, deren Domain zur Website-Domain gehört; abweichende Domain erlaubt (z. B. voss-steuerberater.de bei steuerfuechse.tax), aber als Abweichung „E-Mail-Domain abweichend“.
 - Ausgeschlossen: datenschutz@, dsb@, bewerbung@, karriere@, noreply@, webmaster@, Adressen von Agenturen/Hostern.
 - Mehrere Adressen: info@/kanzlei@/mail@ vor Personenadressen; Listen sind erlaubt, Hauptadresse steht vorn.
+- Kanzlei-Kontakt vs. Ansprechpartner (Rückmeldung SHBB 30.10.2026): „Telefon“ und „E-Mail“ sind die Kanzlei-Kontakte aus dem Kontakt-/Impressum-Block (Zentrale, info@). Allgemeine Adressen (info@, kanzlei@, mail@, kontakt@, <ort>@) vor Personenadressen, auch seitenübergreifend. Nummern und Adressen direkt in einem Personen-Eintrag (Name mit Funktion, bis zur nächsten Person/Kontakt-Überschrift/PLZ-Zeile, Kennwort „Durchwahl“/„direkt“) gelten nur, wenn sonst keine genannt ist; sie stehen beim Ansprechpartner in den Spalten „Durchwahl Ansprechpartner“ und „E-Mail Ansprechpartner“ (Personenadresse auch über den Namen: swegener@ ↔ Sven Wegener). Eine Zentrale mit Endung „-0“ schlägt Durchwahlen derselben Stammnummer (0481 8588-0 vor 0481 8588270). Sollwerte in erwartet.json: `durchwahl`, `email_ansprechpartner`.
 
 
 ### Ansprechpartner

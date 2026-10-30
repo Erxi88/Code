@@ -59,7 +59,7 @@ from .personen import (
     personen_aus_json_ld,
 )
 from .prompt import seiten_rahmen
-from .rules import Ausschluss, strasse_zerlegen
+from .rules import Ausschluss, ansprechpartner_kontakte, strasse_zerlegen
 
 
 def _text(s: Seite) -> str:
@@ -945,6 +945,14 @@ def zusammenfuehren(
             if name:
                 abweichungen.append(f"{STANDORT_PRAEFIX}{name}")
             name = anbieter
+    # Durchwahl und Personenadresse direkt am Personen-Eintrag → zum Ansprechpartner, nie ins Kanzlei-Feld
+    kontakte = ansprechpartner_kontakte([_text(s) for s in team_seiten])
+    for i, p in enumerate(personen):
+        tel, mail = next(((t, m) for n, (t, m) in kontakte.items() if gleiche_person(n, p.name)), (None, None))
+        tel = tel if tel and telefon_key(tel) != telefon_key(telefon or "") else None
+        mail = mail if mail and mail != email else None
+        if (tel or mail) and not (p.durchwahl or p.email):
+            personen[i] = p.model_copy(update={"durchwahl": tel, "email": mail})
     if rechtsform is None and ist_einzelkanzlei(name, impressum_text,
                                                 vertretung(impressum_text, fremd, rahmen).namen if impressum_text else []):
         rechtsform = "Einzelkanzlei"

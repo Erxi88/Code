@@ -55,6 +55,10 @@ def setze_ortsnamen(namen: Iterable[str]) -> None:
     _ortsnamen = {n.casefold() for n in namen if n} | _ortsnamen
 
 
+def ist_ortsname(w: str) -> bool:
+    return w.casefold() in _ortsnamen
+
+
 def _sonderwort(w: str, nachbarn: tuple[str, ...] = ()) -> bool:
     """Orts-, Länder-, Wochentagsname – Monatsname nur mit einer Zahl daneben („Mai 2024", „3. Mai"); „Hanh Mai
     Luong" ist ein Name (Rücksprache 30.10.2026)."""
@@ -126,7 +130,7 @@ def bereinigen_eins(p: Ansprechpartner) -> Ansprechpartner:
             name = name[: m.start()].strip()
         else:
             break
-    return Ansprechpartner(name=name.strip(" ,;:-–"), titel=titel, funktion=funktion)
+    return p.model_copy(update={"name": name.strip(" ,;:-–"), "titel": titel, "funktion": funktion})
 
 
 def bereinigen(personen: list[Ansprechpartner]) -> tuple[list[Ansprechpartner], list[str]]:

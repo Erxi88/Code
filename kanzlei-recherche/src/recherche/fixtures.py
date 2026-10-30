@@ -57,6 +57,8 @@ ERWARTET_VORLAGE = {
     "telefon": None,
     "email": None,
     "erster_ansprechpartner": None,
+    "durchwahl": None,
+    "email_ansprechpartner": None,
     "berufstraeger_anzahl": None,
     "teamgroesse": None,
     "teamgroesse_klasse": None,
@@ -64,10 +66,10 @@ ERWARTET_VORLAGE = {
 
 # Reihenfolge der Ausgabe; "adresse" = Straße, PLZ und Ort zusammen richtig
 FELDER = ["kanzleiname", "adresse", "strasse", "plz", "ort", "telefon", "email", "erster_ansprechpartner",
-          "rechtsform", "berufstraeger_anzahl", "teamgroesse"]  # fmt: skip
+          "durchwahl", "email_ansprechpartner", "rechtsform", "berufstraeger_anzahl", "teamgroesse"]  # fmt: skip
 KERNFELDER = ["kanzleiname", "adresse", "telefon", "erster_ansprechpartner"]
 # Felder, die vom LLM abhängen – ohne aufgezeichnete Antwort nicht bewertet
-LLM_FELDER = {"kanzleiname", "erster_ansprechpartner", "rechtsform", "berufstraeger_anzahl", "teamgroesse"}
+LLM_FELDER = {"kanzleiname", "erster_ansprechpartner", "durchwahl", "email_ansprechpartner", "rechtsform", "berufstraeger_anzahl", "teamgroesse"}
 
 
 # Vorsilbe handgeschriebener Beispielantworten – echte Aufzeichnungen überschreiben sie nie
@@ -188,6 +190,8 @@ def istwerte(k: Kanzlei) -> dict:
         "kanzleiname": k.kanzleiname, "rechtsform": k.rechtsform, "strasse": k.strasse, "plz": k.plz,
         "ort": k.ort, "telefon": k.telefon, "email": k.email,
         "erster_ansprechpartner": k.hauptansprechpartner.name if k.hauptansprechpartner else None,
+        "durchwahl": k.hauptansprechpartner.durchwahl if k.hauptansprechpartner else None,
+        "email_ansprechpartner": k.hauptansprechpartner.email if k.hauptansprechpartner else None,
         "berufstraeger_anzahl": k.berufstraeger_anzahl, "teamgroesse": k.teamgroesse,
         "teamgroesse_klasse": k.teamgroesse_klasse,
     }  # fmt: skip
@@ -217,6 +221,8 @@ def feld_richtig(feld: str, ist: dict, soll: dict) -> bool | None:
         "ort": lambda: _ortsname(a) == _ortsname(b),
         "telefon": lambda: telefon_key(a) == telefon_key(b),
         "email": lambda: a.lower() == b.lower(),
+        "durchwahl": lambda: telefon_key(a) == telefon_key(b),
+        "email_ansprechpartner": lambda: a.lower() == b.lower(),
         # Liste zulässiger Namen erlaubt (gleichrangige Partner): Treffer, wenn einer passt
         "erster_ansprechpartner": lambda: any(gleiche_person(a, n) for n in (b if isinstance(b, list) else [b])),
         "berufstraeger_anzahl": lambda: int(a) == int(b),
@@ -226,6 +232,7 @@ def feld_richtig(feld: str, ist: dict, soll: dict) -> bool | None:
 
 _HINWEIS_WORTE = {
     "telefon": ("Telefon", "Vorwahl"),
+    "email": ("E-Mail",),
     "erster_ansprechpartner": ("Ansprechpartner", "Berufsträger abgeleitet"),
     "kanzleiname": ("Name", "Standort"),
 }

@@ -187,6 +187,76 @@ def _ist_strasse(text: str) -> bool:
     return bool(_STRASSE.match(text)) and not _STRASSE_NEIN.match(text) and len(text) <= 60
 
 
+_DURCHWAHL = re.compile(r"\b(?:durchwahl|direktwahl|direkt|dw)\b", re.IGNORECASE)
+_NUMMER_IN_ZEILE = re.compile(r"(?:\(?0|\+)[\d\s/()\-–.]{6,}\d")
+_KONTEXT_ENDE = re.compile(r"^(?:kontakt|impressum|anschrift|adresse|so\s+erreichen|öffnungszeiten|standort)\b|"
+                           r"\b\d{5}\s+[A-ZÄÖÜ]", re.IGNORECASE)
+
+
+def personen_kontexte(zeilen: list[str], reichweite: int = 6) -> list[tuple[str, list[int]]]:
+    """(Name, Zeilen) je Personen-Eintrag: Name mit Funktion bis zur nächsten Person, höchstens `reichweite` Zeilen,
+    endet an einer Kontakt-/Adressüberschrift oder einer PLZ-Zeile. Telefon und E-Mail dort sind Durchwahl bzw.
+    Personenadresse, nicht die der Kanzlei (Prüfkatalog 2, Rückmeldung SHBB 30.10.2026)."""
+    from .personen import erkenne_personen
+
+    namen: dict[int, str] = {}
+    for p in erkenne_personen("\n".join(zeilen)):
+        if p.zeile >= 0:
+            namen.setdefault(p.zeile, p.name)
+    starts = sorted(namen)
+    ergebnis = []
+    for n, s in enumerate(starts):
+        ende = min(starts[n + 1] if n + 1 < len(starts) else len(zeilen), s + reichweite + 1)
+        belegt = []
+        for i in range(s, ende):
+            if i > s and _KONTEXT_ENDE.search(zeilen[i]):
+                break
+            belegt.append(i)
+        ergebnis.append((namen[s], belegt))
+    return ergebnis
+
+
+def personen_zeilen(zeilen: list[str], reichweite: int = 6) -> set[int]:
+    return {i for _, belegt in personen_kontexte(zeilen, reichweite) for i in belegt}
+
+
+def _mail_passt_zu(mail: str, name: str) -> bool:
+    """swegener@ / s.wegener@ / sven.wegener@ / wegener@ ↔ „Sven Wegener"."""
+    lokal = mail.partition("@")[0].lower()
+    teile = [w.lower() for w in re.split(r"[\s-]+", name) if w]
+    if len(teile) < 2:
+        return False
+    vor, nach = teile[0], teile[-1]
+    umlaut = str.maketrans({"ä": "ae", "ö": "oe", "ü": "ue", "ß": "ss"})
+    varianten = {f"{v}{t}{n}" for v in (vor, vor[0]) for t in ("", ".", "-", "_") for n in (nach,)}
+    varianten |= {nach, f"{nach}.{vor}", f"{nach}{vor[0]}"}
+    varianten |= {v.translate(umlaut) for v in varianten}
+    return lokal in varianten
+
+
+def ansprechpartner_kontakte(texte: list[str]) -> dict[str, tuple[str | None, str | None]]:
+    """Name → (Durchwahl, E-Mail) aus den Personen-Einträgen der Seiten (Teamseite, Kontakt-/Startseite eines
+    Standorts). Eine E-Mail, deren lokaler Teil zum Namen passt („swegener@" ↔ Sven Wegener), zählt auch außerhalb
+    des Eintrags."""
+    ergebnis: dict[str, tuple[str | None, str | None]] = {}
+    alle_mails: list[str] = []
+    for text in texte:
+        zeilen = (text_normalisieren(text) or "").splitlines()
+        alle_mails += emails(text)
+        for name, belegt in personen_kontexte(zeilen):
+            nummern = [n for i in belegt for n, _ in telefone([zeilen[i]])] + [
+                n for i in belegt if (_NUMMER_ALLEIN.match(zeilen[i].strip()) or _DURCHWAHL.search(zeilen[i]))
+                and (m := _NUMMER_IN_ZEILE.search(zeilen[i])) and (n := normalize_telefon(m.group(0)))]
+            mails = [m for i in belegt for m in emails(zeilen[i])]
+            alt_tel, alt_mail = ergebnis.get(name, (None, None))
+            ergebnis[name] = (alt_tel or beste_telefon(nummern),
+                              alt_mail or next((m for m in mails if not allgemeine_email(m)), None))
+    for name, (tel, mail) in list(ergebnis.items()):
+        if mail is None and (m := next((m for m in alle_mails if _mail_passt_zu(m, name)), None)):
+            ergebnis[name] = (tel, m)
+    return ergebnis
+
+
 def telefone(zeilen: list[str]) -> list[tuple[str, int]]:
     """(normalisierte Nummer, Zeile) aller als Telefon gekennzeichneten Nummern (kein Fax)."""
     ergebnis = []
@@ -218,11 +288,38 @@ def emails(text: str, links: list[str] | None = None) -> list[str]:
     return list(dict.fromkeys(gefunden))
 
 
-def beste_email(kandidaten: list[str], domain: str | None, nachrangig: tuple[str, ...]) -> str | None:
-    def rang(mail: str) -> tuple[int, int]:
+_ALLGEMEIN = ("info", "kanzlei", "mail", "kontakt", "post", "office", "buero", "büro", "zentrale", "empfang",
+              "sekretariat", "service", "steuer", "stb", "team")
+
+
+def allgemeine_email(mail: str, domain: str | None = None) -> bool:
+    """info@, kanzlei@, mail@, kontakt@ … oder <ort>@ (Ortsname, Standort-Subdomain „heide@") – keine Personenadresse
+    (Prüfkatalog 2, Rückmeldung SHBB 30.10.2026)."""
+    from .ansprechpartner import ist_ortsname
+
+    lokal = mail.partition("@")[0].lower()
+    teile = re.split(r"[.\-_]", lokal)
+    if lokal.startswith(_ALLGEMEIN) and not re.search(r"[.\-_]", lokal.removeprefix(next(a for a in _ALLGEMEIN
+                                                                                    if lokal.startswith(a)))):
+        return True
+    unter = (domain or "").lower().removeprefix("www.").split(".")[0]
+    return lokal == unter or all(ist_ortsname(t) for t in teile if t)
+
+
+def beste_email(kandidaten: list[str], domain: str | None, nachrangig: tuple[str, ...],
+                person: set[str] | None = None) -> str | None:
+    """Eigene Domain vor fremder; nachrangige (datenschutz@ …) zuletzt; allgemeine Adressen (info@, kanzlei@,
+    <ort>@) vor Personenadressen („swegener@"); Adressen aus einem Personen-Eintrag nach allen anderen."""
+    person = person or set()
+    stamm = (domain or "").lower().removeprefix("www.")
+    stamm = ".".join(stamm.split(".")[-2:]) if stamm.count(".") >= 2 else stamm
+
+    def rang(mail: str) -> tuple[int, int, int, int]:
         lokal, _, host = mail.partition("@")
-        eigene = domain is not None and (host == domain or host.endswith("." + domain))
-        return (0 if eigene else 1, 1 if lokal.startswith(nachrangig) else 0)
+        eigene = bool(domain) and (host == domain or host.endswith("." + domain) or host == stamm
+                                   or host.endswith("." + stamm))
+        return (0 if eigene else 1, 1 if lokal.startswith(nachrangig) else 0, 1 if mail in person else 0,
+                0 if allgemeine_email(mail, domain) else 1)
 
     return min(kandidaten, key=rang) if kandidaten else None
 
@@ -248,7 +345,25 @@ def beste_telefon(nummern: list[str]) -> str | None:
         return 2 if ist_service(n) else 1 if ist_mobil(n) else 0
 
     nummern = list(dict.fromkeys(n for n in nummern if n))
-    return min(nummern, key=lambda n: (klasse(n), nummern.index(n))) if nummern else None
+    if not nummern:
+        return None
+    beste = min(nummern, key=lambda n: (klasse(n), nummern.index(n)))
+    return zentrale_nummer(beste, nummern) or beste
+
+
+def _ziffern(n: str) -> str:
+    return re.sub(r"\D", "", n)
+
+
+def zentrale_nummer(nummer: str, nummern: list[str]) -> str | None:
+    """Zentrale („0481 8588-0" = +49 481 85880) zur Durchwahl derselben Stammnummer (+49 481 8588270) – Prüfkatalog 2,
+    Rückmeldung SHBB 30.10.2026."""
+    d = _ziffern(nummer)
+    for z in nummern:
+        dz = _ziffern(z)
+        if dz.endswith("0") and len(dz) >= 8 and len(dz) < len(d) and d.startswith(dz[:-1]):
+            return z
+    return None
 
 
 def _fremde_institution(zeilen: list[str], i: int, name: str) -> bool:
@@ -360,8 +475,11 @@ def extract_impressum(
     weitere_texte = [(text_normalisieren(x) or "", lnks) for x, lnks in weitere_texte or []]
     erg = RegelErgebnis()
     mails: list[str] = []
+    weitere_mails: list[str] = []
     tel_links: list[str] = []
     text_nummern: list[str] = []
+    kontext_nummern: set[str] = set()  # Durchwahlen: direkt bei einer Person oder „Durchwahl"/„direkt"
+    kontext_mails: set[str] = set()
     for nr, (txt, lnks) in enumerate([(text, links or []), *(weitere_texte or [])]):
         zeilen = txt.splitlines()
         fremd = ausschluss.fremd_zeilen(zeilen)
@@ -380,6 +498,9 @@ def extract_impressum(
             if gewaehlt is not None:
                 erg.strasse, erg.plz, erg.ort, erg.adresszusatz = gewaehlt.strasse, gewaehlt.plz, gewaehlt.ort, gewaehlt.zusatz
         fremde_nummern = {n for n, i in telefone(zeilen) if i in fremd}
+        bei_person = personen_zeilen(zeilen)
+        kontext_nummern |= {n for n, i in telefone(zeilen) if i in bei_person or _DURCHWAHL.search(zeilen[i])}
+        kontext_mails |= {m for i in bei_person for m in emails(zeilen[i])}
         tel_links += [n for h in lnks if h.lower().startswith("tel:") and (n := normalize_telefon(h[4:]))
                       and n not in fremde_nummern]
         text_nummern += [n for n, i in telefone(zeilen) if i not in fremd]
@@ -390,13 +511,20 @@ def extract_impressum(
                     continue
                 if n := normalize_telefon(z):
                     text_nummern.append(n)
+        eigene = [z for i, z in enumerate(zeilen) if i not in fremd and " ".join(z.lower().split()) not in rahmen]
+        im_rahmen = [z for i, z in enumerate(zeilen) if i not in fremd and " ".join(z.lower().split()) in rahmen]
+        seite_mails = list(dict.fromkeys(emails("\n".join(eigene)) + emails(
+            "\n".join(im_rahmen), [h for h in lnks if h.lower().startswith("mailto:")])))
         if not mails:
-            eigene = [z for i, z in enumerate(zeilen) if i not in fremd and " ".join(z.lower().split()) not in rahmen]
-            im_rahmen = [z for i, z in enumerate(zeilen) if i not in fremd and " ".join(z.lower().split()) in rahmen]
-            mails = emails("\n".join(eigene)) + emails("\n".join(im_rahmen),
-                                                       [h for h in lnks if h.lower().startswith("mailto:")])
-            mails = list(dict.fromkeys(mails))
-    erg.telefon = beste_telefon([*tel_links, *(schema_telefone or []), *text_nummern])
+            mails = seite_mails
+        else:  # spätere Seiten nur, wenn sie eine allgemeine Adresse liefern (info@ statt der Personenadresse)
+            weitere_mails += [m for m in seite_mails if allgemeine_email(m, domain) and m not in kontext_mails]
+    alle = [*tel_links, *(schema_telefone or []), *text_nummern]
+    ohne_kontext = [n for n in alle if n not in kontext_nummern]
+    erg.telefon = beste_telefon(ohne_kontext) or beste_telefon(alle)
+    if (durchwahl := beste_telefon(alle)) != erg.telefon and durchwahl in kontext_nummern:
+        erg.hinweise.append(f"Telefon: Durchwahl {durchwahl} bei einer Person übergangen, Kanzlei {erg.telefon}")
+    text_nummern = [n for n in text_nummern if n not in kontext_nummern] or text_nummern
     text_erste = beste_telefon(text_nummern)
     if erg.telefon and text_erste and erg.telefon != text_erste and erg.telefon not in text_nummern \
             and beste_telefon([text_erste, erg.telefon]) == text_erste:
@@ -405,7 +533,11 @@ def extract_impressum(
         quelle = "tel:-Link" if erg.telefon in tel_links else "Schema.org"
         erg.hinweise.append(f"Telefon aus dem Text {text_erste}, {quelle} nennt {erg.telefon}")
         erg.telefon = text_erste
-    erg.email = beste_email(mails, domain, ausschluss.email_nachrangig)
+    if mails and not any(allgemeine_email(m, domain) and m not in kontext_mails for m in mails):
+        mails = mails + weitere_mails
+    erg.email = beste_email(mails, domain, ausschluss.email_nachrangig, kontext_mails)
+    if erg.email and mails and erg.email != mails[0] and mails[0] in kontext_mails:
+        erg.hinweise.append(f"E-Mail: Personenadresse {mails[0]} übergangen, Kanzlei {erg.email}")
     return erg
 
 
