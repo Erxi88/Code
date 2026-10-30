@@ -10,14 +10,18 @@ from recherche.export import BLATT_KANZLEIEN, BLATT_KEINE_KANZLEI, export_excel
 from recherche.extract.base import LlmErgebnis
 from recherche.extract.kanzlei import (
     anwenden,
+    ausserhalb_grund,
     grund_aus_abweichung,
     kein_kanzlei_grund,
+    pruefen,
     run_pruefung,
+    status_setzen,
 )
 from recherche.extract.lauf import regeln_fuer
 from recherche.extract.merge import zusammenfuehren
 from recherche.extract.rules import Ausschluss
 from recherche.models import (
+    Ansprechpartner,
     Fund,
     Kandidat,
     Kanzlei,
@@ -269,3 +273,71 @@ def test_ausserhalb_bundesland_eigenes_blatt_und_vorrang(storage, tmp_path):
     run_pruefung(storage, "SH", ziel_land="Schleswig-Holstein")
     status = {k.kanzleiname or k.domain: k.status for k in storage.kanzleien("SH")}
     assert status["Steuerkanzlei Dresden"] == Status.NEU and status["Steuerbüro Hamburg"] == Status.GEPRUEFT
+
+
+# ---------------------------------------------------------------------- Regeln aus dem SH-Gesamtlauf
+
+SH = "Schleswig-Holstein"
+
+
+def _zeile(**kw):
+    return Kanzlei(lauf_bundesland="SH", **{"domain": "kanzlei.example", "plz": "24103", "bundesland": SH,
+                                            "plz_verifiziert": True, **kw})
+
+
+@pytest.mark.parametrize(("kw", "erwartet"), [
+    ({}, None),
+    ({"domain": "steuerberater-wien.at", "plz": "1010", "bundesland": None}, "ausländische Domain (.at)"),
+    ({"domain": "treuhand.tirol"}, "ausländische Domain (.tirol)"),
+    ({"plz": None, "bundesland": None}, "keine deutsche PLZ"),
+    ({"plz": "9500", "bundesland": None}, "keine deutsche PLZ"),  # Villach
+    ({"plz": "99999", "bundesland": None, "plz_verifiziert": False}, "keine deutsche PLZ"),
+    ({"plz": "24103", "bundesland": None, "plz_verifiziert": None}, None),  # OpenPLZ nicht erreichbar
+    ({"plz": "10115", "bundesland": "Berlin"}, "PLZ 10115 in Berlin"),
+])  # fmt: skip
+def test_ausserhalb_grund(kw, erwartet):
+    assert ausserhalb_grund(_zeile(**kw), SH) == erwartet
+
+
+def test_keine_deutsche_plz_nie_im_hauptblatt():
+    k = status_setzen(_zeile(plz=None, bundesland=None, abweichung="Telefon: x"), SH)
+    assert k.status == Status.AUSSERHALB and k.abweichung == "Außerhalb: keine deutsche PLZ; Telefon: x"
+    k.plz, k.bundesland = "24103", SH
+    k = status_setzen(k, SH)
+    assert k.status == Status.NEU and k.abweichung == "Telefon: x"  # Hinweis verschwindet wieder
+
+
+@pytest.mark.parametrize(("name", "impressum", "personen", "grund"), [
+    ("Lohnsteuerhilfeverein Nord e. V.", "Steuerberaterkammer", [], "Lohnsteuerhilfeverein"),
+    ("Lohnsteuerhilfe Kiel", "", [], "Lohnsteuerhilfeverein"),
+    ("Kanzlei Prasse & Partner", "Rechtsanwälte\nZuständige Kammer: Rechtsanwaltskammer Schleswig-Holstein",
+     [Ansprechpartner(name="Ole Prasse", funktion="Rechtsanwalt")], "Rechtsanwaltskanzlei"),
+    ("Kanzlei Prasse & Partner", "Rechtsanwälte und Steuerberater\nSteuerberaterkammer Schleswig-Holstein",
+     [Ansprechpartner(name="Ole Prasse", funktion="Rechtsanwalt")], None),  # gemischt bleibt
+    ("Kanzlei Prasse", "Rechtsanwalt", [Ansprechpartner(name="Ole Prasse", funktion="Rechtsanwalt, Steuerberater")], None),
+])  # fmt: skip
+def test_lohnsteuerhilfe_und_reine_anwaltskanzlei(name, impressum, personen, grund):
+    k = _zeile(kanzleiname=name, ansprechpartner=personen, berufstraeger_anzahl=1)
+    ergebnis = kein_kanzlei_grund(k, impressum)
+    assert (ergebnis if ergebnis is None else ergebnis.split(" (")[0]) == grund
+
+
+def test_name_abgeleitet_ohne_kammer():
+    """Gemeinde/Verein ohne Kanzleinamen: Name aus dem Ansprechpartner, keine Kammer → keine Kanzlei, niedrig."""
+    abw = "Name abgeleitet aus Ansprechpartner Ina Lund – kein Kanzleiname gefunden"
+    seiten = {Seitentyp.IMPRESSUM: _seite("gemeinde-x.example", Seitentyp.IMPRESSUM,
+                                          ["Impressum", "Gemeinde X", "Bürgermeisterin Ina Lund", "Dorfstraße 1", "24999 X"])}
+    k = pruefen(_zeile(kanzleiname="Steuerkanzlei Lund", abweichung=abw, berufstraeger_anzahl=1,
+                         rechtsform="Einzelkanzlei"), seiten, ziel_land=SH)
+    assert k.status == Status.KEINE_KANZLEI and k.konfidenz == Konfidenz.NIEDRIG
+    assert "aus Ansprechpartner abgeleitet" in grund_aus_abweichung(k.abweichung)
+    mit_beruf = {Seitentyp.IMPRESSUM: _seite("lund.example", Seitentyp.IMPRESSUM,
+                                             ["Impressum", "Ina Lund", "Berufsbezeichnung: Steuerberaterin"])}
+    k = pruefen(_zeile(kanzleiname="Steuerkanzlei Lund", abweichung=abw, berufstraeger_anzahl=1), mit_beruf, ziel_land=SH)
+    assert k.status == Status.NEU and k.konfidenz == Konfidenz.NIEDRIG  # Kanzlei, aber ohne Kammer niedrig
+
+
+def test_blocklist_domain_keine_zeile():
+    k = pruefen(_zeile(domain="www.stbk-koeln.de", kanzleiname="Steuerberaterkammer Köln", berufstraeger_anzahl=3),
+                {}, ziel_land=SH, blocklist={"stbk-koeln.de"})
+    assert k.status == Status.KEINE_KANZLEI and "Blocklist" in grund_aus_abweichung(k.abweichung)

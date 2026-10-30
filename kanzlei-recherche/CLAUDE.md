@@ -439,8 +439,17 @@ der nächsten Quelle füllen.**
   Prüfung ohne LLM auf bereits extrahierte Kanzleien an (auch zurück zu `neu`). Big-Four-
   Gesellschaften („… Wirtschaftsprüfungsgesellschaft", Berufsträger) gelten als Kanzlei – die
   gehören auf die Blocklist.
+  **Vorab keine Kanzlei**, auch wenn ein Merkmal zutrifft: Domain auf der Blocklist (Kammern, Verbände,
+  Portale – auch bei schon extrahierten Zeilen); „Lohnsteuerhilfe…"/„e. V." im Namen (Grund
+  „Lohnsteuerhilfeverein"); reine Rechtsanwaltskanzlei (Anwalt/Notar in Name oder Impressum, aber nirgends
+  Steuerberater, Steuerberaterkammer, WP/vBP – auch nicht bei den Ansprechpartnern; gemischte StB + RA bleiben);
+  „Name abgeleitet aus Ansprechpartner" ohne Steuerberaterkammer und ohne Berufsbezeichnung im Impressum
+  (Gemeinden, Ortsvereine, Praxen). Name abgeleitet ohne Kammer → Konfidenz immer `niedrig`.
 - **Bundesland-Filter**: Liegt die PLZ einer Kanzlei laut OpenPLZ nicht im Bundesland des Laufs, wird
-  der Status `außerhalb Bundesland` (auch ohne Website; `keine Kanzlei` geht vor). Nichts wird gelöscht –
+  der Status `außerhalb Bundesland` (auch ohne Website; `keine Kanzlei` geht vor). Ebenso **ohne gültige deutsche
+  PLZ** (keine, nicht fünfstellig oder laut OpenPLZ unbekannt; nicht bei unerreichbarem OpenPLZ) – nie im Hauptblatt,
+  „Außerhalb: keine deutsche PLZ" in „Abweichung" – und bei **ausländischer Domain** (.at, .ch, .li, .tirol, .wien,
+  .swiss, .lu): „Außerhalb: ausländische Domain (.at)", in `extract` ohne LLM. Nichts wird gelöscht –
   bei einem bundesweiten Lauf sind sie für ihr eigenes Land richtig. `recherche kanzlei-pruefung`
   wendet den Filter auf bestehende Zeilen an. Schon **vor dem Crawl**: Nennen die Suchtreffer
   (Kandidaten-/Fund-PLZ, „01067 Dresden" in Titel oder Snippet) nur PLZ außerhalb, wird nicht gecrawlt

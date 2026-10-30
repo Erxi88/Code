@@ -309,9 +309,10 @@ def _extract(
         stat = run_extract(st, ctx.bundesland, extractor, pruefer, ausschluss, _lauf_id(), limit=limit,
                            fortschritt=lambda m: console.print(f"  {m}"),
                            kanzlei_rechtsformen=s.extract.kanzlei_rechtsformen if s.extract.kanzlei_pruefung else None,
-                           ziel_land=ctx.bl_cfg.name)  # fmt: skip
+                           ziel_land=ctx.bl_cfg.name, blocklist=ctx.blocklist())  # fmt: skip
     if stat.ohne_llm_ausserhalb:
-        console.print(f"  {stat.ohne_llm_ausserhalb} ohne LLM-Aufruf: PLZ laut Impressum außerhalb {ctx.bl_cfg.name}")
+        console.print(f"  {stat.ohne_llm_ausserhalb} ohne LLM-Aufruf: ausländische Domain oder PLZ laut Impressum "
+                      f"außerhalb {ctx.bl_cfg.name}")
     console.print(
         f"Fertig: {stat.fertig} Kanzleien ({stat.ohne_website} ohne Website), {stat.fehler} Fehler, "
         f"{stat.llm_aufrufe} LLM-Aufrufe, {pruefer.anfragen} OpenPLZ-Anfragen."
@@ -681,7 +682,7 @@ def kanzlei_pruefung(
     with ctx.storage() as st:
         stat = run_pruefung(st, ctx.bundesland, tuple(ctx.settings.extract.kanzlei_rechtsformen),
                             fortschritt=lambda m: console.print(f"  {m}"), ziel_land=ctx.bl_cfg.name,
-                            plz_pruefen=PlzPruefer(ctx.settings.openplz.url, cache=st).pruefe)
+                            plz_pruefen=PlzPruefer(ctx.settings.openplz.url, cache=st).pruefe, blocklist=ctx.blocklist())
     console.print(f"Geprüft: {stat.geprueft} Kanzleien – {stat.keine_kanzlei} keine Kanzlei, {stat.ausserhalb} außerhalb "
                   f"{ctx.bl_cfg.name}, {stat.wieder_kanzlei} wieder Kanzlei, {stat.herabgestuft} von Konfidenz „hoch\" "
                   f"herabgestuft, {stat.dubletten} Dubletten-Verdacht (Telefon + Ansprechpartner).")

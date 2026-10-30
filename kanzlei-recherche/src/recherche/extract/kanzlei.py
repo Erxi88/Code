@@ -16,6 +16,12 @@ Die letzten drei Merkmale zählen nicht,
   Suchorten gefunden wurde – Portale wie city-map.de kommen als viele Kandidaten mit je 1–2 Orten,
 - oder wenn der Kanzleiname leer ist (Portal-Seite ohne Kanzlei).
 
+Vorab „keine Kanzlei", auch wenn ein Merkmal zutrifft: Domain auf der Blocklist; Lohnsteuerhilfeverein
+(„Lohnsteuerhilfe…", „e. V." im Namen); reine Rechtsanwaltskanzlei (Anwalt/Notar in Name oder Impressum, aber
+nirgends Steuerberater, Steuerkammer, WP/vBP – gemischte bleiben); Name nur aus dem Ansprechpartner abgeleitet
+ohne Steuerberaterkammer und ohne Berufsbezeichnung im Impressum (Gemeinden, Vereine, Praxen – Konfidenz dann
+„niedrig").
+
 Sonst: Status „keine Kanzlei", Grund vorn in „Abweichung", Konfidenz höchstens „mittel", eigenes
 Excel-Blatt mit allen Feldern (nichts wird gelöscht). Nur aktiv mit `extract.kanzlei_pruefung: true`; `recherche kanzlei-pruefung` wendet
 die Prüfung ohne LLM auf bereits extrahierte Kanzleien an.
@@ -45,6 +51,17 @@ _SCHEIN_NAME = re.compile(
     re.IGNORECASE,
 )
 _KAMMER = re.compile(r"steuerberaterkammer|kammer\s+der\s+steuerberater", re.IGNORECASE)
+_LOHNSTEUERHILFE = re.compile(r"lohnsteuerhilfe|\be\.\s?v\.(?!\w)|eingetragener\s+verein", re.IGNORECASE)
+_ANWALT = re.compile(r"rechtsanw[aä]lt|anwalt|anwält|notar|rechtsanwaltskammer", re.IGNORECASE)
+# Steuerberatung irgendwo belegt → gemischte Kanzlei (StB + RA) bleibt
+_STEUER_BERUF = re.compile(r"steuerberat|\bstb\b|steuerbevollm|steuerkanzlei|steuerbüro|wirtschaftspr[üu]f|\bwp\b|"
+                           r"buchpr[üu]f|\bvbp\b|steuerberaterkammer", re.IGNORECASE)
+NAME_ABGELEITET = "Name abgeleitet aus Ansprechpartner"
+# ausländische Domains: außerhalb ohne LLM (Österreich, Schweiz, Liechtenstein …)
+AUSLAND_TLD = ("at", "ch", "li", "tirol", "wien", "swiss", "lu")
+KEINE_DEUTSCHE_PLZ = "keine deutsche PLZ"
+_AUSSERHALB_PRAEFIX = "Außerhalb: "
+_AUSSERHALB_EINTRAG = re.compile(re.escape(_AUSSERHALB_PRAEFIX) + r"[^;]*(?:;\s*|$)")
 # ein Grund-Eintrag in „Abweichung" (bis zum nächsten „; " oder Ende)
 _GRUND_EINTRAG = re.compile(re.escape(GRUND_PRAEFIX) + r"[^;]*(?:;\s*|$)")
 
@@ -55,7 +72,16 @@ def kein_kanzlei_grund(k: Kanzlei, impressum_text: str | None,
     """None, wenn ein Kanzlei-Merkmal zutrifft; sonst der Grund.
 
     `suchorte`: Zahl der Suchorte der Stammdomain über alle Kandidaten (Standard: nur diese Funde)."""
-    if impressum_text and _KAMMER.search(impressum_text):
+    if k.kanzleiname and _LOHNSTEUERHILFE.search(k.kanzleiname):
+        return "Lohnsteuerhilfeverein"
+    personen = " ".join(f"{p.titel or ''} {p.funktion or ''}" for p in k.ansprechpartner)
+    belege = f"{k.kanzleiname or ''} \n {impressum_text or ''} \n {personen}"
+    if _ANWALT.search(f"{k.kanzleiname or ''} \n {impressum_text or ''}") and not _STEUER_BERUF.search(belege):
+        return "Rechtsanwaltskanzlei (kein Steuerberater in Name, Impressum oder bei den Ansprechpartnern)"
+    kammer = bool(impressum_text and _KAMMER.search(impressum_text))
+    if NAME_ABGELEITET in (k.abweichung or "") and not kammer and not _STEUER_BERUF.search(impressum_text or ""):
+        return "kein Kanzleiname (aus Ansprechpartner abgeleitet), keine Steuerberaterkammer und keine Berufsbezeichnung im Impressum"
+    if kammer:
         return None
     if k.berufstraeger_anzahl:
         return None
@@ -83,34 +109,68 @@ def grund_aus_abweichung(abweichung: str | None) -> str | None:
     return None
 
 
+def ausland_tld(domain: str | None) -> str | None:
+    """„.at" für kanzlei.at / www.stb.tirol – sonst None."""
+    tld = (domain or "").lower().rstrip(".").rsplit(".", 1)[-1]
+    return f".{tld}" if domain and tld in AUSLAND_TLD else None
+
+
+def ausserhalb_grund(k: Kanzlei, ziel_land: str | None) -> str | None:
+    """Grund für „außerhalb Bundesland": ausländische Domain, keine (gültige) deutsche PLZ oder PLZ laut OpenPLZ
+    in einem anderen Land. PLZ nicht prüfbar (OpenPLZ nicht erreichbar) → kein Grund."""
+    if not ziel_land:
+        return None
+    if tld := ausland_tld(k.domain):
+        return f"ausländische Domain ({tld})"
+    if not k.plz or not re.fullmatch(r"\d{5}", k.plz) or (k.plz_verifiziert is False and not k.bundesland):
+        return KEINE_DEUTSCHE_PLZ
+    if k.bundesland and k.bundesland != ziel_land:
+        return f"PLZ {k.plz} in {k.bundesland}"
+    return None
+
+
 def ausserhalb(k: Kanzlei, ziel_land: str | None) -> bool:
-    """PLZ laut OpenPLZ in einem anderen Bundesland als dem des Laufs (unbekannt → nein)."""
-    return bool(ziel_land and k.bundesland and k.bundesland != ziel_land)
+    return ausserhalb_grund(k, ziel_land) is not None
 
 
 def status_setzen(k: Kanzlei, ziel_land: str | None = None) -> Kanzlei:
     """Automatischer Status: „keine Kanzlei" vor „außerhalb Bundesland" vor „neu" – nur wenn der
-    bisherige Status automatisch ist (von Hand gepflegte bleiben)."""
+    bisherige Status automatisch ist (von Hand gepflegte bleiben). Ausländische Domain und keine deutsche PLZ
+    stehen als „Außerhalb: …" in „Abweichung" (ein anderes Bundesland zeigt schon die Spalte)."""
+    rest = _AUSSERHALB_EINTRAG.sub("", k.abweichung or "").strip().rstrip(";").strip() or None
+    grund = ausserhalb_grund(k, ziel_land)
+    if grund and not grund.startswith("PLZ "):
+        rest = f"{_AUSSERHALB_PRAEFIX}{grund}" + (f"; {rest}" if rest else "")
+    k.abweichung = rest
     if k.status in AUTO_STATUS:
         k.status = (Status.KEINE_KANZLEI if grund_aus_abweichung(k.abweichung)
-                    else Status.AUSSERHALB if ausserhalb(k, ziel_land) else Status.NEU)
+                    else Status.AUSSERHALB if grund else Status.NEU)
     return k
 
 
-def anwenden(k: Kanzlei, grund: str | None, impressum_gelesen: bool, ziel_land: str | None = None) -> Kanzlei:
+def anwenden(k: Kanzlei, grund: str | None, impressum_gelesen: bool, ziel_land: str | None = None,
+             kammer: bool = False) -> Kanzlei:
     """Grund, Konfidenz und Status setzen. Ein von Hand gepflegter Status bleibt (auch beim Speichern,
-    Storage.upsert_kanzlei)."""
+    Storage.upsert_kanzlei). Name nur aus dem Ansprechpartner abgeleitet und keine Kammer → Konfidenz niedrig."""
     rest = _GRUND_EINTRAG.sub("", k.abweichung or "").strip().rstrip(";").strip()
     k.abweichung = (GRUND_PRAEFIX + grund + (f"; {rest}" if rest else "")) if grund else (rest or None)
     k.konfidenz = konfidenz(k, impressum_gelesen, kanzlei=grund is None)
+    if NAME_ABGELEITET in (k.abweichung or "") and not kammer:
+        k.konfidenz = Konfidenz.NIEDRIG
     return status_setzen(k, ziel_land)
 
 
 def pruefen(k: Kanzlei, seiten: dict, rechtsformen=STANDARD_RECHTSFORMEN, funde: Sequence[Fund] = (),
-            suchorte: int | None = None, ziel_land: str | None = None) -> Kanzlei:
+            suchorte: int | None = None, ziel_land: str | None = None, blocklist: set[str] | None = None) -> Kanzlei:
     impressum = seiten.get(Seitentyp.IMPRESSUM)
     text = text_normalisieren(impressum.text) if impressum else None
-    return anwenden(k, kein_kanzlei_grund(k, text, rechtsformen, funde, suchorte), impressum is not None, ziel_land)
+    from ..search.pipeline import ist_blockiert
+
+    if blocklist and k.domain and ist_blockiert(k.domain, blocklist):
+        grund = "Domain auf der Blocklist (Portal, Kammer, Verzeichnis)"
+    else:
+        grund = kein_kanzlei_grund(k, text, rechtsformen, funde, suchorte)
+    return anwenden(k, grund, impressum is not None, ziel_land, kammer=bool(text and _KAMMER.search(text)))
 
 
 # Baukasten-Hoster: jede Subdomain ist eine eigene Website (oft eine kleine Kanzlei)
@@ -154,7 +214,8 @@ class PruefStatistik:
 
 def run_pruefung(storage: Storage, bundesland: str, rechtsformen=STANDARD_RECHTSFORMEN,
                  fortschritt: Callable[[str], None] | None = None, ziel_land: str | None = None,
-                 kanzlei_erkennung: bool = True, plz_pruefen: Callable | None = None) -> PruefStatistik:
+                 kanzlei_erkennung: bool = True, plz_pruefen: Callable | None = None,
+                 blocklist: set[str] | None = None) -> PruefStatistik:
     """Kanzlei-Erkennung und Bundesland-Filter auf alle extrahierten Kanzleien anwenden (ohne LLM).
     Ohne Website nur der Bundesland-Filter (Discovery aus Verzeichnissen, keine Seiten zum Prüfen)."""
     stat = PruefStatistik()
@@ -169,7 +230,7 @@ def run_pruefung(storage: Storage, bundesland: str, rechtsformen=STANDARD_RECHTS
             k.plz_verifiziert = p.verifiziert if p.verifiziert is not None else k.plz_verifiziert
         if kanzlei_erkennung and k.domain and k.kandidat_id is not None:
             pruefen(k, storage.kandidat_seiten(k.kandidat_id), rechtsformen, storage.funde_kandidat(k.kandidat_id),
-                    orte.get(stammdomain(k.domain), 0), ziel_land)
+                    orte.get(stammdomain(k.domain), 0), ziel_land, blocklist)
         else:
             status_setzen(k, ziel_land)
         stat.geprueft += 1

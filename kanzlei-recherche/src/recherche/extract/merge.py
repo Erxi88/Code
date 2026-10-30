@@ -854,6 +854,9 @@ def zusammenfuehren(
                 )
     else:
         strasse, plz, ort = web_adresse
+    if not plz and not seiten and kandidat.plz:
+        # ohne Website und ohne Stufe-B-Fund: die Anschrift des Kandidaten (von Hand angelegt, ältere Bestände)
+        strasse, plz, ort = kandidat.strasse, kandidat.plz, kandidat.ort
 
     # ---- Telefon: Discovery > Regeln > LLM
     web_tel = regel.telefon or normalize_telefon(llm.telefon if llm else None)

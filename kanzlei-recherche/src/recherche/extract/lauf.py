@@ -22,7 +22,13 @@ from ..normalize import PlzPruefer
 from ..storage import Storage
 from ..textnorm import text_normalisieren
 from .base import AnbieterNichtErreichbar, Extractor, ExtraktionFehler
-from .kanzlei import pruefen, stammdomain, status_setzen, suchorte_je_stammdomain
+from .kanzlei import (
+    ausland_tld,
+    pruefen,
+    stammdomain,
+    status_setzen,
+    suchorte_je_stammdomain,
+)
 from .merge import zusammenfuehren
 from .prompt import seiten_rahmen
 from .rules import Ausschluss, extract_impressum, festnetz_aus_html, ist_mobil
@@ -87,6 +93,7 @@ def run_extract(
     fortschritt: Callable[[str], None] | None = None,
     kanzlei_rechtsformen: list[str] | None = None,
     ziel_land: str | None = None,
+    blocklist: set[str] | None = None,
 ) -> ExtractStatistik:
     """kanzlei_rechtsformen gesetzt → Kanzlei-Erkennung aktiv (extract.kanzlei_pruefung).
     ziel_land („Schleswig-Holstein") → PLZ in anderem Land: Status „außerhalb Bundesland"."""
@@ -104,7 +111,7 @@ def run_extract(
             kanzlei = _eine(storage, k, extractor, pruefer, ausschluss, stat, ziel_land)
             if kanzlei_rechtsformen is not None and k.domain:
                 pruefen(kanzlei, storage.kandidat_seiten(k.id), tuple(kanzlei_rechtsformen), storage.funde_kandidat(k.id),
-                        suchorte.get(stammdomain(k.domain), 0), ziel_land)
+                        suchorte.get(stammdomain(k.domain), 0), ziel_land, blocklist)
             else:
                 status_setzen(kanzlei, ziel_land)
         except AnbieterNichtErreichbar as e:
@@ -155,6 +162,12 @@ def _eine(storage: Storage, k: Kandidat, extractor, pruefer, ausschluss, stat: E
     seiten = storage.kandidat_seiten(k.id)
     regel = regeln_fuer(seiten, ausschluss, k.domain)
     llm = None
+    if extractor is not None and ziel_land and (tld := ausland_tld(k.domain)):
+        # .at/.ch/.tirol …: außerhalb ohne LLM (Österreich, Schweiz) – Status setzt status_setzen/pruefen
+        stat.ohne_llm_ausserhalb += 1
+        kanzlei = zusammenfuehren(k, funde, seiten, regel, None, pruefer.pruefe if pruefer else None, ausschluss)
+        kanzlei.abweichung = "; ".join(x for x in (kanzlei.abweichung, f"ohne LLM: ausländische Domain ({tld})") if x)
+        return kanzlei
     if extractor is not None and seiten and ziel_land and pruefer:
         # Vorprüfung ohne LLM: liegt die PLZ (Discovery bzw. Impressum-Regel) außerhalb des Bundeslandes,
         # spart das den LLM-Aufruf (Kleingemeinden: Brave füllt mit bundesweiten Kanzleien auf)
