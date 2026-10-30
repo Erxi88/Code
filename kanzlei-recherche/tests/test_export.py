@@ -191,3 +191,69 @@ def test_neue_spalten(befuellt, tmp_path):
     assert zeilen["Steuerbüro Schütt"]["Website vorhanden"] == "ja"
     ng = {r["Domain"]: r for r in _zeilen(wb[BLATT_NICHT_GEFUNDEN])}["weg.example"]
     assert (ng["Name (Suche)"], ng["Straße"], ng["PLZ"], ng["Ort"], ng["Telefon"]) == ("Kanzlei Weg", "Wall 5", "24103", "Kiel", "0431 1")
+
+
+# ---------------------------------------------------------------------- Lieferformat je PLZ-Bundesland
+
+
+def _zeile(**kw):
+    from recherche.models import Kanzlei, Konfidenz
+
+    return Kanzlei(**{"lauf_bundesland": "SH", "kanzleiname": "Steuerkanzlei Lund", "plz": "24103", "ort": "Kiel",
+                      "strasse": "Markt 1", "bundesland": "Schleswig-Holstein", "plz_verifiziert": True,
+                      "konfidenz": Konfidenz.HOCH, "abweichung": "Berufsbezeichnung Steuerberater", **kw})
+
+
+@pytest.fixture
+def zwei_laeufe(tmp_path):
+    from recherche.models import Status
+
+    st = Storage(tmp_path / "l.db")
+    for k in [
+        _zeile(domain="kiel-stb.example"),                                   # SH-Lauf, PLZ SH
+        _zeile(domain="hamburg-stb.example", plz="20095", ort="Hamburg", bundesland="Hamburg",
+               status=Status.AUSSERHALB),                                    # SH-Lauf, PLZ HH
+        _zeile(lauf_bundesland="HH", domain="wedel-stb.example", plz="22880", ort="Wedel",
+               status=Status.AUSSERHALB),                                    # HH-Lauf, PLZ SH
+        _zeile(domain="wien-stb.at", plz=None, ort=None, bundesland=None, status=Status.AUSSERHALB,
+               abweichung="Außerhalb: Ausland (.at)"),                       # Ausland
+        _zeile(domain="offen-stb.example", bundesland=None, plz_verifiziert=False),  # OpenPLZ nicht erreichbar
+    ]:
+        st.upsert_kanzlei(k)
+    yield st
+    st.close()
+
+
+def test_export_waehlt_nach_plz_bundesland_aus_allen_laeufen(zwei_laeufe, tmp_path):
+    ws = load_workbook(export_excel(zwei_laeufe, "SH", tmp_path / "sh.xlsx", kontrollblaetter=False))[BLATT_KANZLEIEN]
+    domains = {z["Domain"] for z in _zeilen(ws)}
+    assert domains == {"kiel-stb.example", "wedel-stb.example", "offen-stb.example"}
+    assert {z["Status"] for z in _zeilen(ws)} == {"neu"}  # „außerhalb" des HH-Laufs gilt in SH nicht
+    hh = load_workbook(export_excel(zwei_laeufe, "HH", tmp_path / "hh.xlsx", "Hamburg", kontrollblaetter=False))
+    assert {z["Domain"] for z in _zeilen(hh[BLATT_KANZLEIEN])} == {"hamburg-stb.example"}
+
+
+def test_lieferformat_ohne_kontrollblaetter(zwei_laeufe, tmp_path):
+    wb = load_workbook(export_excel(zwei_laeufe, "SH", tmp_path / "sh.xlsx", kontrollblaetter=False))
+    assert set(wb.sheetnames) <= {BLATT_KANZLEIEN, BLATT_ZU_PRUEFEN}
+    mit = load_workbook(export_excel(zwei_laeufe, "SH", tmp_path / "sh2.xlsx"))
+    assert BLATT_QUALITAET in mit.sheetnames and BLATT_PROTOKOLL in mit.sheetnames
+    from recherche.export import BLATT_AUSSERHALB
+
+    assert {z["Domain"] for z in _zeilen(mit[BLATT_AUSSERHALB])} == {"hamburg-stb.example", "wien-stb.at"}
+
+
+def test_export_gesamt_16_laender_und_deutschland(zwei_laeufe, tmp_path):
+    from recherche.export import BLATT_DEUTSCHLAND, export_gesamt
+    from recherche.models import BUNDESLAENDER
+
+    wb = load_workbook(export_gesamt(zwei_laeufe, tmp_path / "de.xlsx"))
+    assert wb.sheetnames[:17] == [*BUNDESLAENDER.values(), BLATT_DEUTSCHLAND]
+    assert set(wb.sheetnames[17:]) <= {BLATT_ZU_PRUEFEN}
+    assert {z["Domain"] for z in _zeilen(wb["Schleswig-Holstein"])} == {"kiel-stb.example", "wedel-stb.example",
+                                                                        "offen-stb.example"}
+    assert {z["Domain"] for z in _zeilen(wb["Hamburg"])} == {"hamburg-stb.example"}
+    assert _zeilen(wb["Bayern"]) == []
+    assert len(_zeilen(wb[BLATT_DEUTSCHLAND])) == 4  # ohne Ausland
+    mit = load_workbook(export_gesamt(zwei_laeufe, tmp_path / "de2.xlsx", kontrollblaetter=True))
+    assert BLATT_QUALITAET in mit.sheetnames

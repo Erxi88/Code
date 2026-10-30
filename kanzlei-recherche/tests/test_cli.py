@@ -55,7 +55,7 @@ def test_export(befuellt, db_pfad, tmp_path):
     out = tmp_path / "x.xlsx"
     r = runner.invoke(cli.app, _args("export", db_pfad, "--out", str(out)))
     assert r.exit_code == 0, r.output
-    assert "20 Kanzleien" in r.output
+    assert "Zeilen mit PLZ in Schleswig-Holstein" in r.output and "Lieferformat" in r.output
     assert load_workbook(out)["Kanzleien"].max_row == 19  # 2 Zeilen mit Konfidenz niedrig in „Zu prüfen"
 
 
@@ -176,7 +176,7 @@ def test_crawl_extract_export(fake_web, fake_llm, db_pfad, tmp_path):
     assert "Fertig: 3 Kanzleien (1 ohne Website), 0 Fehler, 2 LLM-Aufrufe" in r.output
     assert "im Mittel 29.7 s und 1924 Token je Kanzlei" in r.output  # (2210+318 + 1105+214) / 2
     out = tmp_path / "x.xlsx"
-    assert runner.invoke(cli.app, _args("export", db_pfad, "--out", str(out))).exit_code == 0
+    assert runner.invoke(cli.app, _args("export", db_pfad, "--mit-kontrollblaettern", "--out", str(out))).exit_code == 0
     wb = load_workbook(out)
     namen = {row[0].value: row for row in wb["Kanzleien"].iter_rows(min_row=2)}
     assert set(namen) == {"Förde Steuerberatungsgesellschaft mbH", "Steuerbüro Thomas Schütt"}
@@ -447,7 +447,7 @@ def test_fill_luecken_ohne_referenz(fakes, db_pfad, tmp_path):
 
 def test_run(fakes, fake_web, fake_llm, db_pfad, tmp_path):
     out = tmp_path / "run.xlsx"
-    r = runner.invoke(cli.app, _args("run", db_pfad, "--orte", "Kiel", "--out", str(out)))
+    r = runner.invoke(cli.app, _args("run", db_pfad, "--orte", "Kiel", "--mit-kontrollblaettern", "--out", str(out)))
     assert r.exit_code == 0, r.output
     wb = load_workbook(out)
     assert wb["Lauf-Protokoll"].max_row > 1
@@ -510,3 +510,15 @@ def test_search_budget_hinweis_und_rueckfrage(fakes, db_pfad):
     assert fakes["brave"].aufrufe == []
     r = runner.invoke(cli.app, _args("search", db_pfad, "--orte", "Kiel", "--ja"))
     assert r.exit_code == 0 and fakes["brave"].aufrufe and "Ort 1/" in r.output
+
+
+def test_export_gesamt_und_kontrollblaetter(befuellt, db_pfad, tmp_path):
+    befuellt.close()
+    out = tmp_path / "de.xlsx"
+    r = runner.invoke(cli.app, _args("export", db_pfad, "--gesamt", "--out", str(out)))
+    assert r.exit_code == 0, r.output
+    assert "16 Länderblätter" in r.output and "Deutschland" in load_workbook(out).sheetnames
+    out2 = tmp_path / "sh.xlsx"
+    r = runner.invoke(cli.app, _args("export", db_pfad, "--mit-kontrollblaettern", "--out", str(out2)))
+    assert r.exit_code == 0, r.output
+    assert "Qualität" in load_workbook(out2).sheetnames

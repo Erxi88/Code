@@ -569,7 +569,18 @@ der nächsten Quelle füllen.**
 
 ### Excel (`export.py`)
 
-- Blatt „Kanzleien": Autofilter, feste Kopfzeile, Dropdown für Status; Spalten u. a.
+- **Lieferformat** (Anforderung 30.10.2026): `recherche export -b <Land>` liefert **alle Kanzleien mit PLZ in diesem
+  Land, aus allen Läufen** (`lieferliste`, `storage.alle_kanzleien`) – unabhängig davon, welcher Lauf die Domain fand.
+  „außerhalb Bundesland" gilt relativ zum Lauf: eine Zeile des HH-Laufs mit SH-PLZ steht in SH als `neu`; Ausland und
+  keine deutsche PLZ („Außerhalb: …") gehören zu keinem Land. Zeilen ohne geprüfte PLZ (OpenPLZ nicht erreichbar)
+  bleiben beim Land ihres Laufs. Dieselbe Kanzlei aus zwei Läufen einmal (Domain, sonst Name + PLZ + Straße).
+  Standard sind nur „Kanzleien" und „Zu prüfen"; die Kontrollblätter (Außerhalb – Zeilen des Laufs mit PLZ anderswo –,
+  Keine Kanzlei, Nicht gefunden, Dubletten, Qualität, Lauf-Protokoll) nur mit `--mit-kontrollblaettern` (auch `run`).
+  `recherche export --gesamt --out datei.xlsx`: 16 Länderblätter (genau ihre Kanzleien, auch leer), „Deutschland"
+  (alle) und „Zu prüfen"; Kontrollblätter aller Läufe mit `--mit-kontrollblaettern`. `stichprobe` und `qualitaet`
+  arbeiten auf derselben Liste.
+
+- Blatt „Kanzleien" (bei `--gesamt` je Land): Autofilter, feste Kopfzeile, Dropdown für Status; Spalten u. a.
   „Website vorhanden", „Berufsträger (Anzahl)", „Abweichung". Eine erneute Extraktion
   setzt einen gepflegten Status nicht zurück.
 - Blatt „Nicht gefunden": Domains ohne lesbares Impressum oder mit Fehler, mit Grund und

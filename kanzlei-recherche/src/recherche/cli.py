@@ -357,13 +357,23 @@ def _extract(
         console.print("[yellow]Fehlgeschlagene Kandidaten erneut versuchen: `recherche extract --wiederholen`[/yellow]")
 
 
-def _export(ctx: Kontext, out: Path | None) -> Path:
+def _lieferliste(st: Storage, ctx: Kontext) -> list:
+    """Zeilen mit PLZ im Bundesland aus allen Läufen – wie im Export (Lieferformat)."""
+    from .export import lieferliste
+
+    return lieferliste(st.alle_kanzleien(), ctx.bl_cfg.name)
+
+
+def _export(ctx: Kontext, out: Path | None, kontrollblaetter: bool = False) -> Path:
+    from .export import lieferliste
+
     pfad = out or ctx.settings.ausgabe_pfad(ctx.bundesland)
     with ctx.storage() as st:
         _ortsnamen_setzen(ctx)
-        pfad = export_excel(st, ctx.bundesland, pfad, ctx.bl_cfg.name)
-        n = len(st.kanzleien(ctx.bundesland))
-    console.print(f"Excel geschrieben: [bold]{pfad}[/bold] ({n} Kanzleien)")
+        pfad = export_excel(st, ctx.bundesland, pfad, ctx.bl_cfg.name, kontrollblaetter)
+        n = len(lieferliste(st.alle_kanzleien(), ctx.bl_cfg.name))
+    art = "mit Kontrollblättern" if kontrollblaetter else "Lieferformat: Kanzleien + Zu prüfen"
+    console.print(f"Excel geschrieben: [bold]{pfad}[/bold] ({n} Zeilen mit PLZ in {ctx.bl_cfg.name}, {art})")
     return pfad
 
 
@@ -716,7 +726,7 @@ def qualitaet_cmd(
             gefunden = _coverage(ctx, st).gefunden
         except (ValueError, OSError):
             gefunden = None
-        erg = bericht(st.kanzleien(ctx.bundesland), st.dubletten(ctx.bundesland), ctx.bl_cfg.name, gefunden)
+        erg = bericht(_lieferliste(st, ctx), st.dubletten(ctx.bundesland), ctx.bl_cfg.name, gefunden)
     anzahl = erg.anzahl()
     t = Table(title=f"Qualitätsbericht {ctx.bundesland} (Prüfkatalog Abschnitt 4)")
     for col in ("Nr.", "Prüfung", "Grad", "Anzahl", "Beispiele"):
@@ -853,7 +863,7 @@ def stichprobe_cmd(
     ctx = _kontext(config, bundesland, db)
     _ortsnamen_setzen(ctx)
     with ctx.storage() as st:
-        liste = ziehen(st.kanzleien(ctx.bundesland), n, seed)
+        liste = ziehen(_lieferliste(st, ctx), n, seed)
     if not liste:
         _fehler("Keine Zeilen im Hauptblatt – erst extract und kanzlei-pruefung")
     ziel = out or ctx.settings.ausgabe_pfad(ctx.bundesland).with_name(
@@ -1154,9 +1164,30 @@ def export(
     db: DbOpt = None,
     config: ConfigOpt = None,
     out: Annotated[Path | None, typer.Option("--out", "-o", help="Ziel-.xlsx")] = None,
+    gesamt: Annotated[bool, typer.Option("--gesamt", help="ein Blatt je Bundesland + „Deutschland\"")] = False,
+    mit_kontrollblaettern: Annotated[bool, typer.Option(
+        "--mit-kontrollblaettern", help="Außerhalb, Keine Kanzlei, Nicht gefunden, Dubletten, Qualität, Lauf-Protokoll")] = False,
 ) -> None:
-    """Excel-Liste mit allen vier Blättern schreiben."""
-    _export(_kontext(config, bundesland, db), out)
+    """Lieferformat: je Bundesland alle Kanzleien mit PLZ in diesem Land, aus allen Läufen („Kanzleien" + „Zu prüfen").
+    --gesamt: 16 Länderblätter und „Deutschland" in einer Datei. Kontrollblätter nur mit --mit-kontrollblaettern."""
+    if not gesamt:
+        _export(_kontext(config, bundesland, db), out, mit_kontrollblaettern)
+        return
+    from .export import BLATT_DEUTSCHLAND, export_gesamt
+
+    s = load_settings(config)
+    from .ketten import KettenConfig, setze_config
+
+    setze_config(KettenConfig.laden(s.pfad(s.pfade.ketten)))
+    pfad = out or s.ausgabe_pfad("DE")
+    with Storage(db or s.db_pfad()) as st:
+        pfad = export_gesamt(st, pfad, mit_kontrollblaettern)
+    from openpyxl import load_workbook
+
+    wb = load_workbook(pfad, read_only=True)
+    n = wb[BLATT_DEUTSCHLAND].max_row - 1
+    console.print(f"Excel geschrieben: [bold]{pfad}[/bold] (16 Länderblätter + {BLATT_DEUTSCHLAND}: {n} Kanzleien"
+                  f"{', mit Kontrollblättern' if mit_kontrollblaettern else ''})")
 
 
 @app.command()
@@ -1168,6 +1199,7 @@ def run(
     adapter: Annotated[str | None, typer.Option(help="Websuche-Adapter, z. B. ddgs für lokale Tests")] = None,
     out: Annotated[Path | None, typer.Option("--out", "-o", help="Ziel-.xlsx")] = None,
     ja: JaOpt = False,
+    mit_kontrollblaettern: Annotated[bool, typer.Option("--mit-kontrollblaettern", help="Kontrollblätter im Export")] = False,
 ) -> None:
     """Gesamtlauf Stufe A: search → crawl → extract → export. Nach Abbruch einfach erneut starten."""
     ctx = _kontext(config, bundesland, db)
@@ -1175,7 +1207,7 @@ def run(
         return
     _crawl(ctx)
     _extract(ctx)
-    _export(ctx, out)
+    _export(ctx, out, mit_kontrollblaettern)
 
 
 @app.command("search-compare")

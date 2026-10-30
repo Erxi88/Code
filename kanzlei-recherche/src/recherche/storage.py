@@ -638,6 +638,16 @@ class Storage:
         )
         return [self._kanzlei_aus_row(r) for r in rows]
 
+    def alle_kanzleien(self) -> list[Kanzlei]:
+        """Alle Zeilen aller Läufe – fürs Lieferformat je PLZ-Bundesland."""
+        rows = self.conn.execute("SELECT * FROM kanzleien ORDER BY plz, kanzleiname, domain")
+        return [self._kanzlei_aus_row(r) for r in rows]
+
+    def laeufe(self) -> list[str]:
+        """Bundesland-Kürzel aller Läufe mit Kandidaten oder Kanzleien."""
+        rows = self.conn.execute("SELECT bundesland FROM kandidaten UNION SELECT lauf_bundesland FROM kanzleien")
+        return sorted({r[0] for r in rows if r[0]})
+
     def delete_kanzlei(self, domain: str) -> None:
         with self.conn:
             self.conn.execute("DELETE FROM kanzleien WHERE domain = ?", (domain,))
