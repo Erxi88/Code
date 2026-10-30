@@ -286,7 +286,9 @@ der nächsten Quelle füllen.**
     sie übernommen, mit Hinweis in „Abweichung".
   - Telefon (Prüfkatalog 2): Festnetz vor Mobil (015/016/017) vor 0800/0180; innerhalb der Klasse tel:-Link →
     Schema.org (`telephone`) → Impressum-Text → Kontaktseite → übrige Seiten (tel:-Links mit einer Nummer aus einem
-    Fremd-Abschnitt zählen nicht). Nur laut `phonenumbers` gültige Nummern, Gruppierung immer aus der Bibliothek
+    Fremd-Abschnitt zählen nicht). Nennt der sichtbare Text eine andere Nummer derselben Klasse als der
+    tel:-Link/Schema.org, gewinnt der Text („Telefon aus dem Text X, tel:-Link nennt Y" in „Abweichung"; Entscheidung
+    30.10.2026). Nur laut `phonenumbers` gültige Nummern, Gruppierung immer aus der Bibliothek
     (INTERNATIONAL); ungültig → leer und „Telefon ungültig: …" in „Abweichung". Fax („Fax", „Telefax", „F:") nie.
     **Vorwahl ↔ PLZ (Q4, `vorwahl.py`)**: BNetzA-Verzeichnis (`pfade.vorwahlen`, neueste CSV) → Ortsnetzname →
     Gemeinde der Ortsliste → Kreis; passt bei gleichem Kreis oder Nachbarkreis (`config/nachbarkreise.yaml`,
@@ -531,7 +533,7 @@ der nächsten Quelle füllen.**
   auf – nur für `echt/`, außer mit `--nur beispiele`. `--offline` prüft PLZ/Ort ohne OpenPLZ.
   Name und Ansprechpartner werden offline nur über Aufzeichnungen bewertet. Sollwerte `null` (oder fehlend) zählen
   als „nicht bewertet", nicht als Fehler. Bei jedem Fehler steht die Regel dabei, die das Ergebnis bestimmt hat
-  (Einträge aus „Abweichung" wie „Telefon aus tel:-Link …, im Text steht …", „Ansprechpartner-Rang: …",
+  (Einträge aus „Abweichung" wie „Telefon aus dem Text …, tel:-Link nennt …", „Ansprechpartner-Rang: …",
   „Ansprechpartner verworfen: …", dazu die Reihenfolge der Ansprechpartner).
 - Ziel: 13 von 15 echten Fixtures korrekt für Name, Adresse, Telefon und ersten
   Ansprechpartner.

@@ -398,10 +398,13 @@ def extract_impressum(
             mails = list(dict.fromkeys(mails))
     erg.telefon = beste_telefon([*tel_links, *(schema_telefone or []), *text_nummern])
     text_erste = beste_telefon(text_nummern)
-    if erg.telefon and text_erste and erg.telefon != text_erste and erg.telefon not in text_nummern:
-        # Prüfkatalog 2: tel:-Link/Schema.org vor Text – die Seite nennt im Text eine andere Nummer
+    if erg.telefon and text_erste and erg.telefon != text_erste and erg.telefon not in text_nummern \
+            and beste_telefon([text_erste, erg.telefon]) == text_erste:
+        # Prüfkatalog 2: nennt der sichtbare Text eine andere Nummer derselben Klasse als tel:-Link/Schema.org, gewinnt
+        # der Text (Entscheidung 30.10.2026, sievertundpartner: href 960750, Text 980750)
         quelle = "tel:-Link" if erg.telefon in tel_links else "Schema.org"
-        erg.hinweise.append(f"Telefon aus {quelle} {erg.telefon}, im Text steht {text_erste}")
+        erg.hinweise.append(f"Telefon aus dem Text {text_erste}, {quelle} nennt {erg.telefon}")
+        erg.telefon = text_erste
     erg.email = beste_email(mails, domain, ausschluss.email_nachrangig)
     return erg
 

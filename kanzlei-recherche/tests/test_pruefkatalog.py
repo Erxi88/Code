@@ -148,11 +148,14 @@ def test_telefon_rangfolge_tel_link_schema_impressum_kontakt():
 
     impressum = "Steuerkanzlei Lund\nMarkt 1\n24103 Kiel\nTel. 0431 1111111"
     kontakt = ("Kontakt\nTelefon 0431 2222222", [])
-    # tel:-Link vor Schema.org vor Impressum-Text vor Kontaktseite
-    assert extract_impressum(impressum, links=["tel:+494313333333"], weitere_texte=[kontakt],
-                             schema_telefone=["+49 431 4444444"]).telefon == "+49 431 3333333"
-    assert extract_impressum(impressum, weitere_texte=[kontakt], schema_telefone=["+49 431 4444444"]).telefon == "+49 431 4444444"
+    # tel:-Link vor Schema.org vor Impressum-Text vor Kontaktseite – unter den Nummern, die auch sichtbar im Text stehen
+    assert extract_impressum(impressum, links=["tel:+494312222222"], weitere_texte=[kontakt],
+                             schema_telefone=["+49 431 1111111"]).telefon == "+49 431 2222222"
+    assert extract_impressum(impressum, weitere_texte=[kontakt], schema_telefone=["+49 431 2222222"]).telefon == "+49 431 2222222"
     assert extract_impressum(impressum, weitere_texte=[kontakt]).telefon == "+49 431 1111111"
+    # Link/Schema.org ohne sichtbare Nummer gilt nur, wenn der Text keine nennt
+    assert extract_impressum("Markt 1\n24103 Kiel", links=["tel:+494313333333"]).telefon == "+49 431 3333333"
+    assert extract_impressum("Markt 1\n24103 Kiel", schema_telefone=["+49 431 4444444"]).telefon == "+49 431 4444444"
     assert extract_impressum("Markt 1\n24103 Kiel", weitere_texte=[kontakt]).telefon == "+49 431 2222222"
 
 
@@ -555,11 +558,15 @@ def test_regel_hinweise_fuer_telefon_und_ansprechpartner_rang():
     from recherche.extract.rules import extract_impressum
     from recherche.models import Ansprechpartner
 
+    # tel:-Link und sichtbarer Text verschieden: der Text gewinnt (Entscheidung 30.10.2026, sievertundpartner)
     erg = extract_impressum("Steuerkanzlei Lund\nMarkt 1\n24103 Kiel\nTel. 0431 980750", links=["tel:+49431960750"])
-    assert erg.telefon == "+49 431 960750"
-    assert "Telefon aus tel:-Link +49 431 960750, im Text steht +49 431 980750" in erg.hinweise
+    assert erg.telefon == "+49 431 980750"
+    assert "Telefon aus dem Text +49 431 980750, tel:-Link nennt +49 431 960750" in erg.hinweise
     gleich = extract_impressum("Markt 1\n24103 Kiel\nTel. 0431 980750", links=["tel:+49431980750"])
     assert not [h for h in gleich.hinweise if h.startswith("Telefon aus")]
+    # Klasse geht weiter vor: Festnetz-Link schlägt eine Mobilnummer im Text
+    mobil = extract_impressum("Markt 1\n24103 Kiel\nMobil 0171 1234567", links=["tel:+49431980750"])
+    assert mobil.telefon == "+49 431 980750"
     _, hinweise = bereinigen([Ansprechpartner(name="Rolf Lund", funktion="Rechtsanwalt, Geschäftsführer"),
                               Ansprechpartner(name="Eva Kittel", funktion="Steuerberaterin")])
     assert hinweise == ["Ansprechpartner-Rang: Rolf Lund (Rechtsanwalt, Geschäftsführer) (Rechtsanwalt/Notar) hinter "

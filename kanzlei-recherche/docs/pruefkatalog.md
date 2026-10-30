@@ -70,7 +70,7 @@ Namensmerkmale aus 1A (Lohnsteuerhilfe, „e. V.“, Kammer/Verband, Rechtsanwal
 - Nur Nummern mit `is_valid_number`. Ungültig → leer lassen plus Abweichung „Telefon ungültig“ (kein Rätselraten).
 - Vorwahl-Region muss zur PLZ-Region passen (Vorwahl-zu-Kreis-Tabelle der BNetzA; Hamburg 040 für SH-Umland zulässig). Passt sie nicht → Abweichung „Vorwahl passt nicht zur PLZ“, Konfidenz höchstens „mittel“.
 - Festnetz vor Mobil, Mobil vor 0800/0180. Fax nie als Telefon (Zeilen mit „Fax“, „Telefax“, „F:“ ausschließen).
-- Nummern aus `<script>`, `tel:`-Links und Schema.org (telephone) gelten als Quelle, Rang: tel:-Link → Schema.org → Impressum-Text → Kontaktseite.
+- Nummern aus `<script>`, `tel:`-Links und Schema.org (telephone) gelten als Quelle, Rang: tel:-Link → Schema.org → Impressum-Text → Kontaktseite. Nennt der sichtbare Text eine andere Nummer derselben Klasse als tel:-Link/Schema.org, gewinnt der Text; Abweichung „Telefon aus dem Text X, tel:-Link nennt Y“ (Entscheidung 30.10.2026, sievertundpartner.de). Der Rang entscheidet damit unter den sichtbaren Nummern; eine Link-Nummer allein gilt nur, wenn der Text keine nennt.
 
 
 ### E-Mail
