@@ -57,6 +57,7 @@ from .search.pipeline import (
     load_blocklist,
     load_orte,
     orte_filtern,
+    orte_unvollstaendig,
     run_search,
     schaetze_anfragen,
     schreibe_orte,
@@ -186,7 +187,11 @@ def _lauf(ctx: Kontext, st: Storage, adapter: SearchAdapter, orte: list[Ort], la
         + (f", {stat.stadtteile} Stadtteil-Suchorte nachgesucht" if stat.stadtteile else "")
         + (f", {stat.fremdort} Treffer mit fremder Großstadt nicht angelegt" if stat.fremdort else "") + "."
     )
-    if isinstance(adapter, OrtsAdapter):
+    if getattr(adapter.cfg, "nur_ergaenzen", False):
+        console.print(f"Ergänzung {adapter.name}: {stat.treffer} Treffer, {stat.ergaenzt} Kandidaten ohne Website "
+                      f"ergänzt (→ extract), {stat.mit_website} bekannt mit Website (nicht angefasst), "
+                      f"{stat.nicht_im_bestand} nicht im Bestand (nicht angelegt), {stat.verworfen} verworfen")
+    elif isinstance(adapter, OrtsAdapter):
         console.print(f"Ausbeute {adapter.name}: {stat.treffer} Treffer, davon {stat.neue_kandidaten} neu, "
                       f"{stat.bekannt} bereits bekannt (Telefon/Adresse/Domain), {stat.verworfen} verworfen "
                       "(Blocklist oder schon von dieser Quelle)")
@@ -360,11 +365,13 @@ def fill(
     config: ConfigOpt = None,
     orte: OrteOpt = None,
     luecken: Annotated[bool, typer.Option("--luecken", help="Orte unter der Referenz (aus coverage)")] = False,
+    unvollstaendig: Annotated[bool, typer.Option(
+        "--unvollstaendig", help="Orte mit Kandidaten ohne Website, denen Telefon oder Straße fehlt")] = False,
     alle: Annotated[bool, typer.Option("--alle", help="ausdrücklich alle Orte des Bundeslandes")] = False,
 ) -> None:
     """Stufe B: Lückenfüller für ausgewählte Orte – nie flächendeckend ohne --alle."""
-    if sum(map(bool, (orte, luecken, alle))) != 1:
-        _fehler("Genau eine Auswahl angeben: --orte …, --luecken oder --alle")
+    if sum(map(bool, (orte, luecken, unvollstaendig, alle))) != 1:
+        _fehler("Genau eine Auswahl angeben: --orte …, --luecken, --unvollstaendig oder --alle")
     ctx = _kontext(config, bundesland, db)
     with ctx.storage() as st:
         adapter = build_adapter(quelle, ctx.settings, cache=st)
@@ -380,6 +387,10 @@ def fill(
             if not namen:
                 _fehler("Keine Orte unter der Referenz – Referenzzahlen in referenz_kammern.yaml hinterlegt?")
             auswahl = orte_filtern(ctx.orte(None, mit_zusatz=False), namen)
+        elif unvollstaendig:
+            auswahl = orte_unvollstaendig(st, ctx.bundesland, ctx.orte(None, mit_zusatz=False))
+            if not auswahl:
+                _fehler("Keine Kandidaten ohne Website mit fehlendem Telefon oder fehlender Straße")
         else:
             auswahl = ctx.orte(orte if orte else None, mit_zusatz=False)
         _lauf(ctx, st, adapter, auswahl, _lauf_id())

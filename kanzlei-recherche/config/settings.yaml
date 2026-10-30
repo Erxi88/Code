@@ -88,29 +88,41 @@ discovery:
       min_zelle_km: 0.5
       kosten_je_1000: 35.0           # Text Search Enterprise (Telefon/Website) – mit der aktuellen Preisliste abgleichen
       pause_s: 0.2
-    # ---- Verzeichnisse (search/verzeichnisse.py): nur `fill --luecken` (oder --orte), 10–15 s je Anfrage.
-    # url_vorlage mit {rubrik} {ort} {plz} {seite}; ohne Vorlage nicht einsatzbereit. Nutzungsbedingungen prüfen!
+    # ---- Verzeichnisse (search/verzeichnisse.py), Aufbau aus den Seiten in tests/fixtures/verzeichnisse.
+    # Platzhalter {rubrik} {ort} {ort_klein} {plz} {seite} {start}. Nur `fill --luecken`, `--unvollstaendig` oder
+    # `--orte`, nie --alle. Nutzungsbedingungen prüfen, bevor aktiv: true!
+    # Branchenverzeichnisse: nur Telefon/Adresse/Website zu bekannten Kandidaten ohne Website (nur_ergaenzen).
     gelbeseiten:
       aktiv: false
       pause_s: 10.0
       pause_jitter_s: 5.0
-      url_vorlage: null
+      url_vorlage: "https://www.gelbeseiten.de/suche/steuerberater/{ort_klein}"
+      max_seiten: 1                  # weitere Einträge nur per AJAX („Mehr anzeigen") – erste 50
+      nur_ergaenzen: true
+      website_nachsuche: false
     dasoertliche:
       aktiv: false
       pause_s: 10.0
       pause_jitter_s: 5.0
-      url_vorlage: null
-    elf880:                          # 11880
+      url_vorlage: "https://www.dasoertliche.de/?kw={rubrik}&ci={ort}&form_name=search_nat&recFrom={start}"
+      seitengroesse: 25
+      nur_ergaenzen: true
+      website_nachsuche: false
+    elf880:                          # 11880.com
       aktiv: false
       pause_s: 10.0
       pause_jitter_s: 5.0
-      url_vorlage: null
-    stb_verzeichnis:                 # amtliches Steuerberaterverzeichnis, PLZ für PLZ – Grundliste
+      url_vorlage: "https://www.11880.com/suche/steuerberater/{ort_klein}?page={seite}"
+      nur_ergaenzen: true
+      website_nachsuche: false
+    stb_verzeichnis:                 # amtliches Steuerberaterverzeichnis (BStBK), PLZ für PLZ – Grundliste
       aktiv: false                   # standardmäßig AUS
       pause_s: 30.0
       pause_jitter_s: 5.0
       je_plz: true
-      url_vorlage: null
+      url_vorlage: "https://steuerberaterverzeichnis.berufs-org.de/?lang=de"
+      formular: {nachnameOrFirmenname: "", ortFilter: "", plzFilter: "{plz}"}   # Suche per POST
+      max_seiten: 1                  # alle Treffer einer PLZ auf einer Seite („Treffer: 209 von 209")
 
 crawl:
   parallel_domains: 10               # so viele Domains gleichzeitig

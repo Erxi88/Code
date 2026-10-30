@@ -109,17 +109,32 @@ der nächsten Quelle füllen.**
     (`kosten_je_1000` 35 = Enterprise-SKU wegen Telefon/Website). `fill` meldet die Ausbeute:
     „X Treffer, davon Y neu, Z bereits bekannt (Telefon/Adresse/Domain), W verworfen".
     `search-compare` nimmt Stufe-B-Quellen nur mit `--adapter` mit.
-  - **Verzeichnisse** (`search/verzeichnisse.py`, Gerüst gebaut): `gelbeseiten`, `dasoertliche`, `elf880` und
-    `stb_verzeichnis` (amtlich, **Grundliste**, PLZ für PLZ, `je_plz`). Ergebnisseiten aus
-    `url_vorlage` ({rubrik} {ort} {plz} {seite}; ohne Vorlage nicht einsatzbereit), bis `max_seiten`,
-    gedrosselt pause_s + Zufall (Verzeichnisse 10–15 s, amtlich 30–35 s), robots.txt beachtet, Antworten
-    gecacht. Parser: verzeichnisspezifisch (aus den Seiten in `tests/fixtures/verzeichnisse/`, folgt),
-    sonst schema.org (JSON-LD, Microdata). Nur `fill --luecken` oder `--orte`, nie `--alle`
-    (`nur_luecken`). Abgleich über die Dubletten-Logik (Name+PLZ, Adresse, Telefon) → „X Treffer, Y neu,
-    Z bekannt". **Website-Nachsuche** (`search/nachsuche.py`): neue Einträge ohne Website → Brave
-    „{Name} {Ort}", eine Seite; erster Treffer mit Kanzlei-Domain, die zum Namen passt, wird Website
-    (Kandidat → crawl/extract); sonst bleibt die amtliche Anschrift („Website vorhanden" = nein), das
-    Telefon ergänzt ein späterer `fill` mit gelbeseiten/dasoertliche/elf880. Jeder Eintrag einmal.
+  - **Verzeichnisse** (`search/verzeichnisse.py`, Parser aus den Seiten in `tests/fixtures/verzeichnisse/`;
+    echte Seiten nur lokal unter `echt/`, committet sind fiktive unter `beispiele/`). Ergebnisseiten aus
+    `url_vorlage` ({rubrik} {ort} {ort_klein} {plz} {seite} {start}; `formular` → POST), bis `max_seiten`,
+    gedrosselt pause_s + Zufall (Verzeichnisse 10–15 s, amtlich 30–35 s), robots.txt beachtet, Antworten gecacht
+    (POST mit Formularfeldern im Schlüssel). Nie `--alle` (`nur_luecken`). Alle standardmäßig `aktiv: false` –
+    Nutzungsbedingungen vor dem Einschalten prüfen.
+    - `stb_verzeichnis` (amtlich, BStBK, **Grundliste**): POST je PLZ des Ortes (`je_plz`), alle Treffer auf
+      einer Seite; „Treffer: X von Y" mit X < Y wird gemeldet. Karten je Berufsträger und je Gesellschaft werden
+      zu Kanzleien gruppiert (`stbv_kanzleien`): Gesellschaften sind Kanzleien; Berufsträger gehören zur Firma
+      in ihren Adresszeilen (vor der Straße; Zeilen „Beratungsstelle/Zweigniederlassung …" entfallen, „c/o X" →
+      X), bei gleicher Adresse zur Gesellschaft mit gleichem Namen, Namensanfang oder eindeutig gleichem
+      erstem Wort; ohne Firmenzeile Einzelkanzlei „Steuerberaterin Vorname Nachname". Umbrochene Namen
+      („Steuerberatungs-" / „gesellschaft") werden zusammengesetzt, Ergänzungsstriche („Treuhand- und")
+      bleiben. Die Berufsträger stehen im Snippet. Abgleich über die Dubletten-Logik → „X Treffer, Y neu,
+      Z bekannt". **Website-Nachsuche** (`search/nachsuche.py`): neue Einträge ohne Website → Brave
+      „{Name} {Ort}", eine Seite; erster Treffer mit Kanzlei-Domain, die zum Namen passt, wird Website
+      (Kandidat → crawl/extract); sonst bleibt die amtliche Anschrift („Website vorhanden" = nein). Jeder
+      Eintrag einmal.
+    - `gelbeseiten`, `dasoertliche`, `elf880` (11880.com) **nur Ergänzung** (`nur_ergaenzen`): Treffer werden
+      nur bekannten Kandidaten **ohne Website** zugeordnet (leere Felder Telefon, Adresse, Website; Fund
+      gespeichert; extract neu, bei neuer Website auch crawl). Unbekannte Einträge werden nicht angelegt,
+      Kandidaten mit Website nicht angefasst (deren Website-Daten gelten) – Ausgabe „ergänzt / bekannt mit
+      Website / nicht im Bestand". Ortswahl `fill --unvollstaendig`: Orte mit Kandidaten ohne Website, denen
+      Telefon oder Straße fehlt. gelbeseiten: eigene Kacheln (Telefon/Website base64 in `data-prg`/
+      `data-webseitelink`), nur die ersten 50 (weitere per AJAX-POST, nicht gebaut); dasoertliche (25 je Seite,
+      `recFrom={start}`) und 11880 (50 je Seite, `?page={seite}`): schema.org (JSON-LD, Microdata).
 - **Interface** (`search/base.py`): `QueryAdapter.search(query, max_results)` (Stufe A)
   und `OrtsAdapter.search_ort(ort)` (Stufe B). Alle liefern `SearchHit` mit Name,
   Straße, PLZ, Ort, Telefon, Website, Quelle, Quell-ID (+ Snippet, Fundstelle). Jede
@@ -529,7 +544,7 @@ Schemaversion über `PRAGMA user_version` (aktuell 4, `adresszusatz`); ältere D
 - Stufe 1 (Gerüst): Modelle, SQLite-Speicher, Excel-Export, CLI.
 - Discovery-Sitzung: Ergebnisformat und Dubletten-Logik über Adresse/Telefon, Brave- und
   Google-CSE-Adapter, `coverage`, `fill`, `search-compare` für alle aktiven Adapter.
-  Platzhalter: `serpapi`, `places` (stillgelegt); Verzeichnisse als Gerüst (Parser folgen).
+  Platzhalter: `serpapi`, `places` (stillgelegt); Verzeichnisse mit Parsern (aus Kiel-Seiten), aus bis zur Klärung der Nutzungsbedingungen.
 - Stufe 2 (Lesen und Extrahieren): `crawl`, `extract` (Regeln + Ollama), Zusammenführung
   mit Abweichung und Konfidenz, OpenPLZ-Prüfung, Schema v3, `fixture-add`,
   `fixture-eval` mit 6 fiktiven Beispielen. Die 15 echten Fixtures folgen (lokal).

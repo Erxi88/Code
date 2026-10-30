@@ -11,6 +11,7 @@ import csv
 import logging
 import re
 import time
+from collections import Counter
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from functools import partial
@@ -20,7 +21,7 @@ from urllib.parse import urlsplit
 import yaml
 
 from ..config import EinwohnerStufe, WeiterWennVollConfig
-from ..models import Dublette, DublettenArt, Fund, Kandidat, LaufEintrag
+from ..models import Dublette, DublettenArt, Fund, Kandidat, LaufEintrag, SchrittStatus
 from ..storage import Storage
 from .base import (
     LimitErreicht,
@@ -309,6 +310,7 @@ class Zuordnung:
         self.bundesland = bundesland
         self.blocklist = blocklist
         self.lauf_id = lauf_id
+        self.zaehler: Counter[str] = Counter()  # nur_ergaenzen: ergänzt / mit Website / nicht im Bestand
         self.index = Index()
         for k in storage.kandidaten(bundesland):
             self.index.setze(k.id, kandidat_schluessel(k))
@@ -329,6 +331,8 @@ class Zuordnung:
             domain=domain, website=hit.website, name=hit.name, strasse=hit.strasse,
             plz=hit.plz, ort=hit.ort, telefon=hit.telefon,
         )  # fmt: skip
+        if getattr(adapter.cfg, "nur_ergaenzen", False):
+            return self._ergaenzen(hit, abgleich.id, felder, suchbegriff, suchort)
         if abgleich.id is not None:
             kid, neu = abgleich.id, False
             vorher = self.storage.get_kandidat(kid)
@@ -352,6 +356,34 @@ class Zuordnung:
             )
         )  # fmt: skip
         return neu
+
+    def _ergaenzen(self, hit: SearchHit, kid: int | None, felder: dict, suchbegriff: str | None,
+                   suchort: str | None) -> bool | None:
+        """Branchenverzeichnis (`nur_ergaenzen`): nur bekannte Kandidaten **ohne Website** – leere Felder füllen
+        (Telefon, Adresse, Website), Fund speichern, Extraktion (bei neuer Website auch Crawl) neu. Unbekannte
+        Einträge werden nicht angelegt, Kandidaten mit Website nicht angefasst (ihre Website-Daten gelten)."""
+        vorher = self.storage.get_kandidat(kid) if kid is not None else None
+        if vorher is None:
+            self.zaehler["nicht im Bestand"] += 1
+            return None
+        if vorher.domain or vorher.website:
+            self.zaehler["mit Website"] += 1
+            return None
+        k = self.storage.ergaenze_kandidat(kid, **felder)
+        self.index.setze(kid, zusammenfuehren(self.index.eintraege[kid], kandidat_schluessel(k)))
+        if k.domain and not vorher.domain:
+            self.storage.set_crawl_status(kid, SchrittStatus.OFFEN)
+        self.storage.set_extract_status(kid, SchrittStatus.OFFEN)  # Telefon/Adresse kommen über den Fund in die Zeile
+        self.zaehler["ergänzt"] += 1
+        self.storage.add_fund(
+            Fund(
+                kandidat_id=kid, bundesland=self.bundesland, quelle=hit.quelle, quell_id=hit.quell_id,
+                lauf_id=self.lauf_id, suchbegriff=suchbegriff, suchort=suchort, name=hit.name,
+                strasse=hit.strasse, plz=hit.plz, ort=hit.ort, telefon=hit.telefon,
+                website=hit.website, snippet=hit.snippet, roh_url=hit.roh_url,
+            )
+        )  # fmt: skip
+        return False
 
     def _dublette(self, k: Kandidat, hit: SearchHit, domain: str | None, kriterium: str, art: DublettenArt) -> None:
         self.storage.add_dublette(
@@ -381,6 +413,9 @@ class SuchStatistik:
     verworfen: int = 0  # Blocklist oder schon von dieser Quelle gefunden
     fremdort: int = 0  # Kleingemeinde-Treffer mit großer Stadt eines anderen Bundeslandes – nicht angelegt
     abbruch: str | None = None  # gesetzt, wenn der Lauf wegen LimitErreicht endete
+    ergaenzt: int = 0  # nur_ergaenzen: Kandidaten ohne Website mit neuen Daten
+    mit_website: int = 0  # nur_ergaenzen: bekannt, aber mit Website – nicht angefasst
+    nicht_im_bestand: int = 0  # nur_ergaenzen: unbekannt – nicht angelegt
 
 
 def _auftraege(adapter: SearchAdapter, orte: list[Ort], plan: Suchplan, max_results: int, blocklist: set[str]):
@@ -544,4 +579,21 @@ def run_search(
         nachsuchen(ort, len(hits))
     stat.anfragen = adapter.anfragen - start_anfragen
     stat.kosten = adapter.kosten(stat.anfragen)
+    stat.ergaenzt, stat.mit_website = zuordnung.zaehler["ergänzt"], zuordnung.zaehler["mit Website"]
+    stat.nicht_im_bestand = zuordnung.zaehler["nicht im Bestand"]
+    stat.bekannt -= stat.ergaenzt
+    stat.verworfen -= stat.mit_website + stat.nicht_im_bestand
     return stat
+
+
+def orte_unvollstaendig(storage: Storage, bundesland: str, orte: list[Ort]) -> list[Ort]:
+    """Orte mit Kandidaten ohne Website, denen Telefon oder Straße fehlt (Ziel der Branchenverzeichnisse)."""
+    nach_name = {o.name: o for o in orte}
+    namen = set()
+    for k in storage.kandidaten(bundesland):
+        if k.domain or k.website or (k.telefon and k.strasse):
+            continue
+        ort = nach_name.get(k.suchort or "") or nach_name.get(k.ort or "")
+        if ort is not None:
+            namen.add(ort.gemeinde or ort.name)
+    return [o for o in orte if o.name in namen and not o.ist_zusatz]

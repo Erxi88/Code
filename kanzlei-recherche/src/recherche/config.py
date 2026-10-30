@@ -109,12 +109,17 @@ class VerzeichnisConfig(QuelleConfig):
     rubrik: str = "Steuerberater"
     pause_s: float = 10.0
     pause_jitter_s: float = 5.0  # Pause je Anfrage: pause_s + Zufall 0..jitter (10–15 s)
-    # Ergebnisseite; Platzhalter {rubrik} {ort} {plz} {seite}. Ohne Vorlage ist der Adapter nicht einsatzbereit.
+    # Ergebnisseite; Platzhalter {rubrik} {ort} {ort_klein} {plz} {seite} {start} ({start} = erster Eintrag der
+    # Seite, 1, 1 + seitengroesse …). Ohne Vorlage ist der Adapter nicht einsatzbereit.
     url_vorlage: str | None = None
+    formular: dict[str, str] | None = None  # gesetzt → POST mit diesen Feldern (gleiche Platzhalter)
     max_seiten: int = 5  # Ergebnisseiten je Ort bzw. PLZ
+    seitengroesse: int = 25  # Einträge je Seite – nur für {start}
     je_plz: bool = False  # True: je PLZ des Ortes suchen (amtliches Verzeichnis)
     nur_luecken: bool = True  # nur `fill --luecken` (oder ausdrücklich --orte), nie --alle
     website_nachsuche: bool = True  # neue Einträge ohne Website: Brave „{Name} {Ort}" (eine Seite)
+    # True: nur bekannte Kandidaten ohne Website ergänzen (Telefon, Adresse, Website), keine neuen anlegen
+    nur_ergaenzen: bool = False
     user_agent: str = "kanzlei-recherche/0.1 (Recherche-Tool; Kontakt siehe README)"
 
 
@@ -124,11 +129,11 @@ class QuellenConfig(BaseModel):
     serpapi: SerpApiConfig = Field(default_factory=SerpApiConfig)
     ddgs: DdgsConfig = Field(default_factory=DdgsConfig)
     places: PlacesConfig = Field(default_factory=PlacesConfig)
-    gelbeseiten: VerzeichnisConfig = Field(default_factory=VerzeichnisConfig)
-    dasoertliche: VerzeichnisConfig = Field(default_factory=VerzeichnisConfig)
-    elf880: VerzeichnisConfig = Field(default_factory=VerzeichnisConfig)
+    gelbeseiten: VerzeichnisConfig = Field(default_factory=lambda: VerzeichnisConfig(nur_ergaenzen=True))
+    dasoertliche: VerzeichnisConfig = Field(default_factory=lambda: VerzeichnisConfig(nur_ergaenzen=True))
+    elf880: VerzeichnisConfig = Field(default_factory=lambda: VerzeichnisConfig(nur_ergaenzen=True))
     stb_verzeichnis: VerzeichnisConfig = Field(
-        default_factory=lambda: VerzeichnisConfig(pause_s=30.0, pause_jitter_s=5.0, je_plz=True)
+        default_factory=lambda: VerzeichnisConfig(pause_s=30.0, pause_jitter_s=5.0, je_plz=True, max_seiten=1)
     )
 
     def get(self, name: str) -> QuelleConfig:

@@ -1,5 +1,6 @@
 import pytest
 
+from recherche.config import VerzeichnisConfig
 from recherche.search.base import OrtsAdapter, QueryAdapter
 from recherche.search.brave import BraveAdapter
 from recherche.search.ddgs import DdgsAdapter
@@ -84,8 +85,10 @@ def test_places_stillgelegt(settings, monkeypatch):
 
 
 @pytest.mark.parametrize("name", ["gelbeseiten", "dasoertliche", "elf880", "stb_verzeichnis"])
-def test_verzeichnisse_ohne_url_vorlage_nicht_bereit(settings, name):
+def test_verzeichnisse_konfiguriert_aber_aus(settings, name):
     a = build_adapter(name, settings)
-    assert not a.aktiv and "url_vorlage fehlt" in a.nicht_konfiguriert_grund()
+    assert not a.aktiv and a.nicht_konfiguriert_grund() is None  # url_vorlage aus den Fixture-Seiten, aktiv: false
+    assert "url_vorlage fehlt" in type(a)(VerzeichnisConfig()).nicht_konfiguriert_grund()
+    assert settings.discovery.quellen.get(name).nur_ergaenzen == (name != "stb_verzeichnis")
     assert settings.discovery.quellen.get(name).nur_luecken
     assert settings.discovery.quellen.stb_verzeichnis.je_plz and settings.discovery.quellen.stb_verzeichnis.pause_s == 30

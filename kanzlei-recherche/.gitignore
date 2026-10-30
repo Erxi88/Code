@@ -35,3 +35,5 @@ htmlcov/
 # Echte Kanzleiseiten (personenbezogene Daten) nur lokal
 tests/fixtures/kanzleiseiten/echt/*
 !tests/fixtures/kanzleiseiten/echt/.gitkeep
+tests/fixtures/verzeichnisse/echt/*
+!tests/fixtures/verzeichnisse/echt/.gitkeep
