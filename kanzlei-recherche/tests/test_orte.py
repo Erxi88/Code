@@ -267,11 +267,16 @@ def test_vergleich(ergebnis):
 
 
 def test_stufen_verteilung(ergebnis):
-    from recherche.config import load_settings
+    from recherche.config import EinwohnerStufe
     from recherche.orte import stufen_verteilung
     from recherche.search.pipeline import Suchplan
 
-    v = stufen_verteilung(ergebnis.orte, Suchplan.aus_settings(load_settings()))
+    regel = [EinwohnerStufe(unter=2000, varianten=1, seiten=1, weiter=False), EinwohnerStufe(unter=20000, varianten=2, seiten=2),
+             EinwohnerStufe(seiten=3)]  # eigene Regel – unabhängig von der Kalibrierung in settings.yaml
+    plan = Suchplan(["Steuerberater {ort}", "Steuerkanzlei {ort}", "Steuerberatung {plz} {ort}", "Steuerberater {ort} Impressum"],
+                    ["Steuerberater {plz} {gemeinde}", "Steuerberater {stadtteil}", "Steuerkanzlei {plz} {gemeinde}"],
+                    regel, stadtteil=EinwohnerStufe(seiten=2))
+    v = stufen_verteilung(ergebnis.orte, plan)
     # keine Gemeinde der Testdaten liegt zwischen 2.000 und 19.999 → Stufe fehlt
     assert list(v) == ["unter 2.000 Einwohner", "ab 20.000 Einwohner", "Zusatz-Suchorte"]
     assert v["unter 2.000 Einwohner"] == (2, 2, 1)  # Wesselburenerkoog (1.999), Hasselberg/SL (420)

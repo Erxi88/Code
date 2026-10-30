@@ -116,7 +116,7 @@ class VerzeichnisConfig(QuelleConfig):
     max_seiten: int = 5  # Ergebnisseiten je Ort bzw. PLZ
     seitengroesse: int = 25  # Einträge je Seite – nur für {start}
     je_plz: bool = False  # True: je PLZ des Ortes suchen (amtliches Verzeichnis)
-    nur_luecken: bool = True  # nur `fill --luecken` (oder ausdrücklich --orte), nie --alle
+    nur_luecken: bool = True  # nie `fill --alle` (nur --luecken, --unvollstaendig, --orte); amtliche Grundliste: False
     website_nachsuche: bool = True  # neue Einträge ohne Website: Brave „{Name} {Ort}" (eine Seite)
     # True: nur bekannte Kandidaten ohne Website ergänzen (Telefon, Adresse, Website), keine neuen anlegen
     nur_ergaenzen: bool = False
@@ -133,7 +133,7 @@ class QuellenConfig(BaseModel):
     dasoertliche: VerzeichnisConfig = Field(default_factory=lambda: VerzeichnisConfig(nur_ergaenzen=True))
     elf880: VerzeichnisConfig = Field(default_factory=lambda: VerzeichnisConfig(nur_ergaenzen=True))
     stb_verzeichnis: VerzeichnisConfig = Field(
-        default_factory=lambda: VerzeichnisConfig(pause_s=30.0, pause_jitter_s=5.0, je_plz=True, max_seiten=1)
+        default_factory=lambda: VerzeichnisConfig(pause_s=30.0, pause_jitter_s=5.0, je_plz=True, max_seiten=1, nur_luecken=False)
     )
 
     def get(self, name: str) -> QuelleConfig:

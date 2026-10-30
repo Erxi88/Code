@@ -59,12 +59,13 @@ der nächsten Quelle füllen.**
   4. `ddgs` (DuckDuckGo, ohne Key) – **nur lokale Entwicklung**.
 - **Gründlichkeit je Einwohnerklasse** (`discovery.stufe_a.einwohner_regel`): erste N
   Vorlagen aus `queries.yaml` (Reihenfolge zählt!) und höchstens M Ergebnisseiten je
-  Query – Standard: unter 2.000 Einwohnern 1 Variante/1 Seite, bis 20.000 2/2, darüber
-  alle/3. **Ausnahme:** War die letzte erlaubte Seite voll und überwiegend Kanzlei-Domains
+  Query – Standard (kalibriert am SH-Lauf, vorläufig): unter 5.000 Einwohnern **keine Websuche**
+  (`varianten: 0`, Kanzleien über das amtliche Verzeichnis je PLZ; Kanzleien je 100 Anfragen dort 5–10), bis 20.000
+  2/2 (28–50), darüber alle/3 (175); Stadtteil-Suchorte 1/1. **Ausnahme:** War die letzte erlaubte Seite voll und überwiegend Kanzlei-Domains
   (`weiter_wenn_voll`, > 50 % nicht auf der Blocklist), wird die nächste Seite trotzdem
   geholt. Orte ohne Einwohnerzahl werden vollständig gesucht. Gilt für `search` und
   `search-compare`, nicht für `fill`.
-  Je Stufe schaltet `weiter: false` das Weiterblättern ab (Standard für unter 2.000 Einwohner).
+  Je Stufe schaltet `weiter: false` das Weiterblättern ab.
   `varianten: 0` = keine eigene Suche für diese Stufe (Kanzleien dort über Nachbarorte oder Stufe B).
   `recherche suche-auswertung [--grenzen 500,2000,20000] [--out datei.csv]` zeigt je Einwohnerstufe Orte, Queries, Anfragen (davon
   über der Seitenregel), Kosten, neue Kandidaten und deren Ergebnis (Kanzlei im Land, außerhalb, keine
@@ -113,9 +114,10 @@ der nächsten Quelle füllen.**
     echte Seiten nur lokal unter `echt/`, committet sind fiktive unter `beispiele/`). Ergebnisseiten aus
     `url_vorlage` ({rubrik} {ort} {ort_klein} {plz} {seite} {start}; `formular` → POST), bis `max_seiten`,
     gedrosselt pause_s + Zufall (Verzeichnisse 10–15 s, amtlich 30–35 s), robots.txt beachtet, Antworten gecacht
-    (POST mit Formularfeldern im Schlüssel). Nie `--alle` (`nur_luecken`). Alle standardmäßig `aktiv: false` –
-    Nutzungsbedingungen vor dem Einschalten prüfen.
-    - `stb_verzeichnis` (amtlich, BStBK, **Grundliste**): POST je PLZ des Ortes (`je_plz`), alle Treffer auf
+    (POST mit Formularfeldern im Schlüssel). Branchenverzeichnisse nie `--alle` (`nur_luecken`). Alle vier
+    `aktiv: true` (Branchenverzeichnisse nur im Ergänzungsmodus).
+    - `stb_verzeichnis` (amtlich, BStBK, **Grundliste**, `nur_luecken: false` → auch `fill --alle`; gleiche PLZ
+    mehrerer Gemeinden kommen aus dem Cache): POST je PLZ des Ortes (`je_plz`), alle Treffer auf
       einer Seite; „Treffer: X von Y" mit X < Y wird gemeldet. Karten je Berufsträger und je Gesellschaft werden
       zu Kanzleien gruppiert (`stbv_kanzleien`): Gesellschaften sind Kanzleien; Berufsträger gehören zur Firma
       in ihren Adresszeilen (vor der Straße; Zeilen „Beratungsstelle/Zweigniederlassung …" entfallen, „c/o X" →
@@ -530,7 +532,8 @@ Schemaversion über `PRAGMA user_version` (aktuell 4, `adresszusatz`); ältere D
 - **pytest muss grün sein** vor jedem Commit (`pytest` im Ordner `kanzlei-recherche/`).
 - Tests hängen nicht an den lokal gepflegten Dateien in `config/` (Ortsliste, Referenz, Budget, num_ctx):
   eigene Test-Konfigurationen oder Werte aus der geladenen Konfiguration.
-- **Tests nur gegen Fixtures** (`tests/fixtures/`): keine Netzwerkzugriffe, kein
+- **Tests nur gegen Fixtures** (`tests/fixtures/`): keine Netzwerkzugriffe (in `conftest.py` gesperrt – ein echter
+  httpx-Abruf schlägt fehl), kein
   Ollama, keine Suchmaschine in Tests. Externe Clients werden injiziert und in
   Tests durch Fakes mit gespeicherten Beispielantworten ersetzt.
 - **Live-Läufe nur über `cli.py run`** (bzw. die einzelnen CLI-Befehle), nie aus
@@ -544,7 +547,7 @@ Schemaversion über `PRAGMA user_version` (aktuell 4, `adresszusatz`); ältere D
 - Stufe 1 (Gerüst): Modelle, SQLite-Speicher, Excel-Export, CLI.
 - Discovery-Sitzung: Ergebnisformat und Dubletten-Logik über Adresse/Telefon, Brave- und
   Google-CSE-Adapter, `coverage`, `fill`, `search-compare` für alle aktiven Adapter.
-  Platzhalter: `serpapi`, `places` (stillgelegt); Verzeichnisse mit Parsern (aus Kiel-Seiten), aus bis zur Klärung der Nutzungsbedingungen.
+  Platzhalter: `serpapi`, `places` (stillgelegt); Verzeichnisse mit Parsern (aus Kiel-Seiten), aktiv.
 - Stufe 2 (Lesen und Extrahieren): `crawl`, `extract` (Regeln + Ollama), Zusammenführung
   mit Abweichung und Konfidenz, OpenPLZ-Prüfung, Schema v3, `fixture-add`,
   `fixture-eval` mit 6 fiktiven Beispielen. Die 15 echten Fixtures folgen (lokal).

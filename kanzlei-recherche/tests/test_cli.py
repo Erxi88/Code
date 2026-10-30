@@ -380,8 +380,11 @@ def test_fill_lehnt_websuche_ab(fakes, db_pfad):
     assert r.exit_code == 2 and "recherche search --adapter brave" in r.output
 
 
-def test_fill_deaktivierte_quelle(db_pfad):
-    r = runner.invoke(cli.app, _args("fill", db_pfad, "--quelle", "stb_verzeichnis", "--alle"))
+def test_fill_deaktivierte_quelle(db_pfad, tmp_path):
+    cfg = _coverage_config(tmp_path)
+    cfg.write_text(cfg.read_text(encoding="utf-8").replace("aktiv: true\n      nur_luecken: false",
+                                                           "aktiv: false\n      nur_luecken: false"), encoding="utf-8")
+    r = runner.invoke(cli.app, _args("fill", db_pfad, "--quelle", "stb_verzeichnis", "--alle", "--config", str(cfg)))
     assert r.exit_code == 2 and "deaktiviert" in r.output
 
 

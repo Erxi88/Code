@@ -44,16 +44,22 @@ def test_alle_quellen_konfiguriert(settings):
 
 
 def test_aktive_adapter_aus_settings(settings):
-    assert [a.name for a in aktive_adapter(settings)] == ["brave", "ddgs"]
-    assert [a.name for a in aktive_adapter(settings, stufe="B")] == []
     s = settings.model_copy(deep=True)
+    for name in ("brave", "ddgs", "google_cse", "serpapi", "places", "gelbeseiten", "dasoertliche", "elf880", "stb_verzeichnis"):
+        getattr(s.discovery.quellen, name).aktiv = name in ("brave", "ddgs", "stb_verzeichnis")
+    assert [a.name for a in aktive_adapter(s)] == ["brave", "ddgs", "stb_verzeichnis"]
+    assert [a.name for a in aktive_adapter(s, stufe="B")] == ["stb_verzeichnis"]
+    s.discovery.quellen.stb_verzeichnis.aktiv = False
     s.discovery.quellen.places.aktiv = True
     s.discovery.quellen.ddgs.aktiv = False
     assert [a.name for a in aktive_adapter(s)] == ["brave", "places"]
 
 
-def test_stb_verzeichnis_standardmaessig_aus(settings):
-    assert settings.discovery.quellen.stb_verzeichnis.aktiv is False
+def test_stb_verzeichnis_ohne_settings_aus():
+    from recherche.config import QuellenConfig
+
+    q = QuellenConfig()  # Code-Standard; eingeschaltet wird in settings.yaml
+    assert q.stb_verzeichnis.aktiv is False and not q.stb_verzeichnis.nur_luecken and q.gelbeseiten.nur_ergaenzen
 
 
 @pytest.mark.parametrize(("name", "key"), [
@@ -85,10 +91,11 @@ def test_places_stillgelegt(settings, monkeypatch):
 
 
 @pytest.mark.parametrize("name", ["gelbeseiten", "dasoertliche", "elf880", "stb_verzeichnis"])
-def test_verzeichnisse_konfiguriert_aber_aus(settings, name):
+def test_verzeichnisse_konfiguriert(settings, name):
     a = build_adapter(name, settings)
-    assert not a.aktiv and a.nicht_konfiguriert_grund() is None  # url_vorlage aus den Fixture-Seiten, aktiv: false
+    assert a.nicht_konfiguriert_grund() is None  # url_vorlage aus den Fixture-Seiten
     assert "url_vorlage fehlt" in type(a)(VerzeichnisConfig()).nicht_konfiguriert_grund()
-    assert settings.discovery.quellen.get(name).nur_ergaenzen == (name != "stb_verzeichnis")
-    assert settings.discovery.quellen.get(name).nur_luecken
+    q = settings.discovery.quellen.get(name)
+    assert q.nur_ergaenzen == (name != "stb_verzeichnis")  # Branchenverzeichnisse legen nie neue Kandidaten an
+    assert q.nur_luecken == (name != "stb_verzeichnis")  # nur die Grundliste darf --alle
     assert settings.discovery.quellen.stb_verzeichnis.je_plz and settings.discovery.quellen.stb_verzeichnis.pause_s == 30

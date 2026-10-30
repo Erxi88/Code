@@ -57,8 +57,10 @@ def test_ohne_regel_wie_bisher():
 
 
 def test_settings_regel():
-    plan = Suchplan.aus_settings(load_settings())
-    assert [(s.unter, s.varianten, s.seiten) for s in plan.regel] == [(2000, 1, 1), (20000, 2, 2), (None, None, 3)]
+    plan = Suchplan.aus_settings(load_settings())  # Werte sind Kalibrierung (settings.yaml) – nur die Form prüfen
+    grenzen = [s.unter for s in plan.regel]
+    assert grenzen[-1] is None and grenzen[:-1] == sorted(grenzen[:-1])
+    assert plan.stufe(Ort("Großstadt", "24103", einwohner=500_000)).varianten is None
     assert plan.weiter.aktiv and plan.weiter.anteil_kanzlei_domains == 0.5
     assert plan.stadtteil_vorlagen[0] == "Steuerberater {plz} {gemeinde}"
 

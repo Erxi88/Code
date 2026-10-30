@@ -40,6 +40,18 @@ def settings():
     return load_settings(PROJEKT / "config" / "settings.yaml")
 
 
+@pytest.fixture(autouse=True)
+def kein_netz(monkeypatch):
+    """Tests nur gegen Fixtures: ein echter HTTP-Abruf (statt MockTransport/Fake) schlägt sofort fehl."""
+    import httpx
+
+    def verboten(self, request):
+        raise RuntimeError(f"Netzwerkzugriff im Test: {request.method} {request.url}")
+
+    monkeypatch.setattr(httpx.HTTPTransport, "handle_request", verboten)
+    monkeypatch.setattr(httpx.AsyncHTTPTransport, "handle_async_request", verboten)
+
+
 @pytest.fixture
 def db_pfad(tmp_path) -> Path:
     return tmp_path / "test.sqlite"
