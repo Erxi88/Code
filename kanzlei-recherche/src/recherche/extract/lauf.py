@@ -66,7 +66,15 @@ class ExtractStatistik:
 
 def regeln_fuer(seiten, ausschluss: Ausschluss, domain: str | None):
     """Regel-Extraktion: Impressum zuerst, Kontakt- und Startseite für fehlende Felder."""
-    reihenfolge = [seiten[t] for t in (Seitentyp.IMPRESSUM, Seitentyp.KONTAKT, Seitentyp.START) if t in seiten]
+    from ..ketten import standortseite
+
+    impressum = seiten.get(Seitentyp.IMPRESSUM)
+    typen = (Seitentyp.IMPRESSUM, Seitentyp.KONTAKT, Seitentyp.START)
+    if standortseite(domain, None, (impressum.final_url or impressum.url) if impressum else None):
+        # Standort einer Kette (Prüfkatalog 9 / Q11): Telefon, Adresse, E-Mail von der Standortseite, Impressum der
+        # Zentrale nur als Rückfall
+        typen = (Seitentyp.KONTAKT, Seitentyp.START, Seitentyp.IMPRESSUM)
+    reihenfolge = [seiten[t] for t in typen if t in seiten]
     if not reihenfolge:
         return None
     texte = [(text_normalisieren(s.text) or "", [u for u, _ in links(s.html, s.final_url or s.url)] if s.html else [])

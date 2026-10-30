@@ -119,8 +119,17 @@ def standort_spalte(kanzleien: list[Kanzlei]) -> dict[str, str]:
         for k in weitere:
             ergebnis[_schluessel(k)] = f"weitere Domain von {z.domain or z.kanzleiname}"
         for k in standorte:
-            ergebnis[_schluessel(k)] = f"Standort von {z.kanzleiname or z.domain}"
+            bez = standortbezeichnung(k)
+            ergebnis[_schluessel(k)] = f"Standort von {z.kanzleiname or z.domain}" + (f" ({bez})" if bez else "")
     return ergebnis
+
+
+def standortbezeichnung(k: Kanzlei) -> str | None:
+    """„SHBB Steuerberatungskanzlei Heide" – der Name der Standortseite, wenn der Kanzleiname der Anbieter ist."""
+    from .merge import STANDORT_PRAEFIX
+
+    teil = next((t for t in (k.abweichung or "").split("; ") if t.startswith(STANDORT_PRAEFIX)), None)
+    return teil[len(STANDORT_PRAEFIX):] if teil else None
 
 
 def zentrale_spalte(kanzleien: list[Kanzlei]) -> dict[str, str]:

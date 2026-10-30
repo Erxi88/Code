@@ -135,6 +135,30 @@ def kanzleityp(k: Kanzlei, ketten: dict[str, str], cfg: KettenConfig | None = No
     return MITTELSTAND
 
 
+_LEITUNG = re.compile(r"\b(?:leiter(?:in)?|kanzleileitung|standortleit\w*|niederlassungsleit\w*|beratungsstellenleit\w*)\b",
+                      re.IGNORECASE)
+
+
+def ist_standort_leitung(funktion: str | None) -> bool:
+    """„Leiter", „Kanzleileitung", „Standortleitung", „Niederlassungsleitung" (Prüfkatalog 9 / Q11)."""
+    return bool(funktion and _LEITUNG.search(funktion))
+
+
+def standortseite(domain: str | None, website: str | None = None, impressum_url: str | None = None) -> Kette | bool:
+    """Liegt die Seite auf einem Standort einer Kette (Subdomain/Pfad laut ketten.yaml, nicht die Zentrale)?
+    Ohne Eintrag: Impressum auf einem anderen Host derselben Stammdomain (www.kette.de/impressum für
+    heide.kette.de) → True."""
+    from .extract.kanzlei import stammdomain
+
+    d = (domain or "").lower().removeprefix("www.")
+    if c := config().kette(Kanzlei(lauf_bundesland="", domain=domain, website=website)):
+        return c if d != c.zentrale.lower().removeprefix("www.") else False
+    if impressum_url and d:
+        host = urlsplit(impressum_url).netloc.lower().removeprefix("www.")
+        return bool(host and host != d and stammdomain(host) == stammdomain(d) and d != stammdomain(d))
+    return False
+
+
 _aktiv = KettenConfig()
 
 

@@ -828,6 +828,13 @@ def plz_aus_ort(ort: str, falsche_plz: str) -> str | None:
     return gleiche[0] if len(gleiche) == 1 else None
 
 
+STANDORT_PRAEFIX = "Standortbezeichnung: "
+
+
+def _name_norm(text: str | None) -> str:
+    return re.sub(r"[^0-9a-zäöüß]", "", (text or "").casefold())
+
+
 def konfidenz(k: Kanzlei, impressum_gelesen: bool, kanzlei: bool = True) -> Konfidenz:
     """Vorläufige Regel (CLAUDE.md): hoch = Impressum gelesen und PLZ/Ort verifiziert (und, mit
     Kanzlei-Erkennung, als Kanzlei erkannt); mittel = Kernfelder vollständig; niedrig = Kernfelder fehlen."""
@@ -914,10 +921,30 @@ def zusammenfuehren(
         llm_form if rechtsform_belegt(llm_form, name, impressum_text, fremd, rahmen) else None)
 
     # ---- Personen und Teamgröße: Regel-Erkennung auf den Teamseiten + LLM + Impressum
-    team_seiten = [seiten[t] for t in (Seitentyp.TEAM, Seitentyp.TEAM2) if t in seiten]
+    from ..ketten import ist_standort_leitung, standortseite
+
+    imp = seiten.get(Seitentyp.IMPRESSUM)
+    standort = standortseite(kandidat.domain, kandidat.website, (imp.final_url or imp.url) if imp else None)
+    team_typen = (Seitentyp.TEAM, Seitentyp.TEAM2) + ((Seitentyp.START, Seitentyp.KONTAKT) if standort else ())
+    team_seiten = [seiten[t] for t in team_typen if t in seiten]
     erkannte = erkannte_personen(team_seiten, rahmen)
     personen, verworfen = bereinige_ansprechpartner(ansprechpartner(llm, erkannte, impressum_text, fremd, rahmen, name))
     abweichungen += verworfen
+    if standort:
+        # Standort einer Kette: Standortleitung („Leiter", „Kanzleileitung" …) vor den Vertretungsberechtigten der
+        # Zentrale aus deren Impressum; Kanzleiname = Anbieter aus dem Impressum, Standortbezeichnung in die Spalte
+        # „Zentrale/Standort" (Prüfkatalog 9, Rückmeldung SHBB 30.10.2026)
+        leitung = [p for p in personen if ist_standort_leitung(p.funktion)]
+        if leitung and personen and personen[0] not in leitung:
+            abweichungen.append(f"Ansprechpartner-Rang: Standortleitung {leitung[0].name} vor {personen[0].name} (Zentrale)")
+        personen = leitung + [p for p in personen if p not in leitung]
+        from .kanzlei import anbieter_text
+
+        anbieter = next((z for z in anbieter_text(impressum_text).splitlines() if rechtsform_aus_text(z)), None)
+        if anbieter and _name_norm(anbieter) != _name_norm(name):
+            if name:
+                abweichungen.append(f"{STANDORT_PRAEFIX}{name}")
+            name = anbieter
     if rechtsform is None and ist_einzelkanzlei(name, impressum_text,
                                                 vertretung(impressum_text, fremd, rahmen).namen if impressum_text else []):
         rechtsform = "Einzelkanzlei"

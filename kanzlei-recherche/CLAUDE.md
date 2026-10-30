@@ -565,6 +565,13 @@ der nächsten Quelle füllen.**
   Knüppel & Partner mit 14 Orts-Domains) sind keine Standorte: In der Versandliste steht nur die
   Zentrale („+ 13 weitere Domains: …"); im Blatt „Dubletten" ein Eintrag „weitere domains /
   zusammengeführt". Standorte mit eigener Adresse (SHBB) bleiben eigene Zeilen.
+- **Standortseite einer Kette** (Prüfkatalog 9 / Q11): Kandidat auf einer Standort-Subdomain/einem Standortpfad
+  laut `config/ketten.yaml` (nicht die Zentrale) oder mit Impressum auf einem anderen Host derselben Stammdomain →
+  Telefon, Adresse, E-Mail aus Kontakt- und Startseite vor dem Impressum der Zentrale; Personen auch von Start- und
+  Kontaktseite; Standortleitung („Leiter", „Kanzleileitung", „Standortleitung", „Niederlassungsleitung") vor den
+  Vertretungsberechtigten der Zentrale („Ansprechpartner-Rang: Standortleitung …"); Kanzleiname = Anbieter aus dem
+  Impressum („SHBB Steuerberatungsgesellschaft mbH"), der Name der Standortseite als „Standortbezeichnung: …" in
+  „Abweichung" und in „Zentrale/Standort" („Standort von SHBB … (SHBB Steuerberatungskanzlei Heide)").
 - Spalte **„Kanzleityp"** (hinter „Zentrale", `ketten.py`, Prüfkatalog 9): Großgesellschaft (Namensmuster/Domain
   aus `config/ketten.yaml`) vor Kette (Eintrag in `ketten.yaml` oder ≥ 3 Standorte mit derselben Impressum-URL bzw.
   Standort-Gruppe mit ≥ 3 Zeilen) vor Einzelkanzlei (Rechtsform) vor Mittelstand. Jede Kette steht im

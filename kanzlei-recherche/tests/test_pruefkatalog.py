@@ -564,3 +564,45 @@ def test_regel_hinweise_fuer_telefon_und_ansprechpartner_rang():
                               Ansprechpartner(name="Eva Kittel", funktion="Steuerberaterin")])
     assert hinweise == ["Ansprechpartner-Rang: Rolf Lund (Rechtsanwalt, Geschäftsführer) (Rechtsanwalt/Notar) hinter "
                         "Eva Kittel (Steuerberaterin) (Steuerberater)"]
+
+
+def test_standortseite_einer_kette(tmp_path, ausschluss):
+    """SHBB-Aufbau (fiktiv): Standort-Subdomain mit Kontaktblock und „Kanzleileitung", Impressum der Zentrale.
+    Ansprechpartner = Standortleitung, Kanzleiname = Anbieter, Standortbezeichnung in „Zentrale/Standort"."""
+    from recherche.extract.standorte import standort_spalte, standortbezeichnung
+    from recherche.ketten import KettenConfig, setze_config
+
+    (tmp_path / "ketten.yaml").write_text(
+        "ketten:\n  nordbund:\n    name: Nordbund Steuerberatungsgesellschaft mbH\n    zentrale: nordbund.example\n"
+        "    standortmuster: subdomain\n", encoding="utf-8")
+    setze_config(KettenConfig.laden(tmp_path / "ketten.yaml"))
+    try:
+        start = ["Nordbund Steuerberatungskanzlei Heide", "Kontakt", "Nordbund Beratungsstelle Heide", "Markt 1",
+                 "25746 Heide", "Telefon 0481 123450", "E-Mail info@heide.nordbund.example",
+                 "Kanzleileitung und weitere Steuerberater", "Ole Lund", "Leiter", "Steuerberater",
+                 "Durchwahl 0481 123451", "Eva Kittel", "Steuerberaterin", "Durchwahl 0481 123452"]
+        impressum = ["Impressum", "Nordbund Steuerberatungsgesellschaft mbH", "Holstenstraße 1", "24103 Kiel",
+                     "Telefon 0431 999990", "Geschäftsführer: Maik Muster",
+                     "Zuständige Kammer: Steuerberaterkammer Schleswig-Holstein"]
+        seiten = {
+            Seitentyp.START: Seite(url="https://heide.nordbund.example/", domain="heide.nordbund.example",
+                                   seitentyp=Seitentyp.START, text="\n".join(start), html=_html(start)),
+            Seitentyp.IMPRESSUM: Seite(url="https://www.nordbund.example/impressum", domain="nordbund.example",
+                                       seitentyp=Seitentyp.IMPRESSUM, text="\n".join(impressum), html=_html(impressum)),
+        }
+        llm = LlmErgebnis(kanzleiname="Nordbund Steuerberatungskanzlei Heide", verantwortliche_person="Maik Muster",
+                          personen=[LlmPerson(name="Maik Muster", funktion="Geschäftsführer"),
+                                    LlmPerson(name="Ole Lund", funktion="Leiter, Steuerberater")])
+        kandidat = Kandidat(id=7, bundesland="SH", domain="heide.nordbund.example", website="https://heide.nordbund.example/")
+        k = zusammenfuehren(kandidat, [], seiten, regeln_fuer(seiten, ausschluss, kandidat.domain), llm,
+                            lambda p, o: PlzPruefung(True, SH, ort_kanonisch=o), ausschluss)
+        assert k.hauptansprechpartner.name == "Ole Lund"
+        assert (k.strasse, k.plz, k.telefon, k.email) == ("Markt 1", "25746", "+49 481 123450", "info@heide.nordbund.example")
+        assert k.kanzleiname == "Nordbund Steuerberatungsgesellschaft mbH"
+        assert standortbezeichnung(k) == "Nordbund Steuerberatungskanzlei Heide"
+        zentrale = _k(id=8, domain="nordbund.example", kanzleiname="Nordbund Steuerberatungsgesellschaft mbH")
+        spalte = standort_spalte([zentrale, k])
+        assert spalte["heide.nordbund.example"] == ("Standort von Nordbund Steuerberatungsgesellschaft mbH "
+                                                     "(Nordbund Steuerberatungskanzlei Heide)")
+    finally:
+        setze_config(KettenConfig())
