@@ -194,21 +194,21 @@ def istwerte(k: Kanzlei) -> dict:
 
 
 def feld_richtig(feld: str, ist: dict, soll: dict) -> bool | None:
-    """True/False; None, wenn das Feld nicht bewertet wird (fehlt in erwartet.json)."""
+    """True/False; None, wenn das Feld nicht bewertet wird (fehlt in erwartet.json oder Sollwert null)."""
     if feld == "adresse":
         teile = [feld_richtig(f, ist, soll) for f in ("strasse", "plz", "ort")]
         return None if None in teile else all(teile)
     if feld == "teamgroesse":
-        if "teamgroesse" not in soll and "teamgroesse_klasse" not in soll:
-            return None
+        if soll.get("teamgroesse") is None and soll.get("teamgroesse_klasse") is None:
+            return None  # kein Sollwert (fehlt oder null) – nicht bewertet
         if soll.get("teamgroesse") is not None:
             return ist["teamgroesse"] == soll["teamgroesse"]
         return ist["teamgroesse"] is None and ist["teamgroesse_klasse"] == soll.get("teamgroesse_klasse")
-    if feld not in soll:
-        return None
+    if soll.get(feld) is None:
+        return None  # fehlt oder null: nicht bewertet (kein Fehler)
     a, b = ist.get(feld), soll[feld]
-    if a is None or b is None:
-        return a is None and b is None
+    if a is None:
+        return False
     vergleich = {
         "kanzleiname": lambda: _name_norm(a) == _name_norm(b),
         "rechtsform": lambda: _name_norm(normalize_rechtsform(a)) == _name_norm(normalize_rechtsform(b)),
@@ -222,6 +222,21 @@ def feld_richtig(feld: str, ist: dict, soll: dict) -> bool | None:
         "berufstraeger_anzahl": lambda: int(a) == int(b),
     }
     return vergleich[feld]()
+
+
+_HINWEIS_WORTE = {
+    "telefon": ("Telefon", "Vorwahl"),
+    "erster_ansprechpartner": ("Ansprechpartner", "Berufsträger abgeleitet"),
+    "kanzleiname": ("Name", "Standort"),
+}
+
+
+def _hinweis(feld: str, k: Kanzlei) -> str | None:
+    """Einträge aus „Abweichung", die zum Feld gehören, und bei Ansprechpartnern die ganze Reihenfolge."""
+    teile = [t for t in (k.abweichung or "").split("; ") if t.startswith(_HINWEIS_WORTE.get(feld, ("\0",)))]
+    if feld == "erster_ansprechpartner" and k.ansprechpartner:
+        teile.append("Reihenfolge: " + " · ".join(p.anzeige() for p in k.ansprechpartner[:4]))
+    return "; ".join(teile) or None
 
 
 def _anzeige(feld: str, ist: dict, soll: dict) -> tuple[object, object]:
@@ -245,6 +260,7 @@ class Abweichung:
     feld: str
     ist: object
     soll: object
+    hinweis: str | None = None  # passende Einträge aus „Abweichung" (welche Regel das Ergebnis bestimmt hat)
 
 
 @dataclass
@@ -258,6 +274,7 @@ class EvalErgebnis:
     prompt_tokens: list[int] = field(default_factory=list)
     antwort_tokens: list[int] = field(default_factory=list)
     ohne_aufzeichnung: list[str] = field(default_factory=list)
+    nicht_bewertet: dict[str, int] = field(default_factory=dict)  # Sollwert fehlt oder null
 
     def quote(self, feld: str) -> float | None:
         n = self.bewertet.get(feld, 0)
@@ -315,12 +332,14 @@ def auswerten(
                 continue
             richtig = feld_richtig(feld, ist, fx.erwartet)
             if richtig is None:
+                erg.nicht_bewertet[feld] = erg.nicht_bewertet.get(feld, 0) + 1
                 continue
             erg.bewertet[feld] = erg.bewertet.get(feld, 0) + 1
             if richtig:
                 erg.richtig[feld] = erg.richtig.get(feld, 0) + 1
             else:
-                erg.fehler.append(Abweichung(fx.domain, feld, *_anzeige(feld, ist, fx.erwartet)))
+                erg.fehler.append(Abweichung(fx.domain, feld, *_anzeige(feld, ist, fx.erwartet),
+                                             _hinweis(feld, kanzlei)))
     return erg
 
 

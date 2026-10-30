@@ -526,7 +526,10 @@ der nächsten Quelle füllen.**
   die Vorlage an. `recherche fixture-eval [--live] [--modell M]` misst die Trefferquote
   je Feld, mittlere Laufzeit und Token je Kanzlei; `--live` fragt Ollama und zeichnet
   auf – nur für `echt/`, außer mit `--nur beispiele`. `--offline` prüft PLZ/Ort ohne OpenPLZ.
-  Name und Ansprechpartner werden offline nur über Aufzeichnungen bewertet.
+  Name und Ansprechpartner werden offline nur über Aufzeichnungen bewertet. Sollwerte `null` (oder fehlend) zählen
+  als „nicht bewertet", nicht als Fehler. Bei jedem Fehler steht die Regel dabei, die das Ergebnis bestimmt hat
+  (Einträge aus „Abweichung" wie „Telefon aus tel:-Link …, im Text steht …", „Ansprechpartner-Rang: …",
+  „Ansprechpartner verworfen: …", dazu die Reihenfolge der Ansprechpartner).
 - Ziel: 13 von 15 echten Fixtures korrekt für Name, Adresse, Telefon und ersten
   Ansprechpartner.
 

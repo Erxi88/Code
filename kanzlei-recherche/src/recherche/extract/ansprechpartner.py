@@ -120,5 +120,9 @@ def bereinigen(personen: list[Ansprechpartner]) -> tuple[list[Ansprechpartner], 
         return bool(_RA_NOTAR.search(text)) and not _STB.search(text)
 
     if any(not nur_ra(p) and _STB.search(f"{p.titel or ''} {p.funktion or ''}") for p in bleiben):
-        bleiben = [p for p in bleiben if not nur_ra(p)] + [p for p in bleiben if nur_ra(p)]
+        neu = [p for p in bleiben if not nur_ra(p)] + [p for p in bleiben if nur_ra(p)]
+        if bleiben and neu[0] is not bleiben[0]:
+            hinweise.append(f"Ansprechpartner-Rang: {bleiben[0].anzeige()} (Rechtsanwalt/Notar) hinter "
+                            f"{neu[0].anzeige()} (Steuerberater)")
+        bleiben = neu
     return bleiben, hinweise

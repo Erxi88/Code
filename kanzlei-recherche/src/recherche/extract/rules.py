@@ -397,6 +397,11 @@ def extract_impressum(
                                                        [h for h in lnks if h.lower().startswith("mailto:")])
             mails = list(dict.fromkeys(mails))
     erg.telefon = beste_telefon([*tel_links, *(schema_telefone or []), *text_nummern])
+    text_erste = beste_telefon(text_nummern)
+    if erg.telefon and text_erste and erg.telefon != text_erste and erg.telefon not in text_nummern:
+        # Prüfkatalog 2: tel:-Link/Schema.org vor Text – die Seite nennt im Text eine andere Nummer
+        quelle = "tel:-Link" if erg.telefon in tel_links else "Schema.org"
+        erg.hinweise.append(f"Telefon aus {quelle} {erg.telefon}, im Text steht {text_erste}")
     erg.email = beste_email(mails, domain, ausschluss.email_nachrangig)
     return erg
 

@@ -101,8 +101,8 @@ def test_offene_fixtures_werden_nicht_bewertet(tmp_path):
     ("telefon", "+49 431 9987610", "0431 / 99 87 610", True),
     ("ort", "Glücksburg (Ostsee)", "Glücksburg", True),
     ("erster_ansprechpartner", "Dr. Henrik Lorenzen", "Henrik Lorenzen", True),
-    ("email", None, None, True),
-    ("email", "a@b.example", None, False),
+    ("email", None, None, None),  # Sollwert null: nicht bewertet (Rückmeldung 30.10.2026)
+    ("email", "a@b.example", None, None),
     ("rechtsform", None, "GmbH", False),
     ("rechtsform", "Partnerschaftsgesellschaft mbB", "PartG mbB", True),
     ("rechtsform", "Steuerberatungsgesellschaft mbH", "GmbH", True),
@@ -167,10 +167,13 @@ def test_echte_fixtures_llm_felder(feld):
 
 @pytest.mark.parametrize("feld", ["kanzleiname", "rechtsform", "strasse", "plz", "ort", "telefon", "email",
                                   "erster_ansprechpartner", "berufstraeger_anzahl", "adresse", "teamgroesse"])
-def test_beide_leer_ist_richtig(feld):
+def test_sollwert_null_wird_nicht_bewertet(feld):
+    """Leere Sollwerte (null) zählen als „nicht bewertet", nicht als Fehler – auch wenn das Ergebnis einen Wert hat."""
     leer = {k: None for k in ("kanzleiname", "rechtsform", "strasse", "plz", "ort", "telefon", "email",
                               "erster_ansprechpartner", "berufstraeger_anzahl", "teamgroesse", "teamgroesse_klasse")}
-    assert feld_richtig(feld, dict(leer), dict(leer)) is True
+    voll = {**leer, "kanzleiname": "X", "telefon": "+49 431 1234567", "plz": "24103", "teamgroesse": 3}
+    assert feld_richtig(feld, dict(leer), dict(leer)) is None
+    assert feld_richtig(feld, voll, dict(leer)) is None
 
 
 def test_anzeige_teamgroesse_nie_none_none():

@@ -1081,8 +1081,13 @@ def zeige_eval(erg: EvalErgebnis, gesamt: int) -> None:
             f"Je Kanzlei im Mittel: {laufzeit:.1f} s, Token {g:.0f} (Prompt {p:.0f}, Antwort {a:.0f}) "
             f"über {len(erg.laufzeiten)} Antworten"
         )
+    if erg.nicht_bewertet:
+        console.print("Nicht bewertet (Sollwert fehlt oder null): "
+                      + ", ".join(f"{f} {n}" for f, n in erg.nicht_bewertet.items()))
     for f in erg.fehler:
         console.print(f"  ✗ {f.domain} · {f.feld}: ist {f.ist!r} / soll {f.soll!r}")
+        if f.hinweis:
+            console.print(f"      Regel: {f.hinweis}")
 
 
 def zeige_modellvergleich(ergebnisse: list[EvalErgebnis]) -> None:

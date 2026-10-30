@@ -547,3 +547,20 @@ def test_ketten_im_qualitaetsbericht_und_export(ketten_cfg, tmp_path):
     ws = load_workbook(tmp_path / "x.xlsx")[BLATT_KANZLEIEN]
     kopf = [c.value for c in ws[1]]
     assert {r[kopf.index("Kanzleityp")] for r in ws.iter_rows(min_row=2, values_only=True)} == {"Kette"}
+
+
+def test_regel_hinweise_fuer_telefon_und_ansprechpartner_rang():
+    """fixture-eval soll zeigen, welche Regel ein Ergebnis bestimmt hat (Rückmeldung 30.10.2026)."""
+    from recherche.extract.ansprechpartner import bereinigen
+    from recherche.extract.rules import extract_impressum
+    from recherche.models import Ansprechpartner
+
+    erg = extract_impressum("Steuerkanzlei Lund\nMarkt 1\n24103 Kiel\nTel. 0431 980750", links=["tel:+49431960750"])
+    assert erg.telefon == "+49 431 960750"
+    assert "Telefon aus tel:-Link +49 431 960750, im Text steht +49 431 980750" in erg.hinweise
+    gleich = extract_impressum("Markt 1\n24103 Kiel\nTel. 0431 980750", links=["tel:+49431980750"])
+    assert not [h for h in gleich.hinweise if h.startswith("Telefon aus")]
+    _, hinweise = bereinigen([Ansprechpartner(name="Rolf Lund", funktion="Rechtsanwalt, Geschäftsführer"),
+                              Ansprechpartner(name="Eva Kittel", funktion="Steuerberaterin")])
+    assert hinweise == ["Ansprechpartner-Rang: Rolf Lund (Rechtsanwalt, Geschäftsführer) (Rechtsanwalt/Notar) hinter "
+                        "Eva Kittel (Steuerberaterin) (Steuerberater)"]
