@@ -50,6 +50,7 @@ PRUEFUNGEN: dict[str, tuple[str, str]] = {
     "Q13": ("Teamgröße > 200 oder Berufsträger > Teamgröße", WARNUNG),
     "Q14": ("Coverage-Zahl ≠ Hauptblatt-Zeilen", HINWEIS),
     "1B": ("Positivsignal nur Rang 4/5 (Kanzleiwort, Suchtreffer)", SPERRE),
+    "K1": ("Kette: ≥ 3 Standorte mit demselben Impressum-Anbieter (Prüfkatalog 9)", HINWEIS),
 }
 
 _NAVIGATION = re.compile(r"(?<![\wäöüß])(?:start|startseite|home|kontakt|impressum|datenschutz|leistungen|aktuelles|"
@@ -186,6 +187,16 @@ def bericht(kanzleien: Sequence[Kanzlei], dubletten: Sequence[Dublette] = (), zi
             if z and k.telefon and telefon_key(k.telefon) == telefon_key(z.telefon) and k.hauptansprechpartner and (
                     z.hauptansprechpartner and k.hauptansprechpartner.name == z.hauptansprechpartner.name):
                 neu("Q11", k, f"Telefon {k.telefon} und {k.hauptansprechpartner.name} wie die Zentrale {z.domain}")
+    # K1: Ketten (Prüfkatalog 9) – je Kette ein Eintrag
+    from .ketten import config, erkannte_ketten
+
+    je_kette: dict[str, list[Kanzlei]] = defaultdict(list)
+    nach_schluessel = {k.domain or f"id:{k.id}": k for k in kanzleien}
+    for s, name in erkannte_ketten(kanzleien, config()).items():
+        je_kette[name].append(nach_schluessel[s])
+    for name, liste in sorted(je_kette.items()):
+        neu("K1", liste[0], f"Kette {name}: {len(liste)} Zeilen ({', '.join(sorted(k.domain or '?' for k in liste)[:5])}"
+                            f"{' …' if len(liste) > 5 else ''})")
     # Q14: Coverage-Zahl gegen Hauptblatt-Zeilen mit Bundesland
     if coverage_gefunden is not None:
         im_land = sum(1 for k in haupt if not ziel_land or k.bundesland == ziel_land)

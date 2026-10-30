@@ -147,6 +147,9 @@ def _ortsnamen_setzen(ctx: Kontext) -> None:
     staedte = list((yaml.safe_load(pfad.read_text(encoding="utf-8-sig")) or {}).keys()) if pfad.exists() else []
     setze_ortsnamen([o.name.split(" (")[0] for o in orte] + [str(x) for x in staedte])
     setze_ortsliste(orte)  # Zahlendreher-Korrektur der PLZ
+    from .ketten import KettenConfig, setze_config
+
+    setze_config(KettenConfig.laden(ctx.settings.pfad(ctx.settings.pfade.ketten)))
     # Q4 Vorwahl ↔ PLZ: neuestes BNetzA-Verzeichnis im Ordner, Nachbarkreise je Bundesland
     from .vorwahl import VorwahlPruefer, setze_pruefer
 

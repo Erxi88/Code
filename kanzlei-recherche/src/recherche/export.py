@@ -148,11 +148,14 @@ def _blatt(ws: Worksheet, spalten: Sequence[Spalte], zeilen: Sequence[Any]) -> N
     ws.freeze_panes = "A2"
 
 
-def _mit_standort(spalten: list[Spalte], standorte: dict[str, str], zentralen: dict[str, str] | None = None) -> list[Spalte]:
-    """Spalten „Zentrale/Standort" und „Zentrale" (Hauptdomain) hinter dem Kanzleinamen (extract/standorte.py)."""
-    zentralen = zentralen or {}
+def _mit_standort(spalten: list[Spalte], standorte: dict[str, str], zentralen: dict[str, str] | None = None,
+                  typen: dict[int, str] | None = None) -> list[Spalte]:
+    """Spalten „Zentrale/Standort", „Zentrale" (Hauptdomain) und „Kanzleityp" hinter dem Kanzleinamen
+    (extract/standorte.py, ketten.py)."""
+    zentralen, typen = zentralen or {}, typen or {}
     neu: list[Spalte] = [("Zentrale/Standort", 26, lambda k: standorte.get(k.domain or f"id:{k.id}")),
-                         ("Zentrale", 24, lambda k: zentralen.get(k.domain or f"id:{k.id}"))]
+                         ("Zentrale", 24, lambda k: zentralen.get(k.domain or f"id:{k.id}")),
+                         ("Kanzleityp", 16, lambda k: typen.get(id(k)))]
     i = [s[0] for s in spalten].index("Kanzleiname") + 1
     return [*spalten[:i], *neu, *spalten[i:]]
 
@@ -183,11 +186,14 @@ def build_workbook(
 ) -> Workbook:
     """Blätter nach Prüfkatalog: Hauptblatt nur ohne Sperre; „Zu prüfen" (Q5, Q6, Q12, 1B Rang 4/5) und „Qualität"
     (alle Befunde Q1–Q13) – nichts wird gelöscht."""
+    from .ketten import config, erkannte_ketten, kanzleityp
     from .qualitaet import bericht
 
     qualitaet = bericht(kanzleien, dubletten, ziel_land)
     standorte = standort_spalte(list(kanzleien))
-    spalten = _mit_standort(KANZLEI_SPALTEN, standorte, zentrale_spalte(list(kanzleien)))
+    ketten = erkannte_ketten(kanzleien, config())
+    typen = {id(k): kanzleityp(k, ketten, config()) for k in kanzleien}
+    spalten = _mit_standort(KANZLEI_SPALTEN, standorte, zentrale_spalte(list(kanzleien)), typen)
     keine = [k for k in kanzleien if k.status == Status.KEINE_KANZLEI]
     aussen = [k for k in kanzleien if k.status == Status.AUSSERHALB]
     # weitere Domains derselben Kanzlei (gleicher Name, Telefon, Person, Adresse) nur einmal in der Versandliste

@@ -469,9 +469,9 @@ der nächsten Quelle füllen.**
   wixsite.com je Subdomain) in ≥ 5 Suchorten vorkommt, und nicht ohne echten Kanzleinamen. Sonst Status `keine Kanzlei`, Grund vorn in „Abweichung"
   („Keine Kanzlei: …"), Konfidenz höchstens `mittel`. Nichts wird gelöscht. Nur Kandidaten mit
   Website; ein von Hand gepflegter Status bleibt. `recherche kanzlei-pruefung` wendet die
-  Prüfung ohne LLM auf bereits extrahierte Kanzleien an (auch zurück zu `neu`). Big-Four-
-  Gesellschaften („… Wirtschaftsprüfungsgesellschaft", Berufsträger) gelten als Kanzlei – die
-  gehören auf die Blocklist.
+  Prüfung ohne LLM auf bereits extrahierte Kanzleien an (auch zurück zu `neu`). **Großgesellschaften** (BDO,
+  EY, PwC, KPMG, Deloitte, Baker Tilly …) sind Zielkanzleien – nicht auf die Blocklist (Entscheidung
+  30.10.2026), Kanzleityp „Großgesellschaft" (Prüfkatalog 9).
   **Ausschluss vorab (Prüfkatalog 1A)**, Grund = Kategorie, in dieser Reihenfolge: Portal (Blocklist, *linklisten*,
   *firmenkataloge*, jobs./karriere.-Subdomain), Institution (Steuerberaterkammer/-verband, Versorgungswerk),
   Lohnsteuerhilfeverein („Lohnsteuerhilfe…", „Lohnsteuerberatungsverbund"; „e. V." allein → Verein), Behörde
@@ -562,6 +562,10 @@ der nächsten Quelle füllen.**
   Knüppel & Partner mit 14 Orts-Domains) sind keine Standorte: In der Versandliste steht nur die
   Zentrale („+ 13 weitere Domains: …"); im Blatt „Dubletten" ein Eintrag „weitere domains /
   zusammengeführt". Standorte mit eigener Adresse (SHBB) bleiben eigene Zeilen.
+- Spalte **„Kanzleityp"** (hinter „Zentrale", `ketten.py`, Prüfkatalog 9): Großgesellschaft (Namensmuster/Domain
+  aus `config/ketten.yaml`) vor Kette (Eintrag in `ketten.yaml` oder ≥ 3 Standorte mit derselben Impressum-URL bzw.
+  Standort-Gruppe mit ≥ 3 Zeilen) vor Einzelkanzlei (Rechtsform) vor Mittelstand. Jede Kette steht im
+  Qualitätsbericht (K1, Hinweis).
 - Blatt „Zu prüfen" (Nachpflege-Liste, Prüfkatalog 4): Zeilen mit Status `neu` und Sperre Q5 (Name abgeleitet ohne
   Kammer/Berufsbezeichnung), Q6 (Kanzleiname mit Navigationswort, nur Ortsname, Rolle), Q12 (Konfidenz niedrig)
   oder 1B Rang 4/5 – Grund vorn, alle Spalten; diese Zeilen fehlen im Hauptblatt und zählen nicht in `coverage`.

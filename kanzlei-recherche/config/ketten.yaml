@@ -1,0 +1,38 @@
+# Ketten und Großgesellschaften (Prüfkatalog Abschnitt 9, src/recherche/ketten.py).
+#
+# grossgesellschaften: Kanzleityp „Großgesellschaft" – große Prüfungs- und Steuerberatungsgesellschaften sind
+#   Zielkanzleien (Entscheidung 30.10.2026), keine Ausschlusskategorie. Treffer über ein Namensmuster
+#   (regulärer Ausdruck, ohne Groß/Klein) im Kanzleinamen oder eine Domain (auch Subdomains).
+# ketten: Mehrstandort-Gesellschaften mit Standortliste. uebersicht = Seite mit allen Standorten, link_muster =
+#   regulärer Ausdruck für Standort-Links darauf, standortmuster = subdomain (<ort>.kette.de) | pfad
+#   (kette.de/standorte/<ort>) | domain (eigene Domain je Standort). `recherche ketten -b SH` legt je Standort einen
+#   Kandidaten an, verknüpft mit der Zentrale (zentrale = Domain der Zentrale).
+grossgesellschaften:
+  - {name: BDO, muster: ['\bBDO\b'], domains: [bdo.de, bdo.com]}
+  - {name: EY, muster: ['\bEY\b', 'Ernst\s*&\s*Young'], domains: [ey.com]}
+  - {name: PwC, muster: ['\bPwC\b', 'PricewaterhouseCoopers'], domains: [pwc.de, pwc.com]}
+  - {name: KPMG, muster: ['\bKPMG\b'], domains: [kpmg.de, kpmg.com]}
+  - {name: Deloitte, muster: ['\bDeloitte\b'], domains: [deloitte.com, deloitte.de]}
+  - {name: Rödl & Partner, muster: ['R(ö|oe)dl\s*&\s*Partner'], domains: [roedl.de, roedl.com]}
+  - {name: Baker Tilly, muster: ['Baker\s*Tilly'], domains: [bakertilly.de]}
+  - {name: Forvis Mazars, muster: ['\bMazars\b', 'Forvis'], domains: [mazars.de, forvismazars.com]}
+  - {name: RSM Ebner Stolz, muster: ['\bRSM\b', 'Ebner\s*Stolz'], domains: [ebnerstolz.de, rsm.de]}
+  - {name: Grant Thornton, muster: ['Grant\s*Thornton'], domains: [grantthornton.de]}
+  - {name: PKF, muster: ['\bPKF\b'], domains: [pkf.de]}
+  - {name: HLB, muster: ['\bHLB\b'], domains: [hlb-deutschland.de]}
+  - {name: WTS, muster: ['\bWTS\b'], domains: [wts.com, wts.de]}
+  - {name: ETL, muster: ['\bETL\b'], domains: [etl.de]}
+  - {name: Ecovis, muster: ['\bEcovis\b'], domains: [ecovis.com]}
+  - {name: Crowe, muster: ['\bCrowe\b'], domains: [crowe.de]}
+  - {name: Moore, muster: ['\bMoore\s+(Stephens|Treuhand|Germany)\b'], domains: [moore-germany.de]}
+  - {name: Nexia, muster: ['\bNexia\b'], domains: [nexia.de]}
+  - {name: Dornbach, muster: ['\bDornbach\b'], domains: [dornbach.de]}
+  - {name: Curacon, muster: ['\bCuracon\b'], domains: [curacon.de]}
+  - {name: Solidaris, muster: ['\bSolidaris\b'], domains: [solidaris.de]}
+ketten:
+  shbb:
+    name: SHBB Steuerberatungsgesellschaft mbH
+    zentrale: shbb.de
+    uebersicht: https://www.shbb.de/kanzlei-suche
+    link_muster: 'https?://(?!www\.)[a-z0-9-]+\.shbb\.de/?'
+    standortmuster: subdomain

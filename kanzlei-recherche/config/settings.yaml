@@ -18,6 +18,7 @@ pfade:
   impressum_ausschluss: config/impressum_ausschluss.yaml
   vorwahlen: config/vorwahlen            # BNetzA-Vorwahlverzeichnis (neueste *.csv) für Q4 Vorwahl ↔ PLZ
   nachbarkreise: config/nachbarkreise.yaml
+  ketten: config/ketten.yaml             # Ketten (Standortlisten) und Großgesellschaften, Spalte „Kanzleityp"
   fixtures_beispiele: tests/fixtures/kanzleiseiten/beispiele
   fixtures_echt: tests/fixtures/kanzleiseiten/echt   # nur lokal (.gitignore)
 

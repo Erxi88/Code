@@ -33,6 +33,7 @@ class PfadConfig(BaseModel):
     impressum_ausschluss: str = "config/impressum_ausschluss.yaml"
     vorwahlen: str = "config/vorwahlen"  # BNetzA-Vorwahlverzeichnis (neueste *.csv im Ordner) – Q4
     nachbarkreise: str = "config/nachbarkreise.yaml"
+    ketten: str = "config/ketten.yaml"  # Ketten (Standortlisten) und Großgesellschaften – Prüfkatalog 9
     fixtures_beispiele: str = "tests/fixtures/kanzleiseiten/beispiele"
     fixtures_echt: str = "tests/fixtures/kanzleiseiten/echt"  # nur lokal, in .gitignore
 

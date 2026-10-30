@@ -481,3 +481,69 @@ def test_stichprobe_befehl(tmp_path, db_pfad):
     _ausfuellen(out, falsch_name=1)  # 10 Zeilen: erlaubt 0 falsch
     r = CliRunner().invoke(cli.app, ["stichprobe", "--auswerten", str(out)])
     assert r.exit_code == 1 and "nicht bestanden" in r.output
+
+
+# ---------------------------------------------------------------------- Ketten und Großgesellschaften (Abschnitt 9)
+
+
+@pytest.fixture
+def ketten_cfg():
+    from recherche.ketten import KettenConfig, setze_config
+
+    cfg = KettenConfig.laden(Path(__file__).parents[1] / "config" / "ketten.yaml")
+    setze_config(cfg)
+    yield cfg
+    setze_config(KettenConfig())
+
+
+def test_kanzleityp_und_ketten(ketten_cfg):
+    from recherche.ketten import erkannte_ketten, kanzleityp
+
+    zeilen = [
+        _k(id=1, domain="pwc.de", kanzleiname="PricewaterhouseCoopers GmbH WPG"),
+        _k(id=2, domain="mustermann-stb.example", kanzleiname="Steuerberater Ole Mustermann", rechtsform="Einzelkanzlei"),
+        _k(id=3, domain="nord-partner.example", kanzleiname="Nord Partner mbB", rechtsform="PartG mbB"),
+        _k(id=4, domain="heide.shbb.de", kanzleiname="SHBB Beratungsstelle Heide"),  # Kette laut ketten.yaml
+        *[_k(id=10 + i, domain=f"steuerbuero-{o}.example", kanzleiname=f"Steuerbüro Kette {o}",
+             quell_urls=["https://www.kette-zentrale.example/impressum"]) for i, o in enumerate(("nord", "sued", "ost"))],
+        _k(id=20, domain="einzeln-a.example", quell_urls=["https://www.zwei.example/impressum"]),
+        _k(id=21, domain="einzeln-b.example", quell_urls=["https://www.zwei.example/impressum"]),
+    ]
+    ketten = erkannte_ketten(zeilen, ketten_cfg)
+    typ = {k.domain: kanzleityp(k, ketten, ketten_cfg) for k in zeilen}
+    assert typ == {"pwc.de": "Großgesellschaft", "mustermann-stb.example": "Einzelkanzlei",
+                   "nord-partner.example": "Mittelstand", "heide.shbb.de": "Kette",
+                   "steuerbuero-nord.example": "Kette", "steuerbuero-sued.example": "Kette",
+                   "steuerbuero-ost.example": "Kette",  # gleicher Impressum-Anbieter, 3 Domains
+                   "einzeln-a.example": "Mittelstand", "einzeln-b.example": "Mittelstand"}  # nur 2 → keine Kette
+
+
+def test_grossgesellschaft_ist_kein_ausschluss(ketten_cfg):
+    from recherche.models import Ansprechpartner
+    from recherche.search.pipeline import load_blocklist
+
+    blocklist = load_blocklist(Path(__file__).parents[1] / "config" / "domain_blocklist.txt")
+    assert not {"pwc.de", "deloitte.com", "bdo.de", "bakertilly.de"} & blocklist
+    k = pruefen(_k(domain="pwc.de", kanzleiname="PricewaterhouseCoopers GmbH WPG",
+                   ansprechpartner=[Ansprechpartner(name="Anke Lund", funktion="Steuerberaterin, Partnerin")]),
+                _impressum("PricewaterhouseCoopers GmbH Wirtschaftsprüfungsgesellschaft", "Steuerberaterkammer Berlin"),
+                ziel_land=SH, blocklist=blocklist)
+    assert k.status.value == "neu" and k.konfidenz.value == "hoch"
+
+
+def test_ketten_im_qualitaetsbericht_und_export(ketten_cfg, tmp_path):
+    from openpyxl import load_workbook
+
+    from recherche.export import BLATT_KANZLEIEN, build_workbook
+    from recherche.models import Konfidenz
+    from recherche.qualitaet import bericht
+
+    zeilen = [_k(id=10 + i, domain=f"steuerbuero-{o}.example", kanzleiname=f"Steuerbüro Kette {o}", konfidenz=Konfidenz.HOCH,
+                 quell_urls=["https://www.kette-zentrale.example/impressum"]) for i, o in enumerate(("nord", "sued", "ost"))]
+    k1 = [b for b in bericht(zeilen).befunde if b.nr == "K1"]
+    assert len(k1) == 1 and "3 Zeilen" in k1[0].text and k1[0].grad == "Hinweis"
+    wb = build_workbook(zeilen, [], [], [], "Schleswig-Holstein")
+    wb.save(tmp_path / "x.xlsx")
+    ws = load_workbook(tmp_path / "x.xlsx")[BLATT_KANZLEIEN]
+    kopf = [c.value for c in ws[1]]
+    assert {r[kopf.index("Kanzleityp")] for r in ws.iter_rows(min_row=2, values_only=True)} == {"Kette"}

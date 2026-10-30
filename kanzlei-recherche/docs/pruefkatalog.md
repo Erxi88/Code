@@ -26,6 +26,8 @@ Die Zielmenge sind Steuerberaterkanzleien im Sinne der Kammerstatistik: Standort
 
 Gemischte Kanzleien (Steuerberater + Rechtsanwälte, StB + WP, Sozietät mit Notar) sind Kanzleien, sobald ein Steuerberater benannt ist.
 
+**Großgesellschaften sind keine Ausschlusskategorie** (Entscheidung 30.10.2026): BDO, EY, PwC, KPMG, Deloitte, Rödl & Partner, Baker Tilly, Forvis Mazars, RSM Ebner Stolz, Grant Thornton, PKF, HLB, WTS u. a. sind Zielkanzleien – nicht auf die Blocklist, Kanzleityp „Großgesellschaft“ (Abschnitt 9).
+
 Reihenfolge der Kategorien: Portal → Institution → Lohnsteuerhilfeverein → Behörde („Gemeinde X“, „Amt X“, Gemeindeverwaltung im Namen/Anbieter, Domain) → Verein/Partei → Rechtsanwaltskanzlei → Buchhaltungsbüro (Rücksprache 30.10.2026: „Steuerberaterverband … e.V.“ ist Institution, Gemeinde Behörde, Gewerbeverein Verein).
 
 Namensmerkmale aus 1A (Lohnsteuerhilfe, „e. V.“, Kammer/Verband, Rechtsanwalt, Buchhaltung) gelten im Kanzleinamen und in der Anbieterzeile des Impressums, nicht im Aufsichts- oder Mitgliedschaftsteil („Mitglied im Steuerberaterverband … e. V.“) – Rücksprache 30.10.2026.
@@ -173,6 +175,17 @@ Diese Punkte sind Instanzen der Regeln oben; sie werden mit dem Katalog umgesetz
 | Coverage 811 vs. 749 Hauptblatt-Zeilen SH | 62 | Q14 |
 | Blocklist-Ergänzung: stbkammer-mv.de, stbk-koeln.de, stbk-stuttgart.de, steuerberaterkammer-westfalen-lippe.de, sbk-rlp.de, steuerberaterplattform-bstbk.de, stbvw-sh.de, deutsche-rentenversicherung.de, linklisten24.com, firmenkataloge.com, gruenderlexikon.de, gruenderthemen.de, selbststaendig.de, adzuna.de, driversnote.de, opengeodb.de, einwohner.info, urlm.de, steuermatch.com, autologg.com, handelskammer.se, bakertilly.de, berufsrecht-handbuch.de, jobs.denkerwulf.de | 24 Domains | Abschnitt 3 |
 
+
+## 9. Ketten und Großgesellschaften
+
+Mehrstandort-Gesellschaften und große Prüfungs-/Steuerberatungsgesellschaften sind Zielkanzleien; jeder Standort ist eine eigene Zeile, mit der Zentrale verknüpft (Spalten „Zentrale/Standort“ und „Zentrale“).
+
+| Regel | Inhalt |
+|---|---|
+| Kanzleityp | Spalte „Kanzleityp“ im Export: **Großgesellschaft** (Namensmuster oder Domain aus `config/ketten.yaml`, Liste `grossgesellschaften`) vor **Kette** vor **Einzelkanzlei** (Rechtsform Einzelkanzlei) vor **Mittelstand** (alle übrigen). |
+| Kette erkennen | Eintrag in `config/ketten.yaml` (Liste `ketten`) oder automatisch: mindestens 3 Standorte mit demselben Impressum-Anbieter (gleiche Impressum-URL) bzw. eine Standort-Gruppe (gleiche Stammdomain, gleiches Telefon + Ansprechpartner) mit mindestens 3 Zeilen. Jede Kette steht im Qualitätsbericht (K1, Hinweis). |
+| Standortliste | Je Kette in `config/ketten.yaml`: Übersichts-URL, Link-Muster, Standortmuster (Subdomain / Pfad / eigene Domain), Zentrale. Ein generischer Standortlisten-Crawler legt je Standort einen Kandidaten an, verknüpft mit der Zentrale; die Standorte laufen danach durch crawl und extract. Erster Eintrag: SHBB (Übersicht www.shbb.de/kanzlei-suche, Standorte `<ort>.shbb.de`). Großgesellschaften laufen über denselben Crawler. |
+| Standortseite vor Zentrale | Für Ketten ist die Standortseite die Quelle für Telefon (Zentrale des Standorts, nicht die Durchwahl einer Person), Adresse, E-Mail und Ansprechpartner (erste Person mit „Leiter“ bzw. Standortleitung); Impressum und Seiten der Zentrale nur als Rückfall (Q11). |
 
 ## 8. Reihenfolge der Umsetzung
 

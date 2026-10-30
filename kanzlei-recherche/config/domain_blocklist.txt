@@ -127,9 +127,6 @@ jooble.org
 kiel-adressbuch.de
 nextdoor.de
 openregister.de
-deloitte.com
-pwc.de
-bdo.de
 fom.de
 db.jobs
 wundertax.de
@@ -199,6 +196,8 @@ urlm.de
 steuermatch.com
 autologg.com
 handelskammer.se
-bakertilly.de
 berufsrecht-handbuch.de
 jobs.denkerwulf.de
+
+# Nicht hier: große Prüfungs-/Steuerberatungsgesellschaften (BDO, EY, PwC, KPMG, Deloitte, Baker Tilly …) sind
+# Zielkanzleien (Entscheidung 30.10.2026) – Kanzleityp „Großgesellschaft" über config/ketten.yaml.
