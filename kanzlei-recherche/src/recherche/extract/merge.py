@@ -61,6 +61,8 @@ from .personen import (
 from .prompt import seiten_rahmen
 from .rules import Ausschluss, ansprechpartner_kontakte, strasse_zerlegen
 
+_ANBIETER_FIRMA = re.compile(r"steuerberat|kanzlei|treuhand|revision|wirtschaftspr|beratung", re.IGNORECASE)
+
 
 def _text(s: Seite) -> str:
     return html_zu_text(s.html) if s.html else (text_normalisieren(s.text) or "")
@@ -941,6 +943,14 @@ def zusammenfuehren(
         from .kanzlei import anbieter_text
 
         anbieter = next((z for z in anbieter_text(impressum_text).splitlines() if rechtsform_aus_text(z)), None)
+        if anbieter is None:  # Kopf ohne Anbieterzeile: erste Zeile mit Rechtsform außerhalb der Fremd-Abschnitte,
+            # sonst der Name der Kette aus ketten.yaml (SHBB Heide: Standortbezeichnung blieb im Namen)
+            imp_zeilen = (impressum_text or "").splitlines()
+            fremd_imp = ausschluss.fremd_zeilen(imp_zeilen) if ausschluss else set()
+            anbieter = next((z.strip() for i, z in enumerate(imp_zeilen) if i not in fremd_imp and len(z) <= 90
+                             and _ANBIETER_FIRMA.search(z) and rechtsform_aus_text(z)), None)
+            if anbieter is None and not isinstance(standort, bool):
+                anbieter = standort.name
         if anbieter and _name_norm(anbieter) != _name_norm(name):
             if name:
                 abweichungen.append(f"{STANDORT_PRAEFIX}{name}")

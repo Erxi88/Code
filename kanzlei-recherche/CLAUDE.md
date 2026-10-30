@@ -586,7 +586,8 @@ der nächsten Quelle füllen.**
   Telefon, Adresse, E-Mail aus Kontakt- und Startseite vor dem Impressum der Zentrale; Personen auch von Start- und
   Kontaktseite; Standortleitung („Leiter", „Kanzleileitung", „Standortleitung", „Niederlassungsleitung") vor den
   Vertretungsberechtigten der Zentrale („Ansprechpartner-Rang: Standortleitung …"); Kanzleiname = Anbieter aus dem
-  Impressum („SHBB Steuerberatungsgesellschaft mbH"), der Name der Standortseite als „Standortbezeichnung: …" in
+  Impressum („SHBB Steuerberatungsgesellschaft mbH"; ohne Anbieterzeile im Kopf die erste Firmenzeile mit Rechtsform
+  außerhalb der Fremd-Abschnitte, sonst der Name aus ketten.yaml), der Name der Standortseite als „Standortbezeichnung: …" in
   „Abweichung" und in „Zentrale/Standort" („Standort von SHBB … (SHBB Steuerberatungskanzlei Heide)").
 - **Standortlisten-Crawler** (`ketten_crawl.py`, `recherche ketten -b SH [--kette shbb]`, Prüfkatalog 9): je Kette
   aus `config/ketten.yaml` die Übersichtsseite (`uebersicht`; robots.txt beachtet, Antwort in `api_cache` unter

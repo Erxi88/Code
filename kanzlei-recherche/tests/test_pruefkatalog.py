@@ -700,11 +700,14 @@ def _nordbund_standort(ausschluss):
 
 def test_kette_kanzlei_kontakt_vom_kontaktblock_durchwahl_beim_leiter(ausschluss):
     from recherche.export import KANZLEI_SPALTEN
+    from recherche.extract.standorte import standortbezeichnung
 
     k = _nordbund_standort(ausschluss)
     assert (k.telefon, k.email) == ("+49 481 85880", "info@heide.nordbund.example")
     h = k.hauptansprechpartner
     assert (h.name, h.durchwahl, h.email) == ("Sven Wegener", "+49 481 8588270", "swegener@heide.nordbund.example")
+    assert k.kanzleiname == "Nordbund Steuerberatungsgesellschaft mbH"  # Anbieter, nicht die Standortbezeichnung
+    assert standortbezeichnung(k) == "Nordbund Steuerberatungskanzlei Heide"
     spalten = {t: f(k) for t, _, f in KANZLEI_SPALTEN}
     assert spalten["Durchwahl Ansprechpartner"] == "+49 481 8588270"
     assert spalten["E-Mail Ansprechpartner"] == "swegener@heide.nordbund.example"
