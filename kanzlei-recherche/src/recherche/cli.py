@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Annotated
 
 import typer
+import yaml
 from rich.console import Console
 from rich.table import Table
 
@@ -131,6 +132,21 @@ def main(verbose: Annotated[bool, typer.Option("--verbose", "-v")] = False) -> N
 
 
 # ---------------------------------------------------------------------- Schritte
+
+
+def _ortsnamen_setzen(ctx: Kontext) -> None:
+    """Ortsnamen des Bundeslandes und Großstädte für die Ansprechpartner-Regel (Zusatzwörter, Prüfkatalog 2)."""
+    from .extract.ansprechpartner import setze_ortsnamen
+    from .extract.merge import setze_ortsliste
+
+    try:
+        orte = ctx.orte(None, mit_zusatz=False)
+    except (OSError, ValueError):
+        orte = []
+    pfad = ctx.settings.pfad(ctx.settings.pfade.grossstaedte)
+    staedte = list((yaml.safe_load(pfad.read_text(encoding="utf-8-sig")) or {}).keys()) if pfad.exists() else []
+    setze_ortsnamen([o.name.split(" (")[0] for o in orte] + [str(x) for x in staedte])
+    setze_ortsliste(orte)  # Zahlendreher-Korrektur der PLZ
 
 
 def _adapter_pruefen(adapter: SearchAdapter, explizit: bool) -> None:
@@ -302,6 +318,7 @@ def _extract(
             console.print(f"{st.extract_alle_offen(ctx.bundesland)} Kandidaten wieder offen.")
         if wiederholen:
             console.print(f"{st.fehler_zuruecksetzen(ctx.bundesland, 'extract')} fehlgeschlagene Kandidaten wieder offen.")
+        _ortsnamen_setzen(ctx)
         extractor = None if ohne_llm else _extractor(ctx, modell)
         pruefer = PlzPruefer(s.openplz.url, cache=st)
         ausschluss = Ausschluss.laden(s.pfad(s.pfade.impressum_ausschluss))
@@ -680,6 +697,7 @@ def kanzlei_pruefung(
     from .extract.kanzlei import run_pruefung
 
     ctx = _kontext(config, bundesland, db)
+    _ortsnamen_setzen(ctx)
     with ctx.storage() as st:
         stat = run_pruefung(st, ctx.bundesland, tuple(ctx.settings.extract.kanzlei_rechtsformen),
                             fortschritt=lambda m: console.print(f"  {m}"), ziel_land=ctx.bl_cfg.name,

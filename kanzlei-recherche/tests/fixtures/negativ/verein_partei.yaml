@@ -1,0 +1,17 @@
+# fiktiver Prüffall (Prüfkatalog 5.1) – keine echten Daten
+kategorie: 1A Verein/Partei
+domain: spd-musterdorf.example
+impressum:
+- Impressum
+- SPD-Ortsverein Musterdorf
+- 'Vorsitzender: Jan Lund'
+- Dorfstraße 3
+- 24103 Kiel
+llm:
+  kanzleiname: SPD Musterdorf
+  personen:
+  - name: Jan Lund
+    funktion: Vorsitzender, Steuerberater
+erwartet:
+  status: keine Kanzlei
+  grund: Verein/Partei

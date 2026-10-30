@@ -1,0 +1,18 @@
+# fiktiver Prüffall (Prüfkatalog 5.1) – keine echten Daten
+kategorie: 1A Branchenfremd
+domain: osteopathie-lund.example
+impressum:
+- Impressum
+- Praxis für Osteopathie Lund
+- Anke Lund, Heilpraktikerin
+- Ring 3
+- 25813 Husum
+- Tel. 04841 550999
+llm:
+  kanzleiname: Praxis für Osteopathie Lund
+  personen:
+  - name: Anke Lund
+    funktion: Heilpraktikerin
+erwartet:
+  status: keine Kanzlei
+  grund: Branchenfremd

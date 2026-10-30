@@ -1,0 +1,15 @@
+# fiktiver Prüffall (Prüfkatalog 5.1) – keine echten Daten
+kategorie: 1A Behörde (Domain)
+domain: amt-musterheide.example
+impressum:
+- Impressum
+- Amt Musterheide
+- Der Amtsdirektor
+- Dorfstraße 1
+- 24103 Kiel
+- Tel. 0431 550599
+llm:
+  kanzleiname: Amt Musterheide
+erwartet:
+  status: keine Kanzlei
+  grund: Behörde

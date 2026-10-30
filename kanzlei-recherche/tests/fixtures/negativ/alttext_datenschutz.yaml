@@ -1,0 +1,25 @@
+# fiktiver Prüffall (Prüfkatalog 5.1) – keine echten Daten
+kategorie: '2 Ansprechpartner: „Datenschutz-Grundverordnung“'
+domain: kittel-stb.example
+impressum:
+- Impressum
+- Steuerbüro Kittel
+- Markt 5
+- 24103 Kiel
+- Tel. 0431 551199
+- 'Zuständige Kammer: Steuerberaterkammer Schleswig-Holstein'
+- Hopfenstraße 2 d
+- 24114 Kiel
+llm:
+  kanzleiname: Steuerbüro Kittel
+  personen:
+  - name: Datenschutz-Grundverordnung
+    funktion: Steuerberater
+  - name: Eva Kittel
+    funktion: Steuerberaterin
+erwartet:
+  status: neu
+  ansprechpartner:
+  - Eva Kittel
+  abweichung:
+  - 'Ansprechpartner verworfen: Datenschutz-Grundverordnung'

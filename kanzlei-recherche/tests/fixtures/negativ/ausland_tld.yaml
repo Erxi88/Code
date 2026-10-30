@@ -1,0 +1,14 @@
+# fiktiver Prüffall (Prüfkatalog 5.1) – keine echten Daten
+kategorie: 1A Ausland (TLD)
+domain: stb-muster.example.at
+impressum:
+- Impressum
+- Steuerberatung Muster GmbH
+- Ringstraße 1
+- 1010 Wien
+- Kammer der Steuerberater und Wirtschaftsprüfer
+llm:
+  kanzleiname: Steuerberatung Muster GmbH
+erwartet:
+  status: außerhalb Bundesland
+  grund: Ausland (.at)

@@ -1,0 +1,16 @@
+# fiktiver Prüffall (Prüfkatalog 5.1) – keine echten Daten
+kategorie: 1A Portal (jobs.-Subdomain)
+domain: jobs.kanzlei-lund.example
+impressum:
+- Impressum
+- Kanzlei Lund Steuerberatungsgesellschaft mbH
+- Markt 1
+- 24103 Kiel
+- 'Zuständige Kammer: Steuerberaterkammer Schleswig-Holstein'
+- Hopfenstraße 2 d
+- 24114 Kiel
+llm:
+  kanzleiname: Karriere bei Kanzlei Lund
+erwartet:
+  status: keine Kanzlei
+  grund: Portal

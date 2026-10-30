@@ -1,0 +1,19 @@
+# fiktiver Prüffall (Prüfkatalog 5.1) – keine echten Daten
+kategorie: '2 Telefon: ungültig → leer + Abweichung'
+domain: ungueltig-stb.example
+impressum:
+- Impressum
+- Steuerkanzlei Ungültig
+- Markt 8
+- 24103 Kiel
+- 'Zuständige Kammer: Steuerberaterkammer Schleswig-Holstein'
+- Hopfenstraße 2 d
+- 24114 Kiel
+llm:
+  kanzleiname: Steuerkanzlei Ungültig
+  telefon: 0431 1
+erwartet:
+  status: neu
+  telefon: null
+  abweichung:
+  - 'Telefon ungültig: 0431 1'

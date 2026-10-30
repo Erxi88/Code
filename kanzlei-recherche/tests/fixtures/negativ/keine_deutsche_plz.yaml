@@ -1,0 +1,16 @@
+# fiktiver Prüffall (Prüfkatalog 5.1) – keine echten Daten
+kategorie: '2 Adresse: ohne PLZ nie Hauptblatt'
+domain: steuerkanzlei-ohne-adresse.example
+impressum:
+- Impressum
+- Steuerkanzlei Lund
+- 'Berufsbezeichnung: Steuerberaterin'
+- 'Zuständige Kammer: Steuerberaterkammer Schleswig-Holstein'
+llm:
+  kanzleiname: Steuerkanzlei Lund
+  personen:
+  - name: Anke Lund
+    funktion: Steuerberaterin
+erwartet:
+  status: außerhalb Bundesland
+  grund: keine deutsche PLZ

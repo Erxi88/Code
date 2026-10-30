@@ -18,11 +18,12 @@ from urllib.parse import urlsplit
 
 from ..crawl import links, meta_texte
 from ..models import Kandidat, LaufEintrag, SchrittStatus, Seitentyp, Status
-from ..normalize import PlzPruefer
+from ..normalize import PlzPruefer, normalize_telefon
 from ..storage import Storage
 from ..textnorm import text_normalisieren
 from .base import AnbieterNichtErreichbar, Extractor, ExtraktionFehler
 from .kanzlei import (
+    ausland_hinweis,
     ausland_tld,
     pruefen,
     stammdomain,
@@ -74,7 +75,11 @@ def regeln_fuer(seiten, ausschluss: Ausschluss, domain: str | None):
     if meta:
         texte.append((meta, []))
     (text, lnks), *weitere = texte
-    erg = extract_impressum(text, ausschluss, lnks, domain, weitere, rahmen=seiten_rahmen(seiten))
+    from ..search.verzeichnisse import schema_org_eintraege
+
+    schema = [n for s in reihenfolge if s.html and "telephone" in s.html
+              for h in schema_org_eintraege(s.html, s.final_url or s.url, "website") if (n := normalize_telefon(h.telefon))]
+    erg = extract_impressum(text, ausschluss, lnks, domain, weitere, rahmen=seiten_rahmen(seiten), schema_telefone=schema)
     if erg.telefon is None or ist_mobil(erg.telefon):
         # Festnetz fehlt im bereinigten Text (z. B. Standort-Block der Fußzeile entfernt): rohes HTML
         if festnetz := festnetz_aus_html([s.html for s in reihenfolge], erg.plz):
@@ -162,19 +167,18 @@ def _eine(storage: Storage, k: Kandidat, extractor, pruefer, ausschluss, stat: E
     seiten = storage.kandidat_seiten(k.id)
     regel = regeln_fuer(seiten, ausschluss, k.domain)
     llm = None
-    if extractor is not None and ziel_land and (tld := ausland_tld(k.domain)):
-        # .at/.ch/.tirol …: außerhalb ohne LLM (Österreich, Schweiz) – Status setzt status_setzen/pruefen
-        stat.ohne_llm_ausserhalb += 1
-        kanzlei = zusammenfuehren(k, funde, seiten, regel, None, pruefer.pruefe if pruefer else None, ausschluss)
-        kanzlei.abweichung = "; ".join(x for x in (kanzlei.abweichung, f"ohne LLM: ausländische Domain ({tld})") if x)
-        return kanzlei
     if extractor is not None and seiten and ziel_land and pruefer:
         # Vorprüfung ohne LLM: liegt die PLZ (Discovery bzw. Impressum-Regel) außerhalb des Bundeslandes,
         # spart das den LLM-Aufruf (Kleingemeinden: Brave füllt mit bundesweiten Kanzleien auf)
         try:
             vorab = zusammenfuehren(k, funde, seiten, regel, None, pruefer.pruefe, ausschluss)
             regel_plz = vorab.plz
-            grund = _ausserhalb_vorab(vorab, seiten, ausschluss, pruefer, ziel_land)
+            # Ausland (.at/.ch/.tirol …, 4-stellige PLZ mit AT/CH-Ort, Wirtschaftstreuhänder) vor dem Bundesland-Check
+            # – den Status setzen status_setzen/pruefen (Prüfkatalog 1A)
+            impressum = seiten.get(Seitentyp.IMPRESSUM)
+            grund = (f"Ausland ({tld})" if (tld := ausland_tld(k.domain)) else
+                     ausland_hinweis(vorab, text_normalisieren(impressum.text) if impressum else None)
+                     ) or _ausserhalb_vorab(vorab, seiten, ausschluss, pruefer, ziel_land)
             log.info("%s: Vorprüfung – Regel-PLZ %s (%s), PLZ im Text %s → %s", k.domain, regel_plz or "keine",
                      vorab.bundesland or "?", plz_in_seiten(seiten, ausschluss)[:5], grund or "LLM")
         except Exception:  # Vorprüfung ist nur eine Abkürzung – bei Fehlern normal mit LLM weiter

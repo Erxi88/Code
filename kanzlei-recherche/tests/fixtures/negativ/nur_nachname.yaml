@@ -1,0 +1,22 @@
+# fiktiver Prüffall (Prüfkatalog 5.1) – keine echten Daten
+kategorie: '2 Ansprechpartner: nur Nachname'
+domain: schroeder-stb.example
+impressum:
+- Impressum
+- Steuerkanzlei Schröder
+- Markt 7
+- 24103 Kiel
+- Tel. 0431 551399
+- 'Zuständige Kammer: Steuerberaterkammer Schleswig-Holstein'
+- Hopfenstraße 2 d
+- 24114 Kiel
+llm:
+  kanzleiname: Steuerkanzlei Schröder
+  personen:
+  - name: Schröder
+    funktion: Steuerberaterin
+erwartet:
+  status: neu
+  ansprechpartner: []
+  abweichung:
+  - 'Ansprechpartner ohne Vorname: Schröder'

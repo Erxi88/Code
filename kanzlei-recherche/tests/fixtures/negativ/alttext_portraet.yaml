@@ -1,0 +1,21 @@
+# fiktiver Prüffall (Prüfkatalog 5.1) – keine echten Daten
+kategorie: '2 Ansprechpartner: Präfix „Porträt von“'
+domain: hansen-stb.example
+impressum:
+- Impressum
+- Steuerkanzlei Hansen
+- Markt 4
+- 24103 Kiel
+- Tel. 0431 551099
+- 'Zuständige Kammer: Steuerberaterkammer Schleswig-Holstein'
+- Hopfenstraße 2 d
+- 24114 Kiel
+llm:
+  kanzleiname: Steuerkanzlei Hansen
+  personen:
+  - name: Porträt von Jan Hansen
+    funktion: Steuerberater
+erwartet:
+  status: neu
+  ansprechpartner:
+  - Jan Hansen

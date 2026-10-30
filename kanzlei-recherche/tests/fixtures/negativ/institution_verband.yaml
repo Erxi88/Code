@@ -1,0 +1,18 @@
+# fiktiver Prüffall (Prüfkatalog 5.1) – keine echten Daten
+kategorie: 1A Institution
+domain: stbv-nordland.example
+impressum:
+- Impressum
+- Steuerberaterverband Nordland
+- Holstenstraße 9
+- 24103 Kiel
+- Tel. 0431 550499
+- Vertreten durch den Präsidenten Jan Lund
+llm:
+  kanzleiname: Steuerberaterverband Nordland
+  personen:
+  - name: Jan Lund
+    funktion: Präsident, Steuerberater
+erwartet:
+  status: keine Kanzlei
+  grund: Institution

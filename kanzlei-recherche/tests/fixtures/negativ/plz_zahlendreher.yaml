@@ -1,0 +1,19 @@
+# fiktiver Prüffall (Prüfkatalog 5.1) – keine echten Daten
+kategorie: '2 Adresse: PLZ-Zahlendreher, Ort gewinnt'
+domain: rendsburg-stb.example
+impressum:
+- Impressum
+- Steuerkanzlei Rendsburg
+- Markt 9
+- 24678 Rendsburg
+- Tel. 04331 551499
+- 'Zuständige Kammer: Steuerberaterkammer Schleswig-Holstein'
+- Hopfenstraße 2 d
+- 24114 Kiel
+llm:
+  kanzleiname: Steuerkanzlei Rendsburg
+erwartet:
+  status: neu
+  plz: '24768'
+  abweichung:
+  - 'PLZ korrigiert: 24678 → 24768'

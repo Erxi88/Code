@@ -1,0 +1,18 @@
+# fiktiver Prüffall (Prüfkatalog 5.1) – keine echten Daten
+kategorie: 1A Lohnsteuerhilfeverein
+domain: lohnsteuerhilfe-nord.example
+impressum:
+- Impressum
+- Lohnsteuerhilfe Nord e. V.
+- Markt 3
+- 24103 Kiel
+- Tel. 0431 550199
+- Vereinsregister VR 1234 KI
+llm:
+  kanzleiname: Lohnsteuerhilfe Nord e. V.
+  personen:
+  - name: Jan Lund
+    funktion: Beratungsstellenleiter
+erwartet:
+  status: keine Kanzlei
+  grund: Lohnsteuerhilfeverein

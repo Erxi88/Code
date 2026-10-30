@@ -281,7 +281,10 @@ der nächsten Quelle füllen.**
     Fremd-Abschnitt stehen, der Name der Institution davor steht oder das Impressum eine
     andere Adresse nennt. Steht dort nur diese Adresse (Kanzlei im Haus der Kammer), wird
     sie übernommen, mit Hinweis in „Abweichung".
-  - Telefon: Festnetz vor Mobil (015/016/017), Impressum vor den anderen Seiten. Neben
+  - Telefon (Prüfkatalog 2): Festnetz vor Mobil (015/016/017) vor 0800/0180; innerhalb der Klasse tel:-Link →
+    Schema.org (`telephone`) → Impressum-Text → Kontaktseite → übrige Seiten (tel:-Links mit einer Nummer aus einem
+    Fremd-Abschnitt zählen nicht). Nur laut `phonenumbers` gültige Nummern, Gruppierung immer aus der Bibliothek
+    (INTERNATIONAL); ungültig → leer und „Telefon ungültig: …" in „Abweichung". Fax („Fax", „Telefax", „F:") nie. Neben
     „Tel/Telefon/Fon" zählen „Telefonnummer", „Rufnummer", „Zentrale", „Büro", ☎ und im
     Impressum jede unbeschriftete Nummernzeile mit Vorwahl (nicht hinter „Fax"). Liefert der
     bereinigte Text kein Festnetz, wird es aus dem rohen HTML genommen (Text und tel:-Links,
@@ -364,6 +367,13 @@ der nächsten Quelle füllen.**
     Paasch"). Ein Eintrag, dessen Funktion eine andere Person nennt („Forderungsmanagement Flensburg
     (Rechtsanwältin Ina Reese)"), ist eine Themenseite, keine Person. E-Mail-Adressen
     in einer Funktion bleiben nur, wenn der lokale Teil zum Namen passt.
+  - Ansprechpartner-Bereinigung (Prüfkatalog 2, `extract/ansprechpartner.py`, auch in `kanzlei-pruefung` auf
+    gespeicherten Zeilen): Präfixe „Porträt(foto) von", „Foto von", „Bild von", „Bild:", „Abbildung" ab; Suffix
+    „Steuerberater"/„StB" → Funktion, „Dipl.-Kfm." → Titel; verworfen bei Datenschutz, Grundverordnung,
+    Amtsdirektor, Amtsvorsteher, Bürgermeister, Präsident, Archiv, Regionen, Homepages, Anträge, Browser, Verein,
+    „Fachanwalt … <Ort>"; Orts-/Länder-/Monatsnamen und Wochentage nur als Zusatzwort neben Vor- und Nachname
+    („Oliver Hagen" bleibt, „Jan Lund Kiel" nicht); nur Nachname → verworfen („Ansprechpartner ohne Vorname");
+    Rechtsanwälte/Notare hinter die Steuerberater, wenn einer benannt ist. Hinweis „Ansprechpartner verworfen: …".
   - Ansprechpartner = nur **Berufsträger und Leitung**; Mehrfachnennungen werden
     vereinigt (Funktionen und Titel). Reihenfolge: Vertretungsberechtigte in der
     Reihenfolge des Impressum-Abschnitts „vertretungsberechtigt/vertreten durch", dann alle
@@ -448,17 +458,27 @@ der nächsten Quelle füllen.**
   Prüfung ohne LLM auf bereits extrahierte Kanzleien an (auch zurück zu `neu`). Big-Four-
   Gesellschaften („… Wirtschaftsprüfungsgesellschaft", Berufsträger) gelten als Kanzlei – die
   gehören auf die Blocklist.
-  **Vorab keine Kanzlei**, auch wenn ein Merkmal zutrifft: Domain auf der Blocklist (Kammern, Verbände,
-  Portale – auch bei schon extrahierten Zeilen); „Lohnsteuerhilfe…"/„e. V." im Namen (Grund
-  „Lohnsteuerhilfeverein"); reine Rechtsanwaltskanzlei (Anwalt/Notar in Name oder Impressum, aber nirgends
-  Steuerberater, Steuerberaterkammer, WP/vBP – auch nicht bei den Ansprechpartnern; gemischte StB + RA bleiben);
-  „Name abgeleitet aus Ansprechpartner" ohne Steuerberaterkammer und ohne Berufsbezeichnung im Impressum
-  (Gemeinden, Ortsvereine, Praxen). Name abgeleitet ohne Kammer → Konfidenz immer `niedrig`.
+  **Ausschluss vorab (Prüfkatalog 1A)**, Grund = Kategorie: Portal (Blocklist, *linklisten*, *firmenkataloge*,
+  jobs./karriere.-Subdomain), Lohnsteuerhilfeverein („Lohnsteuerhilfe…", „Lohnsteuerberatungsverbund", „e. V."),
+  Institution (Steuerberaterkammer/-verband, Versorgungswerk), Behörde (Domain gemeinde-/amt-/stadt-/kreis-; Rolle
+  Amtsdirektor/Amtsvorsteher/Bürgermeister nur ohne Kammer und ohne StB-Berufsbezeichnung – ein Steuerberater, der
+  auch Amtsvorsteher ist, bleibt), Verein/Partei (spd-/cdu-/gruene-/kirche-/schule-, *-verein*, Vereinsregister),
+  Rechtsanwaltskanzlei (Anwalt/Notar ohne Steuerberater in Name, Impressum oder Berufsbezeichnung; gemischte
+  bleiben), Buchhaltungsbüro (ohne StB/StBv/WP im Impressum), Branchenfremd (kein Positivsignal; Name aus dem
+  Ansprechpartner abgeleitet ohne Kammer und Berufsbezeichnung). Namensmerkmale gelten im Kanzleinamen und in der
+  **Anbieterzeile** des Impressums (Kopf bis zum Abschnitt Aufsicht/Kammer/Register/Vertretung), nicht im
+  Mitgliedschafts-/Aufsichtsteil (Rücksprache 30.10.2026). Name abgeleitet ohne Kammer → Konfidenz `niedrig`
+  (bis 1B/Q5 in Schritt 3 umgesetzt sind). Negativ-Fixtures: `tests/fixtures/negativ/*.yaml`
+  (`tests/test_pruefkatalog.py`).
 - **Bundesland-Filter**: Liegt die PLZ einer Kanzlei laut OpenPLZ nicht im Bundesland des Laufs, wird
   der Status `außerhalb Bundesland` (auch ohne Website; `keine Kanzlei` geht vor). Ebenso **ohne gültige deutsche
   PLZ** (keine, nicht fünfstellig oder laut OpenPLZ unbekannt; nicht bei unerreichbarem OpenPLZ) – nie im Hauptblatt,
   „Außerhalb: keine deutsche PLZ" in „Abweichung" – und bei **ausländischer Domain** (.at, .ch, .li, .tirol, .wien,
-  .swiss, .lu): „Außerhalb: ausländische Domain (.at)", in `extract` ohne LLM. Nichts wird gelöscht –
+  .swiss, .lu) oder **Ausland** ohne TLD (4-stellige PLZ mit Ort in AT/CH/LI, Ort aus der AT/CH-Liste,
+  „Wirtschaftstreuhänder", „Österreich/Schweiz", „Mag. … Steuerberater" in der Anbieterzeile): „Außerhalb: Ausland
+  (.at)" / „Außerhalb: Ausland (1010 Wien)", in `extract` ohne LLM. PLZ ungültig und Ort eindeutig in der Ortsliste →
+  PLZ aus dem Ort (Zahlendreher „24678" → „24768 Rendsburg", „PLZ korrigiert" in „Abweichung"). Straße ohne
+  Hausnummer → „Hausnummer fehlt"; Postfach nur, wenn keine Straße vorhanden. Nichts wird gelöscht –
   bei einem bundesweiten Lauf sind sie für ihr eigenes Land richtig. `recherche kanzlei-pruefung`
   wendet den Filter auf bestehende Zeilen an. Schon **vor dem Crawl**: Nennen die Suchtreffer
   (Kandidaten-/Fund-PLZ, „01067 Dresden" in Titel oder Snippet) nur PLZ außerhalb, wird nicht gecrawlt

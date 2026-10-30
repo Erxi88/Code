@@ -1,0 +1,20 @@
+# fiktiver Prüffall (Prüfkatalog 5.1) – keine echten Daten
+kategorie: 1A Ausland (4-stellige PLZ, Wirtschaftstreuhänder)
+domain: huber-steuer.example
+impressum:
+- Impressum
+- Mag. Anna Huber, Steuerberaterin
+- Ringstraße 1
+- 1010 Wien
+- 'Berufsbezeichnung: Wirtschaftstreuhänder'
+llm:
+  kanzleiname: Steuerberatung Mag. Anna Huber
+  plz: '1010'
+  ort: Wien
+  personen:
+  - name: Anna Huber
+    titel: Mag.
+    funktion: Steuerberaterin
+erwartet:
+  status: außerhalb Bundesland
+  grund: Ausland (1010 Wien)

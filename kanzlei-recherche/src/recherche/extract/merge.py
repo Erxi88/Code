@@ -40,6 +40,7 @@ from ..normalize import (
 )
 from ..search.dedupe import adresse_key, name_tokens, telefon_key
 from ..textnorm import text_normalisieren
+from .ansprechpartner import bereinigen as bereinige_ansprechpartner
 from .base import LlmErgebnis, LlmPerson, RegelErgebnis
 from .personen import (
     _KEINE_NAMEN as _MENUEWOERTER,
@@ -797,6 +798,36 @@ def _adresse_text(strasse: str | None, plz: str | None, ort: str | None) -> str:
     return ", ".join(x for x in (strasse, " ".join(y for y in (plz, ort) if y)) if x)
 
 
+_POSTFACH = re.compile(r"^\s*(?:postfach|pf\.?\s*\d|postlagernd)", re.IGNORECASE)
+_plz_je_ort: dict[str, list[str]] = {}
+
+
+def setze_ortsliste(orte) -> None:
+    """Gemeinde → PLZ (Ortsliste des Laufs) für die Zahlendreher-Korrektur; mehrdeutige Namen entfallen."""
+    _plz_je_ort.clear()
+    zaehler: dict[str, int] = {}
+    for o in orte:
+        if getattr(o, "ist_zusatz", False):
+            continue
+        name = o.name.split(" (")[0].casefold()
+        zaehler[name] = zaehler.get(name, 0) + 1
+        _plz_je_ort[name] = list(o.alle_plz)
+    for name, n in zaehler.items():
+        if n > 1:
+            _plz_je_ort.pop(name, None)
+
+
+def plz_aus_ort(ort: str, falsche_plz: str) -> str | None:
+    """Eindeutiger Ort → seine PLZ: bei einer PLZ diese, sonst die mit denselben Ziffern (Zahlendreher)."""
+    kandidaten = _plz_je_ort.get(ort.split(" (")[0].casefold().strip())
+    if not kandidaten:
+        return None
+    if len(kandidaten) == 1:
+        return kandidaten[0]
+    gleiche = [p for p in kandidaten if sorted(p) == sorted(falsche_plz)]
+    return gleiche[0] if len(gleiche) == 1 else None
+
+
 def konfidenz(k: Kanzlei, impressum_gelesen: bool, kanzlei: bool = True) -> Konfidenz:
     """Vorläufige Regel (CLAUDE.md): hoch = Impressum gelesen und PLZ/Ort verifiziert (und, mit
     Kanzlei-Erkennung, als Kanzlei erkannt); mittel = Kernfelder vollständig; niedrig = Kernfelder fehlen."""
@@ -854,14 +885,23 @@ def zusammenfuehren(
                 )
     else:
         strasse, plz, ort = web_adresse
+    if strasse and _POSTFACH.match(strasse) and llm_strasse and not _POSTFACH.match(llm_strasse) and llm and llm.plz == plz:
+        # Prüfkatalog 2: Postfach nur, wenn keine Straße vorhanden
+        strasse = llm_strasse
     if not plz and not seiten and kandidat.plz:
         # ohne Website und ohne Stufe-B-Fund: die Anschrift des Kandidaten (von Hand angelegt, ältere Bestände)
         strasse, plz, ort = kandidat.strasse, kandidat.plz, kandidat.ort
 
     # ---- Telefon: Discovery > Regeln > LLM
+    # Prüfkatalog 2: nur laut phonenumbers gültige Nummern – ungültige bleiben leer, mit Hinweis
     web_tel = regel.telefon or normalize_telefon(llm.telefon if llm else None)
-    if disc["telefon"]:
-        telefon = normalize_telefon(disc["telefon"]) or disc["telefon"]
+    if not web_tel and llm and llm.telefon:
+        abweichungen.append(f"Telefon ungültig: {llm.telefon} (Website)")
+    disc_tel = normalize_telefon(disc["telefon"]) if disc["telefon"] else None
+    if disc["telefon"] and not disc_tel:
+        abweichungen.append(f"Telefon ungültig: {disc['telefon']} ({disc['quelle_telefon']})")
+    if disc_tel:
+        telefon = disc_tel
         if web_tel and telefon_key(web_tel) != telefon_key(telefon):
             abweichungen.append(f"Telefon: {disc['quelle_telefon']} {telefon} / Website {web_tel}")
     else:
@@ -876,7 +916,8 @@ def zusammenfuehren(
     # ---- Personen und Teamgröße: Regel-Erkennung auf den Teamseiten + LLM + Impressum
     team_seiten = [seiten[t] for t in (Seitentyp.TEAM, Seitentyp.TEAM2) if t in seiten]
     erkannte = erkannte_personen(team_seiten, rahmen)
-    personen = ansprechpartner(llm, erkannte, impressum_text, fremd, rahmen, name)
+    personen, verworfen = bereinige_ansprechpartner(ansprechpartner(llm, erkannte, impressum_text, fremd, rahmen, name))
+    abweichungen += verworfen
     if rechtsform is None and ist_einzelkanzlei(name, impressum_text,
                                                 vertretung(impressum_text, fremd, rahmen).namen if impressum_text else []):
         rechtsform = "Einzelkanzlei"
@@ -946,8 +987,16 @@ def zusammenfuehren(
         quell_urls=list(dict.fromkeys(quell_urls)),
         abrufdatum=abrufdatum,
     )
+    if pruefung and pruefung.verifiziert is False and not pruefung.bundesland and plz and ort and plz_pruefen:
+        # PLZ ungültig, Ort eindeutig: Zahlendreher („24678" statt „24768 Rendsburg") – Ort laut Ortsliste gewinnt
+        if (neu := plz_aus_ort(ort, plz)) and (p2 := plz_pruefen(neu, ort)).bundesland:
+            abweichungen.append(f"PLZ korrigiert: {plz} → {neu} (Ort {ort}, PLZ ungültig)")
+            plz, pruefung = neu, p2
+            k.plz, k.bundesland, k.plz_verifiziert = plz, p2.bundesland, p2.verifiziert
     if pruefung and pruefung.verifiziert is False and pruefung.hinweis:
         abweichungen.append(f"PLZ/Ort: {pruefung.hinweis}")
+    if strasse and not re.search(r"\d", strasse) and not _POSTFACH.match(strasse):
+        abweichungen.append(f"Hausnummer fehlt: {strasse}")
     k.abweichung = "; ".join(abweichungen) or None
     k.konfidenz = konfidenz(k, impressum is not None)
     return k

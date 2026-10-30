@@ -33,7 +33,7 @@ _TEL_LABEL = re.compile(
     r"(?:(?<![a-zäöü])(?:tel(?:efon)?(?:nummer)?|rufnummer|fon|phone|t|zentrale|büro|sekretariat)|[☎📞✆])"
     r"\s*\.?\s*:?\s*(\(?\+?\d[\d\s/()\-–.]{4,}\d)", re.I
 )
-_FAX_DAVOR = re.compile(r"(fax|telefax)\s*\.?\s*:?\s*$", re.I)
+_FAX_DAVOR = re.compile(r"(fax|telefax|\bF)\s*\.?\s*:?\s*$", re.I)
 _EMAIL = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
 _AT = re.compile(r"\s*(?:\(|\[|\{)\s*(?:at|ät|@)\s*(?:\)|\]|\})\s*", re.I)
 _DOT = re.compile(r"\s*(?:\(|\[|\{)\s*(?:dot|punkt)\s*(?:\)|\]|\})\s*", re.I)
@@ -240,6 +240,17 @@ def _festnetz_zuerst(nummern: list[str]) -> list[str]:
     return [n for n in nummern if not ist_mobil(n)] + [n for n in nummern if ist_mobil(n)]
 
 
+def beste_telefon(nummern: list[str]) -> str | None:
+    """Festnetz vor Mobil vor 0800/0180 (Prüfkatalog 2); innerhalb der Klasse die erste in Quell-Reihenfolge."""
+    from ..normalize import ist_service
+
+    def klasse(n: str) -> int:
+        return 2 if ist_service(n) else 1 if ist_mobil(n) else 0
+
+    nummern = list(dict.fromkeys(n for n in nummern if n))
+    return min(nummern, key=lambda n: (klasse(n), nummern.index(n))) if nummern else None
+
+
 def _fremde_institution(zeilen: list[str], i: int, name: str) -> bool:
     """Steht der Name der Institution („Steuerberaterkammer Schleswig-Holstein") bei der Adresse?"""
     woerter = [w for w in re.split(r"\W+", name.lower()) if len(w) >= 4]
@@ -333,12 +344,14 @@ def extract_impressum(
     domain: str | None = None,
     weitere_texte: list[tuple[str, list[str]]] | None = None,
     rahmen: set[str] | None = None,
+    schema_telefone: list[str] | None = None,
 ) -> RegelErgebnis:
     """Erste Adresse, Telefonnummer und E-Mail außerhalb von Fremd-Abschnitten.
 
     `weitere_texte` (z. B. Kontakt- und Startseite, zuletzt Meta-Beschreibungen) werden in Reihenfolge nur
-    für Felder herangezogen, die im Impressum fehlen. Telefon: Festnetz vor Mobil, Impressum vor den
-    anderen Seiten – eine Mobilnummer der Startseite („Neumandanten-Hotline") nur als Rückfall.
+    für Felder herangezogen, die im Impressum fehlen. Telefon (Prüfkatalog 2): Festnetz vor Mobil vor
+    0800/0180; innerhalb der Klasse tel:-Link → Schema.org (`schema_telefone`) → Impressum-Text →
+    Kontaktseite → übrige Seiten. tel:-Links mit einer Nummer aus einem Fremd-Abschnitt (Kammer) zählen nicht.
     E-Mail: Impressum-Text vor Navigation/Fußzeile (`rahmen`) vor mailto-Links.
     """
     ausschluss = ausschluss or Ausschluss()
@@ -347,7 +360,8 @@ def extract_impressum(
     weitere_texte = [(text_normalisieren(x) or "", lnks) for x, lnks in weitere_texte or []]
     erg = RegelErgebnis()
     mails: list[str] = []
-    mobil: str | None = None
+    tel_links: list[str] = []
+    text_nummern: list[str] = []
     for nr, (txt, lnks) in enumerate([(text, links or []), *(weitere_texte or [])]):
         zeilen = txt.splitlines()
         fremd = ausschluss.fremd_zeilen(zeilen)
@@ -365,28 +379,24 @@ def extract_impressum(
                                         "(Ausschlussliste) – als Kanzleiadresse übernommen, bitte prüfen")
             if gewaehlt is not None:
                 erg.strasse, erg.plz, erg.ort, erg.adresszusatz = gewaehlt.strasse, gewaehlt.plz, gewaehlt.ort, gewaehlt.zusatz
-        if erg.telefon is None:
-            nummern = [n for n, i in telefone(zeilen) if i not in fremd]
-            nummern += [n for h in lnks if h.lower().startswith("tel:") and (n := normalize_telefon(h[4:]))]
-            if nr == 0:  # Impressum: unbeschriftete Nummer in eigener Zeile (nicht hinter „Fax")
-                for i, z in enumerate(zeilen):
-                    davor = zeilen[i - 1] if i > 0 else ""
-                    if i in fremd or not _NUMMER_ALLEIN.match(z.strip()) or re.search(r"fax\W*$", davor, re.I):
-                        continue
-                    if n := normalize_telefon(z):
-                        nummern.append(n)
-            nummern = _festnetz_zuerst(list(dict.fromkeys(nummern)))
-            if nummern and not ist_mobil(nummern[0]):
-                erg.telefon = nummern[0]
-            elif nummern and mobil is None:
-                mobil = nummern[0]
+        fremde_nummern = {n for n, i in telefone(zeilen) if i in fremd}
+        tel_links += [n for h in lnks if h.lower().startswith("tel:") and (n := normalize_telefon(h[4:]))
+                      and n not in fremde_nummern]
+        text_nummern += [n for n, i in telefone(zeilen) if i not in fremd]
+        if nr == 0:  # Impressum: unbeschriftete Nummer in eigener Zeile (nicht hinter „Fax"/„F:")
+            for i, z in enumerate(zeilen):
+                davor = zeilen[i - 1] if i > 0 else ""
+                if i in fremd or not _NUMMER_ALLEIN.match(z.strip()) or re.search(r"(?:fax|\bF)\W*$", davor, re.I):
+                    continue
+                if n := normalize_telefon(z):
+                    text_nummern.append(n)
         if not mails:
             eigene = [z for i, z in enumerate(zeilen) if i not in fremd and " ".join(z.lower().split()) not in rahmen]
             im_rahmen = [z for i, z in enumerate(zeilen) if i not in fremd and " ".join(z.lower().split()) in rahmen]
             mails = emails("\n".join(eigene)) + emails("\n".join(im_rahmen),
                                                        [h for h in lnks if h.lower().startswith("mailto:")])
             mails = list(dict.fromkeys(mails))
-    erg.telefon = erg.telefon or mobil
+    erg.telefon = beste_telefon([*tel_links, *(schema_telefone or []), *text_nummern])
     erg.email = beste_email(mails, domain, ausschluss.email_nachrangig)
     return erg
 

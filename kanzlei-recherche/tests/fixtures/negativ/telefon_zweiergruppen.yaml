@@ -1,0 +1,18 @@
+# fiktiver Prüffall (Prüfkatalog 5.1) – keine echten Daten
+kategorie: '2 Telefon: Gruppierung aus phonenumbers, Fax „F:“ nie'
+domain: luetau-stb.example
+impressum:
+- Impressum
+- Steuerkanzlei Lütau
+- Dorfstraße 4
+- 21483 Lütau
+- 'F: 0 41 53 / 5 97 41'
+- 'T: 0 41 53 / 5 97 40'
+- 'Zuständige Kammer: Steuerberaterkammer Schleswig-Holstein'
+- Hopfenstraße 2 d
+- 24114 Kiel
+llm:
+  kanzleiname: Steuerkanzlei Lütau
+erwartet:
+  status: neu
+  telefon: +49 4153 59740

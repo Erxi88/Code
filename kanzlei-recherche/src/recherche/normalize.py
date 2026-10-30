@@ -21,8 +21,9 @@ def normalize_telefon(roh: str | None) -> str | None:
     """Deutsche Rufnummer → '+49 <Vorwahl> <Rufnummer>' (Vorwahl ohne führende 0).
 
     Die Vorwahl kommt aus dem Vorwahlverzeichnis von `phonenumbers`, wenn die Nummer dort gültig ist
-    ('0 41 53 / 5 97 40' → '+49 4153 59740', nicht '+49 41 5359740'); sonst von der ersten Trennstelle
-    der Eingabe ('0431 / 12 34 56' → '+49 431 123456'); ohne Paket und ohne Trennung bleibt sie ungetrennt.
+    ('0 41 53 / 5 97 40' → '+49 4153 59740', nicht '+49 41 5359740'). Laut Verzeichnis ungültige Nummern →
+    None (Prüfkatalog 2, „Telefon ungültig"). Nur ohne das Paket: Vorwahl an der ersten Trennstelle der Eingabe
+    ('0431 / 12 34 56' → '+49 431 123456').
     Unplausible Eingaben → None.
     """
     if not roh:
@@ -56,11 +57,27 @@ def normalize_telefon(roh: str | None) -> str | None:
         return None
     if getrennt := _vorwahl_trennen(ziffern, nur_gueltig=True):
         return getrennt  # Vorwahlverzeichnis vor der Schreibweise der Seite („0 41 53 / 5 97 40")
+    if _phonenumbers_da():
+        return None  # Prüfkatalog 2: nur Nummern mit is_valid_number – kein Rätselraten
     if len(gruppen) >= 2 and len(gruppen[0]) >= 2:
         return f"{land} {gruppen[0]} {''.join(gruppen[1:])}"
     if getrennt := _vorwahl_trennen(ziffern):
         return getrennt
     return f"{land}{ziffern}"
+
+
+@lru_cache(maxsize=1)
+def _phonenumbers_da() -> bool:
+    try:
+        import phonenumbers  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+def ist_service(nummer: str | None) -> bool:
+    """0800/0180x/0137/0900 – Service- und Sonderrufnummern (nach Festnetz und Mobil)."""
+    return bool(nummer) and bool(re.match(r"^\+49 ?(?:800|180|137|900|700)", nummer))
 
 
 def _vorwahl_trennen(ziffern: str, nur_gueltig: bool = False) -> str | None:

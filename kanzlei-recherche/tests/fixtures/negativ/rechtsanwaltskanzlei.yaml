@@ -1,0 +1,21 @@
+# fiktiver Prüffall (Prüfkatalog 5.1) – keine echten Daten
+kategorie: 1A Rechtsanwaltskanzlei
+domain: prasse-recht.example
+impressum:
+- Impressum
+- Rechtsanwälte Prasse & Lund
+- Wall 5
+- 24103 Kiel
+- Tel. 0431 550299
+- 'Zuständige Kammer: Rechtsanwaltskammer Schleswig-Holstein'
+- 'Berufsbezeichnung: Rechtsanwalt'
+llm:
+  kanzleiname: Rechtsanwälte Prasse & Lund
+  personen:
+  - name: Ole Prasse
+    funktion: Rechtsanwalt
+  - name: Ina Lund
+    funktion: Rechtsanwältin, Fachanwältin für Arbeitsrecht
+erwartet:
+  status: keine Kanzlei
+  grund: Rechtsanwaltskanzlei

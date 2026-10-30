@@ -1,0 +1,25 @@
+# fiktiver Prüffall (Prüfkatalog 5.1) – keine echten Daten
+kategorie: 'Gegenprobe: gemischte Kanzlei bleibt'
+domain: prasse-lund.example
+impressum:
+- Impressum
+- Prasse & Lund Rechtsanwälte Steuerberater PartG mbB
+- Wall 5
+- 24103 Kiel
+- Tel. 0431 550299
+- 'Berufsbezeichnungen: Rechtsanwalt, Steuerberater'
+- 'Zuständige Kammer: Steuerberaterkammer Schleswig-Holstein'
+- Hopfenstraße 2 d
+- 24114 Kiel
+llm:
+  kanzleiname: Prasse & Lund Rechtsanwälte Steuerberater PartG mbB
+  personen:
+  - name: Ole Prasse
+    funktion: Rechtsanwalt
+  - name: Ina Lund
+    funktion: Steuerberaterin
+erwartet:
+  status: neu
+  ansprechpartner:
+  - Ina Lund
+  - Ole Prasse

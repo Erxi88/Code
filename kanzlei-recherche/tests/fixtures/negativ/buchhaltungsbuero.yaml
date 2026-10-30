@@ -1,0 +1,18 @@
+# fiktiver Prüffall (Prüfkatalog 5.1) – keine echten Daten
+kategorie: 1A Buchhaltungsbüro
+domain: buchhaltung-ketelsen.example
+impressum:
+- Impressum
+- Buchhaltungsservice Ketelsen
+- Ring 2
+- 25813 Husum
+- Tel. 04841 550399
+- 'Inhaberin: Anke Ketelsen, geprüfte Bilanzbuchhalterin'
+llm:
+  kanzleiname: Buchhaltungsservice Ketelsen
+  personen:
+  - name: Anke Ketelsen
+    funktion: Inhaberin
+erwartet:
+  status: keine Kanzlei
+  grund: Buchhaltungsbüro

@@ -1,0 +1,14 @@
+# fiktiver Prüffall (Prüfkatalog 5.1) – keine echten Daten
+kategorie: 1A Portal (Muster)
+domain: linklisten-nord.example
+impressum:
+- Impressum
+- Linklisten Nord GmbH
+- Hafenstraße 1
+- 24103 Kiel
+- Tel. 0431 550799
+llm:
+  kanzleiname: Steuerberater in Kiel – Linklisten Nord
+erwartet:
+  status: keine Kanzlei
+  grund: Portal

@@ -36,6 +36,7 @@ from dataclasses import dataclass
 from ..models import AUTO_STATUS, Fund, Kanzlei, Konfidenz, Seitentyp, Status
 from ..storage import Storage
 from ..textnorm import text_normalisieren
+from .ansprechpartner import bereinigen as bereinige_ansprechpartner
 from .merge import konfidenz
 
 STANDARD_RECHTSFORMEN = ("PartG mbB", "PartG", "Einzelkanzlei")
@@ -51,8 +52,26 @@ _SCHEIN_NAME = re.compile(
     re.IGNORECASE,
 )
 _KAMMER = re.compile(r"steuerberaterkammer|kammer\s+der\s+steuerberater", re.IGNORECASE)
-_LOHNSTEUERHILFE = re.compile(r"lohnsteuerhilfe|\be\.\s?v\.(?!\w)|eingetragener\s+verein", re.IGNORECASE)
-_ANWALT = re.compile(r"rechtsanw[aä]lt|anwalt|anwält|notar|rechtsanwaltskammer", re.IGNORECASE)
+# ---- Prüfkatalog 1A: Ausschluss vor den Positivsignalen, Merkmale im Namen oder in der Anbieterzeile des
+# Impressums (Rücksprache 30.10.2026: nicht im Aufsichts-/Mitgliedschaftsteil – „Mitglied im … e. V.")
+_LOHNSTEUERHILFE = re.compile(r"lohnsteuerhilfe|lohnsteuerberatungsverbund|\be\.\s?v\.(?!\w)|eingetragener\s+verein",
+                              re.IGNORECASE)
+_ANWALT = re.compile(r"rechtsanw[aä]lt|anwaltskanzlei|anwalt|anwält|notar", re.IGNORECASE)
+_BUCHHALTUNG = re.compile(r"buchhaltung|bilanzbuchhalter|buchführungsservice|buchführungsbüro|lohnbuchhaltung", re.IGNORECASE)
+_INSTITUTION = re.compile(r"steuerberaterkammer|steuerberaterverband|versorgungswerk|bundessteuerberaterkammer|"
+                          r"kammer\s+der\s+steuerberater", re.IGNORECASE)
+_BEHOERDE_DOMAIN = re.compile(r"^(?:gemeinde|amt|stadt|kreis)-")
+_BEHOERDE_ROLLE = re.compile(r"amtsdirektor|amtsvorsteher|bürgermeister", re.IGNORECASE)
+_VEREIN_DOMAIN = re.compile(r"^(?:spd|cdu|gruene|grüne|fdp|kirche|schule)-|-verein\b|verein-")
+_VEREINSREGISTER = re.compile(r"vereinsregister|\bVR\s?\d", re.IGNORECASE)
+_PORTAL_DOMAIN = re.compile(r"linklisten|firmenkataloge")
+# Anbieterzeile: Kopf des Impressums bis zum ersten Abschnitt über Aufsicht, Kammer, Register, Vertretung …
+_ANBIETER_ENDE = re.compile(r"^(?:zuständig|aufsicht|kammer|berufsbezeichnung|berufsrecht|berufshaftpflicht|"
+                            r"haftpflicht|mitglied|umsatzsteuer|ust|register|handelsregister|partnerschaftsregister|"
+                            r"amtsgericht|vertreten|vertretungsberechtigt|verantwortlich|geschäftsführ|inhaber|haftung|"
+                            r"streitschlichtung|datenschutz|bildnachweis|quellenangaben)", re.IGNORECASE)
+_KOPFZEILE = re.compile(r"^(?:impressum|imprint|anbieterkennzeichnung|angaben\s+gem(?:äß|\.)|"
+                        r"informationspflichten|diensteanbieter|anbieter)\b", re.IGNORECASE)
 # Steuerberatung irgendwo belegt → gemischte Kanzlei (StB + RA) bleibt
 _STEUER_BERUF = re.compile(r"steuerberat|\bstb\b|steuerbevollm|steuerkanzlei|steuerbüro|wirtschaftspr[üu]f|\bwp\b|"
                            r"buchpr[üu]f|\bvbp\b|steuerberaterkammer", re.IGNORECASE)
@@ -60,27 +79,82 @@ NAME_ABGELEITET = "Name abgeleitet aus Ansprechpartner"
 # ausländische Domains: außerhalb ohne LLM (Österreich, Schweiz, Liechtenstein …)
 AUSLAND_TLD = ("at", "ch", "li", "tirol", "wien", "swiss", "lu")
 KEINE_DEUTSCHE_PLZ = "keine deutsche PLZ"
+# Prüfkatalog 1A „Ausland": Orte in Österreich/Schweiz/Liechtenstein (Auswahl, für 4-stellige PLZ ohne TLD)
+AUSLAND_ORTE = {
+    "wien", "graz", "linz", "salzburg", "innsbruck", "klagenfurt", "villach", "wels", "st. pölten", "sankt pölten",
+    "dornbirn", "bregenz", "feldkirch", "steyr", "leoben", "krems", "krems an der donau", "baden", "wiener neustadt",
+    "mödling", "kufstein", "lienz", "bludenz", "amstetten", "tulln", "zürich", "bern", "basel", "genf", "lausanne",
+    "luzern", "st. gallen", "sankt gallen", "winterthur", "zug", "lugano", "biel", "thun", "chur", "schaffhausen",
+    "aarau", "frauenfeld", "vaduz", "schaan",
+}
+_AUSLAND_TEXT = re.compile(r"wirtschaftstreuhänder|\bösterreich\b|\bschweiz\b|\baustria\b|\bswitzerland\b|"
+                           r"\bliechtenstein\b|\bMag\.\s*(?:\(FH\)\s*)?[A-ZÄÖÜ][a-zäöü]+.*steuerberater", re.IGNORECASE)
+_PLZ4_ORT = re.compile(r"(?<![\d-])(?:[AC]H?-\s?)?(\d{4})\s+([A-ZÄÖÜ][\wäöüß. -]+)")
 _AUSSERHALB_PRAEFIX = "Außerhalb: "
 _AUSSERHALB_EINTRAG = re.compile(re.escape(_AUSSERHALB_PRAEFIX) + r"[^;]*(?:;\s*|$)")
 # ein Grund-Eintrag in „Abweichung" (bis zum nächsten „; " oder Ende)
 _GRUND_EINTRAG = re.compile(re.escape(GRUND_PRAEFIX) + r"[^;]*(?:;\s*|$)")
 
 
+def anbieter_text(impressum_text: str | None, zeilen: int = 8) -> str:
+    """Anbieterzeile(n) des Impressums: die ersten Zeilen nach der Überschrift bis zum ersten Abschnitt über
+    Aufsicht, Kammer, Register, Vertretung, Mitgliedschaft …"""
+    kopf: list[str] = []
+    for z in (impressum_text or "").splitlines():
+        z = z.strip()
+        if not z or (_KOPFZEILE.match(z) and len(z) < 60):
+            continue
+        if _ANBIETER_ENDE.match(z) or _KAMMER.search(z) or len(kopf) >= zeilen:
+            break
+        kopf.append(z)
+    return "\n".join(kopf)
+
+
+def ausschluss_grund(k: Kanzlei, impressum_text: str | None, blocklist: set[str] | None = None) -> str | None:
+    """Prüfkatalog 1A: Kategorie (mit Detail), wenn der Treffer nie eine Kanzlei ist – sonst None.
+    Ausland steht im Bundesland-Filter (ausserhalb_grund)."""
+    from ..search.pipeline import ist_blockiert
+
+    name, anbieter = k.kanzleiname or "", anbieter_text(impressum_text)
+    kopf = f"{name}\n{anbieter}"
+    domain = (k.domain or "").lower().removeprefix("www.")
+    personen = " ".join(f"{p.name} {p.titel or ''} {p.funktion or ''}" for p in k.ansprechpartner)
+    steuer = bool(_STEUER_BERUF.search(f"{name}\n{impressum_text or ''}\n{personen}"))
+    kammer = bool(impressum_text and _KAMMER.search(impressum_text))
+    if domain and blocklist and ist_blockiert(domain, blocklist):
+        return "Portal (Domain auf der Blocklist)"
+    erste = domain.split(".")[0] if domain else ""
+    if _PORTAL_DOMAIN.search(domain) or (erste in ("jobs", "karriere") and domain.count(".") >= 2):
+        return f"Portal ({domain})"
+    if _LOHNSTEUERHILFE.search(kopf):
+        return "Lohnsteuerhilfeverein"
+    if _INSTITUTION.search(kopf):
+        return f"Institution ({_INSTITUTION.search(kopf).group(0)})"
+    if _BEHOERDE_DOMAIN.search(erste) or (_BEHOERDE_ROLLE.search(f"{anbieter}\n{personen}\n{k.abweichung or ''}")
+                                          and not kammer and not _STEUER_BERUF.search(impressum_text or "")):
+        # eine Rolle allein schließt einen Steuerberater nicht aus („Steuerberater und Amtsvorsteher")
+        return "Behörde"
+    if _VEREIN_DOMAIN.search(domain) or _VEREINSREGISTER.search(impressum_text or ""):
+        return "Verein/Partei"
+    if _ANWALT.search(kopf) and not steuer:
+        return "Rechtsanwaltskanzlei (kein Steuerberater in Name, Impressum oder Berufsbezeichnung)"
+    if _BUCHHALTUNG.search(kopf) and not _STEUER_BERUF.search(impressum_text or ""):
+        return "Buchhaltungsbüro (kein StB/StBv/WP im Impressum)"
+    return None
+
+
 def kein_kanzlei_grund(k: Kanzlei, impressum_text: str | None,
                        rechtsformen: tuple[str, ...] | list[str] = STANDARD_RECHTSFORMEN,
-                       funde: Sequence[Fund] = (), suchorte: int | None = None) -> str | None:
-    """None, wenn ein Kanzlei-Merkmal zutrifft; sonst der Grund.
+                       funde: Sequence[Fund] = (), suchorte: int | None = None,
+                       blocklist: set[str] | None = None) -> str | None:
+    """None, wenn ein Kanzlei-Merkmal zutrifft; sonst der Grund (Kategorie aus Prüfkatalog 1A).
 
     `suchorte`: Zahl der Suchorte der Stammdomain über alle Kandidaten (Standard: nur diese Funde)."""
-    if k.kanzleiname and _LOHNSTEUERHILFE.search(k.kanzleiname):
-        return "Lohnsteuerhilfeverein"
-    personen = " ".join(f"{p.titel or ''} {p.funktion or ''}" for p in k.ansprechpartner)
-    belege = f"{k.kanzleiname or ''} \n {impressum_text or ''} \n {personen}"
-    if _ANWALT.search(f"{k.kanzleiname or ''} \n {impressum_text or ''}") and not _STEUER_BERUF.search(belege):
-        return "Rechtsanwaltskanzlei (kein Steuerberater in Name, Impressum oder bei den Ansprechpartnern)"
+    if grund := ausschluss_grund(k, impressum_text, blocklist):
+        return grund
     kammer = bool(impressum_text and _KAMMER.search(impressum_text))
     if NAME_ABGELEITET in (k.abweichung or "") and not kammer and not _STEUER_BERUF.search(impressum_text or ""):
-        return "kein Kanzleiname (aus Ansprechpartner abgeleitet), keine Steuerberaterkammer und keine Berufsbezeichnung im Impressum"
+        return "Branchenfremd (Name aus Ansprechpartner abgeleitet, keine Steuerberaterkammer, keine Berufsbezeichnung)"
     if kammer:
         return None
     if k.berufstraeger_anzahl:
@@ -89,10 +163,11 @@ def kein_kanzlei_grund(k: Kanzlei, impressum_text: str | None,
     if suchorte is None:
         suchorte = len({f.suchort for f in funde if f.suchort})
     if suchorte >= PORTAL_AB_ORTEN:
-        return f"{basis}, Domain in {suchorte} Suchorten (Portal)"
+        return f"Portal ({basis}, Domain in {suchorte} Suchorten)"
     name = k.kanzleiname if k.kanzleiname and not _SCHEIN_NAME.search(k.kanzleiname) else None
     if not name:
-        return f"{basis}, kein Kanzleiname" + (f" („{k.kanzleiname}“ ist Domain oder Portal-Titel)" if k.kanzleiname else "")
+        return f"Branchenfremd ({basis}, kein Kanzleiname" + (
+            f" – „{k.kanzleiname}“ ist Domain oder Portal-Titel)" if k.kanzleiname else ")")
     if k.rechtsform and k.rechtsform in rechtsformen:
         return None
     if _KANZLEI_WORT.search(name):
@@ -100,7 +175,7 @@ def kein_kanzlei_grund(k: Kanzlei, impressum_text: str | None,
     if any(_SUCHTREFFER_WORT.search(f"{f.name or ''} {f.snippet or ''}") for f in funde):
         return None
     form = f" ({k.rechtsform})" if k.rechtsform else ""
-    return f"{basis}, keine Kanzlei-Rechtsform{form}, kein Kanzleiwort im Namen, kein Steuerberater im Suchtreffer"
+    return f"Branchenfremd ({basis}, keine Kanzlei-Rechtsform{form}, kein Kanzleiwort im Namen, kein Steuerberater im Suchtreffer)"
 
 
 def grund_aus_abweichung(abweichung: str | None) -> str | None:
@@ -115,15 +190,36 @@ def ausland_tld(domain: str | None) -> str | None:
     return f".{tld}" if domain and tld in AUSLAND_TLD else None
 
 
-def ausserhalb_grund(k: Kanzlei, ziel_land: str | None) -> str | None:
-    """Grund für „außerhalb Bundesland": ausländische Domain, keine (gültige) deutsche PLZ oder PLZ laut OpenPLZ
-    in einem anderen Land. PLZ nicht prüfbar (OpenPLZ nicht erreichbar) → kein Grund."""
+def ausland_hinweis(k: Kanzlei, impressum_text: str | None = None) -> str | None:
+    """Prüfkatalog 1A „Ausland" ohne TLD: 4-stellige PLZ mit Ort in AT/CH/LI, Ort aus der Liste, oder
+    „Wirtschaftstreuhänder"/„Österreich"/„Schweiz"/„Mag. … Steuerberater" in der Anbieterzeile – nur ohne
+    gültige deutsche PLZ."""
+    if k.plz and re.fullmatch(r"\d{5}", k.plz) and k.plz_verifiziert is not False:
+        return None
+    ort = (k.ort or "").casefold()
+    if ort in AUSLAND_ORTE:
+        return f"Ausland ({k.plz + ' ' if k.plz else ''}{k.ort})"
+    anbieter = anbieter_text(impressum_text, zeilen=12)
+    for m in _PLZ4_ORT.finditer(anbieter):
+        if m.group(2).strip().casefold() in AUSLAND_ORTE or m.group(2).split()[0].casefold() in AUSLAND_ORTE:
+            return f"Ausland ({m.group(1)} {m.group(2).strip()})"
+    if m := _AUSLAND_TEXT.search(anbieter):
+        return f"Ausland ({m.group(0).split()[0]})"
+    return None
+
+
+def ausserhalb_grund(k: Kanzlei, ziel_land: str | None, impressum_text: str | None = None) -> str | None:
+    """Grund für „außerhalb Bundesland": Ausland (TLD, 4-stellige PLZ mit AT/CH-Ort, Wirtschaftstreuhänder …),
+    keine (gültige) deutsche PLZ oder PLZ laut OpenPLZ in einem anderen Land. PLZ nicht prüfbar (OpenPLZ nicht
+    erreichbar) → kein Grund."""
     if not ziel_land:
         return None
     if tld := ausland_tld(k.domain):
-        return f"ausländische Domain ({tld})"
+        return f"Ausland ({tld})"
+    if hinweis := ausland_hinweis(k, impressum_text):
+        return hinweis
     if not k.plz or not re.fullmatch(r"\d{5}", k.plz) or (k.plz_verifiziert is False and not k.bundesland):
-        return KEINE_DEUTSCHE_PLZ
+        return KEINE_DEUTSCHE_PLZ + (f" (PLZ „{k.plz}“)" if k.plz else "")
     if k.bundesland and k.bundesland != ziel_land:
         return f"PLZ {k.plz} in {k.bundesland}"
     return None
@@ -133,12 +229,12 @@ def ausserhalb(k: Kanzlei, ziel_land: str | None) -> bool:
     return ausserhalb_grund(k, ziel_land) is not None
 
 
-def status_setzen(k: Kanzlei, ziel_land: str | None = None) -> Kanzlei:
+def status_setzen(k: Kanzlei, ziel_land: str | None = None, impressum_text: str | None = None) -> Kanzlei:
     """Automatischer Status: „keine Kanzlei" vor „außerhalb Bundesland" vor „neu" – nur wenn der
     bisherige Status automatisch ist (von Hand gepflegte bleiben). Ausländische Domain und keine deutsche PLZ
     stehen als „Außerhalb: …" in „Abweichung" (ein anderes Bundesland zeigt schon die Spalte)."""
     rest = _AUSSERHALB_EINTRAG.sub("", k.abweichung or "").strip().rstrip(";").strip() or None
-    grund = ausserhalb_grund(k, ziel_land)
+    grund = ausserhalb_grund(k, ziel_land, impressum_text)
     if grund and not grund.startswith("PLZ "):
         rest = f"{_AUSSERHALB_PRAEFIX}{grund}" + (f"; {rest}" if rest else "")
     k.abweichung = rest
@@ -149,7 +245,7 @@ def status_setzen(k: Kanzlei, ziel_land: str | None = None) -> Kanzlei:
 
 
 def anwenden(k: Kanzlei, grund: str | None, impressum_gelesen: bool, ziel_land: str | None = None,
-             kammer: bool = False) -> Kanzlei:
+             kammer: bool = False, impressum_text: str | None = None) -> Kanzlei:
     """Grund, Konfidenz und Status setzen. Ein von Hand gepflegter Status bleibt (auch beim Speichern,
     Storage.upsert_kanzlei). Name nur aus dem Ansprechpartner abgeleitet und keine Kammer → Konfidenz niedrig."""
     rest = _GRUND_EINTRAG.sub("", k.abweichung or "").strip().rstrip(";").strip()
@@ -157,20 +253,16 @@ def anwenden(k: Kanzlei, grund: str | None, impressum_gelesen: bool, ziel_land: 
     k.konfidenz = konfidenz(k, impressum_gelesen, kanzlei=grund is None)
     if NAME_ABGELEITET in (k.abweichung or "") and not kammer:
         k.konfidenz = Konfidenz.NIEDRIG
-    return status_setzen(k, ziel_land)
+    return status_setzen(k, ziel_land, impressum_text)
 
 
 def pruefen(k: Kanzlei, seiten: dict, rechtsformen=STANDARD_RECHTSFORMEN, funde: Sequence[Fund] = (),
             suchorte: int | None = None, ziel_land: str | None = None, blocklist: set[str] | None = None) -> Kanzlei:
     impressum = seiten.get(Seitentyp.IMPRESSUM)
     text = text_normalisieren(impressum.text) if impressum else None
-    from ..search.pipeline import ist_blockiert
-
-    if blocklist and k.domain and ist_blockiert(k.domain, blocklist):
-        grund = "Domain auf der Blocklist (Portal, Kammer, Verzeichnis)"
-    else:
-        grund = kein_kanzlei_grund(k, text, rechtsformen, funde, suchorte)
-    return anwenden(k, grund, impressum is not None, ziel_land, kammer=bool(text and _KAMMER.search(text)))
+    grund = kein_kanzlei_grund(k, text, rechtsformen, funde, suchorte, blocklist)
+    return anwenden(k, grund, impressum is not None, ziel_land, kammer=bool(text and _KAMMER.search(text)),
+                    impressum_text=text)
 
 
 # Baukasten-Hoster: jede Subdomain ist eine eigene Website (oft eine kleine Kanzlei)
@@ -228,6 +320,10 @@ def run_pruefung(storage: Storage, bundesland: str, rechtsformen=STANDARD_RECHTS
             k.ort = p.ort_kanonisch or k.ort
             k.bundesland = p.bundesland or k.bundesland
             k.plz_verifiziert = p.verifiziert if p.verifiziert is not None else k.plz_verifiziert
+        # Ansprechpartner-Regeln (Prüfkatalog 2) auch auf gespeicherte Zeilen – ohne extract --alle
+        k.ansprechpartner, verworfen = bereinige_ansprechpartner(k.ansprechpartner)
+        if verworfen:
+            k.abweichung = "; ".join(dict.fromkeys(x for x in (k.abweichung, *verworfen) if x))
         if kanzlei_erkennung and k.domain and k.kandidat_id is not None:
             pruefen(k, storage.kandidat_seiten(k.kandidat_id), rechtsformen, storage.funde_kandidat(k.kandidat_id),
                     orte.get(stammdomain(k.domain), 0), ziel_land, blocklist)

@@ -1,0 +1,26 @@
+# fiktiver Prüffall (Prüfkatalog 5.1) – keine echten Daten
+kategorie: '2 Ansprechpartner: Rolle „Amtsvorsteher“, Kanzlei bleibt'
+domain: boelck-stb.example
+impressum:
+- Impressum
+- Steuerberater Ralf Bölck
+- Markt 6
+- 24103 Kiel
+- Tel. 0431 551299
+- 'Berufsbezeichnung: Steuerberater'
+- 'Zuständige Kammer: Steuerberaterkammer Schleswig-Holstein'
+- Hopfenstraße 2 d
+- 24114 Kiel
+llm:
+  kanzleiname: Steuerberater Ralf Bölck
+  personen:
+  - name: Ralf Bölck
+    funktion: Steuerberater, Amtsvorsteher
+  - name: Tim Bölck
+    funktion: Steuerberater
+erwartet:
+  status: neu
+  ansprechpartner:
+  - Tim Bölck
+  abweichung:
+  - Ansprechpartner verworfen

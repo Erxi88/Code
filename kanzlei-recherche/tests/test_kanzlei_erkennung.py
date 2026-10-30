@@ -76,10 +76,10 @@ def test_magazin_mit_sauberem_verlagsimpressum_ist_keine_kanzlei():
     pruefen(k, seiten, funde=viele)
     assert k.status == Status.KEINE_KANZLEI and k.konfidenz == Konfidenz.MITTEL
     grund = grund_aus_abweichung(k.abweichung)
-    assert grund.startswith("keine Steuerberaterkammer") and "5 Suchorten (Portal)" in grund
+    assert grund.startswith("Portal (keine Steuerberaterkammer") and "Domain in 5 Suchorten" in grund
     # ohne Suchtreffer genauso
     pruefen(k, seiten)
-    assert k.status == Status.KEINE_KANZLEI and grund_aus_abweichung(k.abweichung).endswith("kein Steuerberater im Suchtreffer")
+    assert k.status == Status.KEINE_KANZLEI and grund_aus_abweichung(k.abweichung).endswith("kein Steuerberater im Suchtreffer)")
     assert k.abweichung.count("Keine Kanzlei:") == 1  # Grund wird ersetzt, nicht angehängt
 
 
@@ -211,7 +211,7 @@ def test_portal_mit_vielen_subdomains_zaehlt_je_stammdomain(storage):
     stat = run_pruefung(storage, "SH")
     assert stat.keine_kanzlei == 6
     k = next(k for k in storage.kanzleien("SH") if k.domain == "ort0.city-map.example")
-    assert "Domain in 6 Suchorten (Portal)" in grund_aus_abweichung(k.abweichung)
+    assert grund_aus_abweichung(k.abweichung).startswith("Portal (") and "Domain in 6 Suchorten" in grund_aus_abweichung(k.abweichung)
 
 
 def test_ab_fuenf_suchorten_zaehlen_nur_kammer_und_berufstraeger():
@@ -287,11 +287,12 @@ def _zeile(**kw):
 
 @pytest.mark.parametrize(("kw", "erwartet"), [
     ({}, None),
-    ({"domain": "steuerberater-wien.at", "plz": "1010", "bundesland": None}, "ausländische Domain (.at)"),
-    ({"domain": "treuhand.tirol"}, "ausländische Domain (.tirol)"),
+    ({"domain": "steuerberater-wien.at", "plz": "1010", "bundesland": None}, "Ausland (.at)"),
+    ({"domain": "treuhand.tirol"}, "Ausland (.tirol)"),
     ({"plz": None, "bundesland": None}, "keine deutsche PLZ"),
-    ({"plz": "9500", "bundesland": None}, "keine deutsche PLZ"),  # Villach
-    ({"plz": "99999", "bundesland": None, "plz_verifiziert": False}, "keine deutsche PLZ"),
+    ({"plz": "9500", "ort": "Villach", "bundesland": None}, "Ausland (9500 Villach)"),
+    ({"plz": "9500", "ort": "Irgendwo", "bundesland": None}, "keine deutsche PLZ (PLZ „9500“)"),
+    ({"plz": "99999", "bundesland": None, "plz_verifiziert": False}, "keine deutsche PLZ (PLZ „99999“)"),
     ({"plz": "24103", "bundesland": None, "plz_verifiziert": None}, None),  # OpenPLZ nicht erreichbar
     ({"plz": "10115", "bundesland": "Berlin"}, "PLZ 10115 in Berlin"),
 ])  # fmt: skip
@@ -326,11 +327,11 @@ def test_name_abgeleitet_ohne_kammer():
     """Gemeinde/Verein ohne Kanzleinamen: Name aus dem Ansprechpartner, keine Kammer → keine Kanzlei, niedrig."""
     abw = "Name abgeleitet aus Ansprechpartner Ina Lund – kein Kanzleiname gefunden"
     seiten = {Seitentyp.IMPRESSUM: _seite("gemeinde-x.example", Seitentyp.IMPRESSUM,
-                                          ["Impressum", "Gemeinde X", "Bürgermeisterin Ina Lund", "Dorfstraße 1", "24999 X"])}
+                                          ["Impressum", "Praxis Lund", "Ina Lund", "Dorfstraße 1", "24999 X"])}
     k = pruefen(_zeile(kanzleiname="Steuerkanzlei Lund", abweichung=abw, berufstraeger_anzahl=1,
                          rechtsform="Einzelkanzlei"), seiten, ziel_land=SH)
     assert k.status == Status.KEINE_KANZLEI and k.konfidenz == Konfidenz.NIEDRIG
-    assert "aus Ansprechpartner abgeleitet" in grund_aus_abweichung(k.abweichung)
+    assert grund_aus_abweichung(k.abweichung).startswith("Branchenfremd (Name aus Ansprechpartner abgeleitet")
     mit_beruf = {Seitentyp.IMPRESSUM: _seite("lund.example", Seitentyp.IMPRESSUM,
                                              ["Impressum", "Ina Lund", "Berufsbezeichnung: Steuerberaterin"])}
     k = pruefen(_zeile(kanzleiname="Steuerkanzlei Lund", abweichung=abw, berufstraeger_anzahl=1), mit_beruf, ziel_land=SH)

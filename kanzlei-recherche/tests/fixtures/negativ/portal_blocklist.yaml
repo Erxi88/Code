@@ -1,0 +1,14 @@
+# fiktiver Prüffall (Prüfkatalog 5.1) – keine echten Daten
+kategorie: 1A Portal (Blocklist)
+domain: www.steuer-portal-blockiert.example
+impressum:
+- Impressum
+- Steuerportal GmbH
+- Hafenstraße 2
+- 24103 Kiel
+- Tel. 0431 550899
+llm:
+  kanzleiname: Steuerberater Kiel – Steuerportal
+erwartet:
+  status: keine Kanzlei
+  grund: Portal (Domain auf der Blocklist)

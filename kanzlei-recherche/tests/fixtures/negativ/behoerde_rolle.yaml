@@ -1,0 +1,17 @@
+# fiktiver Prüffall (Prüfkatalog 5.1) – keine echten Daten
+kategorie: 1A Behörde (Rolle)
+domain: musterdorf-info.example
+impressum:
+- Impressum
+- Gemeinde Musterdorf
+- Bürgermeisterin Ina Lund
+- Dorfstraße 2
+- 24103 Kiel
+- Tel. 0431 550699
+llm:
+  personen:
+  - name: Ina Lund
+    funktion: Bürgermeisterin, Steuerberaterin
+erwartet:
+  status: keine Kanzlei
+  grund: Behörde
