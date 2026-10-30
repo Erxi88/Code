@@ -35,7 +35,7 @@ from .fixtures import (
     fixtures_finden,
     prompt_diagnose,
 )
-from .models import LAND_SCHLUESSEL, LaufEintrag, SchrittStatus
+from .models import BUNDESLAENDER, LAND_SCHLUESSEL, LaufEintrag, SchrittStatus, Status
 from .normalize import PlzPruefer
 from .orte import (
     OpenPlzOrte,
@@ -306,9 +306,15 @@ def _dauer(sekunden: float) -> str:
     return f"{h} h {m} min" if h else f"{m} min"
 
 
+def _liste_ids(st: Storage, ctx: Kontext) -> dict[int, str]:
+    """Kandidat → Lauf für die Lieferliste des Landes (PLZ im Land, alle Läufe, ohne „keine Kanzlei", mit „Zu prüfen")."""
+    return {k.kandidat_id: k.lauf_bundesland for k in _lieferliste(st, ctx)
+            if k.kandidat_id is not None and k.status != Status.KEINE_KANZLEI}
+
+
 def _extract(
     ctx: Kontext, ohne_llm: bool = False, modell: str | None = None, limit: int | None = None,
-    wiederholen: bool = False, alle: bool = False, ja: bool = False,
+    wiederholen: bool = False, alle: bool = False, ja: bool = False, nur_liste: bool = False,
 ) -> None:
     s = ctx.settings
     try:
@@ -317,6 +323,17 @@ def _extract(
         console.print("[yellow]Paket phonenumbers fehlt – Telefonnummern ohne Trennzeichen bleiben ungetrennt "
                       "(pip install -e .)[/yellow]")
     with ctx.storage() as st:
+        liste = _liste_ids(st, ctx) if nur_liste else None
+        if alle and liste is not None:
+            je = _sekunden_je_kanzlei(st, ctx.bundesland, ohne_llm)
+            console.print(f"Neu-Extraktion der Lieferliste {ctx.bl_cfg.name}: {len(liste)} Kandidaten (PLZ im Land, alle "
+                          f"Läufe, ohne „keine Kanzlei“, mit „Zu prüfen“), geschätzt {_dauer(len(liste) * je)}. "
+                          "Gepflegte Status bleiben; fortsetzen mit `extract --nur-liste` ohne --alle.")
+            if not ja and not typer.confirm("Lieferliste neu extrahieren?", default=False):
+                console.print("Abgebrochen – nichts geändert.")
+                return
+            console.print(f"{st.extract_offen_setzen(set(liste))} Kandidaten wieder offen.")
+            alle = False
         if alle:
             n = sum(1 for k in st.kandidaten(ctx.bundesland)
                     if k.crawl_status == SchrittStatus.FERTIG or not (k.domain or k.website))
@@ -335,10 +352,18 @@ def _extract(
         pruefer = PlzPruefer(s.openplz.url, cache=st)
         ausschluss = Ausschluss.laden(s.pfad(s.pfade.impressum_ausschluss))
         console.print(f"Extraktion mit {'nur Regeln' if ohne_llm else 'Regeln + ' + extractor.modell} …")
-        stat = run_extract(st, ctx.bundesland, extractor, pruefer, ausschluss, _lauf_id(), limit=limit,
-                           fortschritt=lambda m: console.print(f"  {m}"),
-                           kanzlei_rechtsformen=s.extract.kanzlei_rechtsformen if s.extract.kanzlei_pruefung else None,
-                           ziel_land=ctx.bl_cfg.name, blocklist=ctx.blocklist())  # fmt: skip
+        laeufe = sorted(set(liste.values()) | {ctx.bundesland}) if liste is not None else [ctx.bundesland]
+        for lauf in laeufe:  # --nur-liste: auch Kandidaten anderer Läufe mit PLZ im Land
+            if lauf != ctx.bundesland:
+                console.print(f"  Lauf {lauf}:")
+            stat = run_extract(st, lauf, extractor, pruefer, ausschluss, _lauf_id(), limit=limit,
+                               fortschritt=lambda m: console.print(f"  {m}"),
+                               kanzlei_rechtsformen=s.extract.kanzlei_rechtsformen if s.extract.kanzlei_pruefung else None,
+                               ziel_land=BUNDESLAENDER.get(lauf, ctx.bl_cfg.name) if lauf != ctx.bundesland
+                               else ctx.bl_cfg.name, blocklist=ctx.blocklist(),
+                               nur_ids=set(liste) if liste is not None else None)  # fmt: skip
+            if stat.abbruch:
+                break
     if stat.ohne_llm_ausserhalb:
         console.print(f"  {stat.ohne_llm_ausserhalb} ohne LLM-Aufruf: ausländische Domain oder PLZ laut Impressum "
                       f"außerhalb {ctx.bl_cfg.name}")
@@ -554,11 +579,14 @@ def extract(
     wiederholen: WiederholenOpt = False,
     alle: Annotated[bool, typer.Option("--alle", help="alle Kanzleien neu extrahieren (z. B. nach Regeländerungen)")] = False,
     ja: Annotated[bool, typer.Option("--ja", "-y", help="ohne Rückfrage (mit --alle)")] = False,
+    nur_liste: Annotated[bool, typer.Option("--nur-liste", help=(
+        "nur Kandidaten der Lieferliste des Landes (PLZ im Land, alle Läufe, ohne „keine Kanzlei“, mit „Zu prüfen“)"))] = False,
 ) -> None:
     """Daten aus den gecachten Seiten extrahieren (Regeln + LLM) und mit der Discovery zusammenführen.
 
-    --alle extrahiert auch bereits fertige Kandidaten neu (Rückfrage mit Zeitschätzung); fortsetzbar."""
-    _extract(_kontext(config, bundesland, db), ohne_llm, modell, limit, wiederholen, alle, ja)
+    --alle extrahiert auch bereits fertige Kandidaten neu (Rückfrage mit Zeitschätzung); fortsetzbar.
+    --alle --nur-liste nur die Lieferliste; fortsetzen mit --nur-liste ohne --alle."""
+    _extract(_kontext(config, bundesland, db), ohne_llm, modell, limit, wiederholen, alle, ja, nur_liste)
 
 
 @app.command("fixture-add")

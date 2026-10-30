@@ -466,6 +466,13 @@ class Storage:
                 "WHERE bundesland = ? AND extract_status != 'offen'", (bundesland,))
         return cur.rowcount
 
+    def extract_offen_setzen(self, ids: set[int]) -> int:
+        """extract --alle --nur-liste: nur diese Kandidaten wieder auf „offen" (gepflegte Status bleiben)."""
+        with self.conn:
+            return sum(self.conn.execute(
+                "UPDATE kandidaten SET extract_status = 'offen', fehler = NULL WHERE id = ? AND extract_status != 'offen'",
+                (i,)).rowcount for i in ids)
+
     # ------------------------------------------------------------------ Funde
 
     def add_fund(self, f: Fund) -> bool:

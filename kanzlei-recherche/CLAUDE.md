@@ -534,6 +534,9 @@ der nächsten Quelle füllen.**
 - `recherche extract --alle [--ja]`: alle Kanzleien neu extrahieren (nach Regeländerungen), mit
   Rückfrage und Zeitschätzung aus dem Lauf-Protokoll (sonst 15 s je Kanzlei); fortsetzbar, gepflegte
   Status bleiben. Erst nach einem Gesamtlauf ausführen.
+  `extract --alle --nur-liste` extrahiert nur die **Lieferliste des Landes** neu (PLZ im Land, aus allen Läufen, ohne
+  „keine Kanzlei", mit „Zu prüfen"; Kandidaten anderer Läufe mit deren Lauf-Bundesland als Ziel); fortsetzen mit
+  `extract --nur-liste` ohne `--alle`.
 - Kandidaten **ohne Website** kommen mit ihren Discovery-Daten ins Blatt „Kanzleien"
   („Website vorhanden" = nein).
 

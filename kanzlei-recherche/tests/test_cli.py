@@ -522,3 +522,34 @@ def test_export_gesamt_und_kontrollblaetter(befuellt, db_pfad, tmp_path):
     r = runner.invoke(cli.app, _args("export", db_pfad, "--mit-kontrollblaettern", "--out", str(out2)))
     assert r.exit_code == 0, r.output
     assert "Qualität" in load_workbook(out2).sheetnames
+
+
+def test_extract_alle_nur_liste(tmp_path):
+    """--alle --nur-liste: nur Kandidaten der Lieferliste (PLZ im Land, alle Läufe, ohne „keine Kanzlei")."""
+    from recherche.models import Kandidat, Kanzlei, SchrittStatus, Status
+    from recherche.storage import Storage
+
+    db = tmp_path / "t.sqlite"
+    faelle = {  # Name: (Lauf, Bundesland laut PLZ, Status)
+        "sh": ("SH", "Schleswig-Holstein", Status.NEU),
+        "keine": ("SH", "Schleswig-Holstein", Status.KEINE_KANZLEI),
+        "hh_plz": ("SH", "Hamburg", Status.AUSSERHALB),
+        "hh_lauf": ("HH", "Schleswig-Holstein", Status.AUSSERHALB),
+    }
+    ids = {}
+    with Storage(db) as st:
+        for name, (lauf, land, status) in faelle.items():
+            kid = st.add_kandidat(Kandidat(bundesland=lauf, name=name, extract_status=SchrittStatus.FERTIG))
+            ids[name] = kid
+            st.upsert_kanzlei(Kanzlei(kandidat_id=kid, lauf_bundesland=lauf, kanzleiname=name, bundesland=land,
+                                      plz="24103", status=status))
+    r = runner.invoke(cli.app, ["extract", "--db", str(db), "-b", "SH", "--alle", "--nur-liste", "--ohne-llm", "--ja"])
+    assert r.exit_code == 0, r.output
+    assert "Lieferliste Schleswig-Holstein: 2 Kandidaten" in r.output and "2 Kandidaten wieder offen" in r.output
+    with Storage(db) as st:
+        zeilen = {k.kandidat_id: k for b in ("SH", "HH") for k in st.kanzleien(b)}
+        assert all(st.get_kandidat(i).extract_status == SchrittStatus.FERTIG for i in ids.values())
+    # neu extrahiert (ohne Discovery-PLZ jetzt ohne Bundesland) – die übrigen unverändert
+    assert zeilen[ids["sh"]].bundesland is None and zeilen[ids["hh_lauf"]].bundesland is None
+    assert zeilen[ids["keine"]].status == Status.KEINE_KANZLEI and zeilen[ids["hh_plz"]].bundesland == "Hamburg"
+    assert "Lauf HH:" in r.output

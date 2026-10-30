@@ -109,15 +109,19 @@ def run_extract(
     kanzlei_rechtsformen: list[str] | None = None,
     ziel_land: str | None = None,
     blocklist: set[str] | None = None,
+    nur_ids: set[int] | None = None,
 ) -> ExtractStatistik:
     """kanzlei_rechtsformen gesetzt → Kanzlei-Erkennung aktiv (extract.kanzlei_pruefung).
-    ziel_land („Schleswig-Holstein") → PLZ in anderem Land: Status „außerhalb Bundesland"."""
+    ziel_land („Schleswig-Holstein") → PLZ in anderem Land: Status „außerhalb Bundesland".
+    nur_ids → nur diese Kandidaten (extract --nur-liste)."""
     stat = ExtractStatistik()
     start = time.monotonic()
     offen = [
         k for k in storage.kandidaten(bundesland, extract_status=SchrittStatus.OFFEN)
         if k.crawl_status == SchrittStatus.FERTIG or not (k.domain or k.website)
     ]  # fmt: skip
+    if nur_ids is not None:
+        offen = [k for k in offen if k.id in nur_ids]
     if limit:
         offen = offen[:limit]
     suchorte = suchorte_je_stammdomain(storage, bundesland) if kanzlei_rechtsformen is not None else {}
