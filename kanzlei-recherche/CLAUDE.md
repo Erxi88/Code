@@ -96,8 +96,9 @@ der nächsten Quelle füllen.**
   Seitenregel × 20), werden ihre PLZ-Bezirke aus OpenPLZ als Zusatz-Suchorte nachgesucht – auch ohne
   Stadtteil-Einträge in der Ortsliste und auch für schon erledigte Queries (Wiederaufnahme, Pilot-
   Bestand). `recherche orte` legt die Zusatz-Suchorte nur mit Einwohnerzahlen (GV-ISys) an.
-- **Danach `recherche coverage`** (nach der Extraktion zählen nur Kanzleien mit Status Kanzlei und
-  Bundesland laut PLZ = Lauf-Bundesland, Kreis aus der extrahierten PLZ; „keine Kanzlei", „außerhalb",
+- **Danach `recherche coverage`** (nach der Extraktion zählt **dieselbe Auswahl wie das Hauptblatt im Export**:
+  Kanzleien mit PLZ im Land aus allen Läufen, ohne weitere Domains und „Zu prüfen" – Q14 stimmt damit; Zeilen ohne
+  geprüfte PLZ beim Land ihres Laufs; Ausgabe „davon aus anderen Läufen"; Kreis aus der extrahierten PLZ; „keine Kanzlei", „außerhalb",
   „ohne geprüfte PLZ", „außerhalb laut Suchtreffer (nicht gecrawlt)" und „offen" (nicht gelesen) stehen getrennt;
   vorher zählen die Kandidaten). `recherche offen [--out datei.csv]` schlüsselt die offenen nach Ursache auf
   (nie gecrawlt, Timeout/Verbindung, HTTP 403/404/5xx, DNS, robots-Verbot, Portal, Seite ohne Text, kein

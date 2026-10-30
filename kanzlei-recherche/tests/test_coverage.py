@@ -149,9 +149,35 @@ def test_nach_extraktion_nur_kanzleien_im_land(storage):
         storage.upsert_kanzlei(Kanzlei(kandidat_id=ids[i], domain=f"k{i}.example", lauf_bundesland="SH",
                                        status=status, bundesland=land, plz=plz, ort=ort, konfidenz=Konfidenz.HOCH))
     erg = berechne(storage, "SH", orte, None, ziel_land="Schleswig-Holstein")
-    assert (erg.modus, erg.gefunden, erg.offen) == ("kanzleien", 2, 1)  # k5 ohne Kanzlei-Zeile = offen
+    # wie das Hauptblatt im Export: die Zeile ohne geprüfte PLZ bleibt beim Land ihres Laufs und zählt mit
+    assert (erg.modus, erg.gefunden, erg.offen) == ("kanzleien", 3, 1)  # k5 ohne Kanzlei-Zeile = offen
     assert (erg.keine_kanzlei, erg.ausserhalb, erg.ohne_bundesland) == (1, 1, 1)
-    assert {o.ort: o.gefunden for o in erg.orte} == {"Kiel": 1, "Heide": 1}
+    assert {o.ort: o.gefunden for o in erg.orte} == {"Kiel": 2, "Heide": 1}  # ohne PLZ/Ort: Suchort Kiel
     # vor der Extraktion: Kandidaten zählen (fill --luecken nach search)
     leer_storage_erg = berechne(storage, "HH", orte, None, ziel_land="Hamburg")
     assert leer_storage_erg.modus == "kandidaten"
+
+
+def test_coverage_zaehlt_wie_der_export_ueber_alle_laeufe(storage):
+    """Q14: coverage = Hauptblatt des Exports – PLZ im Land, auch aus anderen Läufen; Zeilen des Laufs mit PLZ in
+    einem anderen Land zählen nicht."""
+    from recherche.export import _aufbereiten, lieferliste
+    from recherche.search.pipeline import Ort
+
+    orte = [Ort("Kiel", "24103", "Kreisfreie Stadt Kiel", 247717), Ort("Wedel", "22880", "Kreis Pinneberg", 34000)]
+    sh = storage.add_kandidat(Kandidat(bundesland="SH", domain="kiel.example", suchort="Kiel"))
+    sh_hh = storage.add_kandidat(Kandidat(bundesland="SH", domain="hamburg.example", suchort="Kiel"))
+    hh_sh = storage.add_kandidat(Kandidat(bundesland="HH", domain="wedel.example", suchort="Hamburg"))
+    for kid, lauf, land, plz, ort, status in [
+        (sh, "SH", "Schleswig-Holstein", "24103", "Kiel", Status.NEU),
+        (sh_hh, "SH", "Hamburg", "20095", "Hamburg", Status.AUSSERHALB),
+        (hh_sh, "HH", "Schleswig-Holstein", "22880", "Wedel", Status.AUSSERHALB),
+    ]:  # fmt: skip
+        storage.upsert_kanzlei(Kanzlei(kandidat_id=kid, domain=storage.get_kandidat(kid).domain, lauf_bundesland=lauf,
+                                       status=status, bundesland=land, plz=plz, ort=ort, konfidenz=Konfidenz.HOCH,
+                                       kanzleiname=f"Steuerkanzlei {ort}", abweichung="Berufsbezeichnung"))
+    erg = berechne(storage, "SH", orte, None, ziel_land="Schleswig-Holstein")
+    haupt = _aufbereiten(lieferliste(storage.alle_kanzleien(), "Schleswig-Holstein"), (), "Schleswig-Holstein").haupt
+    assert erg.gefunden == len(haupt) == 2
+    assert (erg.aus_anderen_laeufen, erg.ausserhalb) == (1, 1)
+    assert {o.ort: o.gefunden for o in erg.orte} == {"Kiel": 1, "Wedel": 1}

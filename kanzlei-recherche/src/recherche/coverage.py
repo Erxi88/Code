@@ -138,7 +138,8 @@ class CoverageErgebnis:
     ausserhalb_vorab: int = 0  # nicht gecrawlt: Suchtreffer nennen nur PLZ außerhalb (Vorfilter vor dem Crawl)
     keine_kanzlei: int = 0
     ausserhalb: int = 0
-    ohne_bundesland: int = 0  # PLZ nicht geprüft/unbekannt – nicht gezählt
+    ohne_bundesland: int = 0  # gezählt, aber PLZ nicht geprüft (Land des Laufs, wie im Export)
+    aus_anderen_laeufen: int = 0  # gezählt: PLZ im Land, gefunden von einem anderen Lauf
 
     @property
     def anteil_nur_eine_quelle(self) -> float:
@@ -203,17 +204,17 @@ def berechne(
     """`ziel_land` („Schleswig-Holstein") gesetzt und schon extrahiert → nur echte Kanzleien im Land zählen."""
     kanzleien = storage.kanzleien(bundesland) if ziel_land else []
     zusatz: dict[str, int] = {}
+    funde_laeufe = [bundesland]
     if kanzleien:
-        from .extract.standorte import spiegel_domains
+        from .export import _aufbereiten, lieferliste
 
-        # weitere Domains derselben Kanzlei (Knüppel, wetreu …) zählen wie in der Versandliste nur einmal
-        weitere = {id(k) for liste in spiegel_domains(kanzleien).values() for k in liste}
-        from .qualitaet import zu_pruefen_grund
-
-        # wie das Hauptblatt: ohne weitere Domains derselben Kanzlei und ohne „Zu prüfen" (Prüfkatalog Q14)
-        gezaehlt = [k for k in kanzleien if k.kandidat_id is not None and k.status not in
-                    (Status.KEINE_KANZLEI, Status.AUSSERHALB) and k.bundesland == ziel_land and id(k) not in weitere
-                    and zu_pruefen_grund(k) is None]
+        # dieselbe Auswahl wie der Export (Lieferformat): PLZ im Land, aus allen Läufen; gezählt wird das Hauptblatt –
+        # ohne weitere Domains derselben Kanzlei und ohne „Zu prüfen" (Prüfkatalog Q14)
+        liste = lieferliste(storage.alle_kanzleien(), ziel_land)
+        a = _aufbereiten(liste, (), ziel_land)
+        gezaehlt = a.haupt
+        in_haupt = {id(k) for k in gezaehlt}
+        drin = {k.id for k in liste}
         mit_zeile = {k.kandidat_id for k in kanzleien}
         ohne_zeile = [k for k in storage.kandidaten(bundesland) if k.id not in mit_zeile]
         vorab = sum(1 for k in ohne_zeile if k.crawl_status == SchrittStatus.FEHLER and "laut Suchtreffer" in (k.fehler or ""))
@@ -221,17 +222,20 @@ def berechne(
             modus="kanzleien",
             offen=len(ohne_zeile) - vorab,
             ausserhalb_vorab=vorab,
-            keine_kanzlei=sum(1 for k in kanzleien if k.status == Status.KEINE_KANZLEI),
-            ausserhalb=sum(1 for k in kanzleien if k.status == Status.AUSSERHALB),
-            ohne_bundesland=sum(1 for k in kanzleien if k.status not in (Status.KEINE_KANZLEI, Status.AUSSERHALB)
-                                and k.bundesland != ziel_land),
-            weitere_domains=sum(1 for k in kanzleien if id(k) in weitere and k.bundesland == ziel_land),
-            zu_pruefen=sum(1 for k in kanzleien if id(k) not in weitere and k.bundesland == ziel_land
-                           and zu_pruefen_grund(k) is not None),
+            keine_kanzlei=sum(1 for k in liste if k.status == Status.KEINE_KANZLEI),
+            ausserhalb=sum(1 for k in kanzleien if k.id not in drin),  # Zeilen dieses Laufs mit PLZ anderswo/Ausland
+            ohne_bundesland=sum(1 for k in gezaehlt if not k.bundesland),
+            weitere_domains=sum(1 for k in liste if k.status not in (Status.KEINE_KANZLEI, Status.AUSSERHALB)
+                                and id(k) not in in_haupt and id(k) not in {id(z) for z in a.zu_pruefen}),
+            zu_pruefen=len(a.zu_pruefen),
+            aus_anderen_laeufen=sum(1 for k in gezaehlt if k.lauf_bundesland != bundesland),
         )
-        suchorte = {k.id: k.suchort for k in storage.kandidaten(bundesland)}
+        funde_laeufe = sorted({k.lauf_bundesland for k in gezaehlt} | {bundesland})
+        suchorte = {k.id: k.suchort for b in funde_laeufe for k in storage.kandidaten(b)}
+        # Zeilen ohne Kandidat (Import) bekommen einen eigenen Schlüssel, damit jede Hauptblatt-Zeile zählt
         zuordnung = _zuordnen(storage, bundesland, orte,
-                              [(k.kandidat_id, k.ort, k.plz, suchorte.get(k.kandidat_id)) for k in gezaehlt])
+                              [(k.kandidat_id if k.kandidat_id is not None else -(k.id or i + 1), k.ort, k.plz,
+                                suchorte.get(k.kandidat_id)) for i, k in enumerate(gezaehlt)])
     else:
         zuordnung = _zuordnen(storage, bundesland, orte)
     orte = [o for o in orte if not o.ist_zusatz]  # Erwartung und Lücken nur je Gemeinde
@@ -246,7 +250,7 @@ def berechne(
 
     # ---- Quellen
     quellen_je_kandidat: dict[int, set[str]] = defaultdict(set)
-    for f in storage.funde(bundesland):
+    for f in (f for b in funde_laeufe for f in storage.funde(b)):
         if f.kandidat_id in zuordnung:
             quellen_je_kandidat[f.kandidat_id].add(f.quelle)
     alle_quellen = sorted({q for qs in quellen_je_kandidat.values() for q in qs})

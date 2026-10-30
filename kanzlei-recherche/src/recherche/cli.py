@@ -517,9 +517,10 @@ def zeige_coverage(erg: CoverageErgebnis, top: int, quote_ziel: float) -> None:
         f"nur in einer Quelle: {erg.nur_eine_quelle} ({erg.anteil_nur_eine_quelle:.0%})"
     )
     if erg.modus == "kanzleien":
-        console.print(f"  gezählt: nur Kanzleien im Land (Kreis aus der extrahierten PLZ); nicht gezählt: "
-                      f"{erg.keine_kanzlei} keine Kanzlei, {erg.ausserhalb} außerhalb, {erg.ohne_bundesland} ohne "
-                      f"geprüfte PLZ, {erg.ausserhalb_vorab} außerhalb laut Suchtreffer (nicht gecrawlt), "
+        console.print(f"  gezählt: wie das Hauptblatt im Export – Kanzleien mit PLZ im Land aus allen Läufen (davon "
+                      f"{erg.aus_anderen_laeufen} aus anderen Läufen, {erg.ohne_bundesland} ohne geprüfte PLZ); "
+                      f"nicht gezählt: {erg.keine_kanzlei} keine Kanzlei, {erg.ausserhalb} Zeilen dieses Laufs mit PLZ "
+                      f"in einem anderen Land oder im Ausland, {erg.ausserhalb_vorab} außerhalb laut Suchtreffer (nicht gecrawlt), "
                       f"{erg.weitere_domains} weitere Domains derselben Kanzlei (wie im Export einmal gezählt), "
                       f"{erg.zu_pruefen} im Blatt „Zu prüfen“ (recherche qualitaet); "
                       f"offen (nicht gelesen): {erg.offen} – Ursachen: recherche offen")
