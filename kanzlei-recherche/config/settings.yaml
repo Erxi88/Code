@@ -144,6 +144,8 @@ crawl:
   min_text_zeichen: 300              # darunter gilt eine Seite als leer (JavaScript)
   playwright: true                  # Rückfall für JavaScript-Seiten (setup.sh --mit-playwright)
   playwright_timeout_s: 20
+  domain_timeout_s: 90               # Watchdog: harte Obergrenze je Domain inkl. Playwright
+  haenger_meldung_s: 120            # so lange keine Domain fertig → Domains in Arbeit ausgeben
   playwright_warten_s: 2             # nach „domcontentloaded" warten (networkidle läuft oft in den Timeout)
   # Teamseite mit großem HTML, aber Text unter 2 % davon (Namen per JavaScript) → Playwright
   playwright_team_min_html: 20000
