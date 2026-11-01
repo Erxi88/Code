@@ -553,3 +553,23 @@ def test_extract_alle_nur_liste(tmp_path):
     assert zeilen[ids["sh"]].bundesland is None and zeilen[ids["hh_lauf"]].bundesland is None
     assert zeilen[ids["keine"]].status == Status.KEINE_KANZLEI and zeilen[ids["hh_plz"]].bundesland == "Hamburg"
     assert "Lauf HH:" in r.output
+
+
+def test_crawl_ohne_playwright(db_pfad, monkeypatch):
+    gesehen = {}
+
+    def fake_run_crawl(st, cfg, *a, **kw):
+        from recherche.crawl import CrawlStatistik
+
+        gesehen["playwright"] = cfg.playwright
+        return CrawlStatistik()
+
+    monkeypatch.setattr(cli, "run_crawl", fake_run_crawl)
+    from recherche.models import Kandidat
+    from recherche.storage import Storage
+
+    with Storage(db_pfad) as st:
+        st.add_kandidat(Kandidat(bundesland="SH", domain="a.example", website="https://a.example/"))
+    r = runner.invoke(cli.app, _args("crawl", db_pfad, "--ohne-playwright"))
+    assert r.exit_code == 0, r.output
+    assert gesehen == {"playwright": False} and "Playwright-Rückfall an" not in r.output

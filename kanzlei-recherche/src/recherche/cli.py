@@ -244,7 +244,9 @@ def _search(ctx: Kontext, orte: str | None, adapter_name: str | None, lauf_id: s
         return _lauf(ctx, st, adapter, ctx.orte(orte), lauf_id, ja) is not None
 
 
-def _crawl(ctx: Kontext, limit: int | None = None, wiederholen: bool = False) -> None:
+def _crawl(ctx: Kontext, limit: int | None = None, wiederholen: bool = False, ohne_playwright: bool = False) -> None:
+    if ohne_playwright:
+        ctx.settings.crawl = ctx.settings.crawl.model_copy(update={"playwright": False})
     with ctx.storage() as st:
         if wiederholen:
             n = st.fehler_zuruecksetzen(ctx.bundesland, "crawl", ausser=DNS_GRUND)
@@ -266,9 +268,13 @@ def _crawl(ctx: Kontext, limit: int | None = None, wiederholen: bool = False) ->
         def land_filter(k, funde):
             return ausserhalb_laut_suchtreffer(k, funde, lambda plz: pruefer.pruefe(plz, None).bundesland, ziel)
 
-        stat = run_crawl(st, cfg, ctx.bundesland, ctx.blocklist(), limit=limit,
-                         fortschritt=lambda m: console.print(f"  {m}"), gruendlich=wiederholen,
-                         land_filter=land_filter)  # fmt: skip
+        try:
+            stat = run_crawl(st, cfg, ctx.bundesland, ctx.blocklist(), limit=limit,
+                             fortschritt=lambda m: console.print(f"  {m}"), gruendlich=wiederholen,
+                             land_filter=land_filter)  # fmt: skip
+        except KeyboardInterrupt:
+            console.print("[yellow]Crawl abgebrochen – fertige Domains sind gespeichert; erneut aufrufen setzt fort.[/yellow]")
+            raise typer.Exit(130) from None
         st.log_lauf(
             LaufEintrag(lauf_id=_lauf_id(), schritt="crawl", bundesland=ctx.bundesland,
                         suchbegriff=f"{stat.fertig} gelesen, {stat.nicht_gefunden} nicht gefunden",
@@ -564,9 +570,13 @@ WiederholenOpt = Annotated[bool, typer.Option("--wiederholen", help="fehlgeschla
 def crawl(
     bundesland: BundeslandOpt = None, db: DbOpt = None, config: ConfigOpt = None, limit: LimitOpt = None,
     wiederholen: WiederholenOpt = False,
+    ohne_playwright: Annotated[bool, typer.Option("--ohne-playwright", help="kein Playwright-Rückfall in diesem Lauf")] = False,
 ) -> None:
-    """Kandidaten-Websites laden: Startseite, Impressum, Kontakt, Team (wiederaufnehmbar)."""
-    _crawl(_kontext(config, bundesland, db), limit, wiederholen)
+    """Kandidaten-Websites laden: Startseite, Impressum, Kontakt, Team (wiederaufnehmbar).
+
+    Harte Obergrenze je Domain (crawl.domain_timeout_s, Grund „Watchdog"); bei Hänger oder Strg+C werden die Domains
+    in Arbeit ausgegeben."""
+    _crawl(_kontext(config, bundesland, db), limit, wiederholen, ohne_playwright)
 
 
 @app.command()

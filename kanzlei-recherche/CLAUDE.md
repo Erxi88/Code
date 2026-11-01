@@ -232,6 +232,15 @@ der nächsten Quelle füllen.**
   Kontaktseite eine Adresse mit PLZ, wird ohne Impressum gelesen („Kein Impressum: Daten aus Start-/Kontaktseite" in
   „Abweichung", Konfidenz nach 1B ohne Kammer-Signal). Erst danach „Kein Impressum gefunden". Ohne Impressum bis zu zwei
   Abrufe mehr (Datenschutz, Menü-Link). Für die 454 Fälle: `crawl --wiederholen`, dann `extract`.
+- **Watchdog** (Rückmeldung 01.11.2026, `crawl --wiederholen` hing): harte Obergrenze je Domain für alle Schritte
+  inkl. Playwright (`crawl.domain_timeout_s`, 90 s) über `asyncio.wait` – ein Abbruch, der selbst hängt, hält den Lauf
+  nicht auf; Grund „Watchdog: Domain abgebrochen (nach 90 s, <Schritt> <URL>)" im Blatt „Nicht gefunden", mit
+  `crawl --wiederholen` erneut. Jeder Abruf hat einen Gesamt-Timeout (`timeout_s` + 5 s; httpx' Timeout gilt nur je
+  Lesevorgang), jeder Playwright-Aufruf `playwright_timeout_s` + 20 s. Ein Wächter-Thread meldet nach
+  `crawl.haenger_meldung_s` (120 s) ohne fertige Domain die Domains in Arbeit (seit wann, Schritt, URL) – auch bei
+  blockierter Event-Loop; Strg+C gibt dieselbe Liste aus (Exit 130, fertige Domains bleiben gespeichert). Fortschritt
+  „Domain n/N · …". `crawl --ohne-playwright` schaltet den Playwright-Rückfall für einen Lauf ab. Am Ende werden
+  hängende Restaufgaben höchstens 5 s abgewartet.
 - Max. 1 Request/Sekunde je Domain – **auch Weiterleitungen und robots.txt** (Weiter-
   leitungen werden selbst verfolgt) –, viele Domains parallel (`crawl.parallel_domains`),
   Timeout 15 s, 2 Retries mit Backoff, User-Agent aus `settings.yaml`.

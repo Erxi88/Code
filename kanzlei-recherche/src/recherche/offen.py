@@ -88,6 +88,8 @@ def ursache(k: Kandidat, playwright_an: bool) -> tuple[str, str]:
         if any(p in g for p in _GRUENDLICHE_PFADE):
             return "kein Impressum (alle Pfade probiert)", NEIN
         return "kein Impressum (ohne zusätzliche Pfade)", WIEDERHOLEN
+    if g.startswith("Watchdog"):
+        return "Watchdog (Domain über der Zeitgrenze)", WIEDERHOLEN
     if g.startswith("Fehler:"):
         return f"unerwarteter Fehler{_klammer(g.removeprefix('Fehler:').split(':')[0].strip())}", WIEDERHOLEN
     return f"sonstiges: {_kurz(g) or 'ohne Grund'}", WIEDERHOLEN

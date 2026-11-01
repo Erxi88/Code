@@ -680,3 +680,71 @@ def test_gruendlich_probiert_alle_pfade_und_liest_trotzdem_kontakt(storage):
     for pfad in ("/rechtliche-hinweise", "/anbieterkennzeichnung", "/legal", "/datenschutz"):
         assert pfad in grund
     assert Seitentyp.KONTAKT in storage.kandidat_seiten(ids[0])
+
+
+# ---------------------------------------------------------------------- Watchdog, Hänger, Strg+C
+
+def _watchdog_cfg(**kw):
+    return CFG.model_copy(update={"playwright": True, "playwright_timeout_s": 100.0, "domain_timeout_s": 0.3,
+                                  "requests_per_second_per_domain": 1000.0, **kw})
+
+
+def _haengt_auch_beim_abbruch():
+    import asyncio
+
+    async def renderer(url):
+        while True:  # ignoriert den Abbruch – wie ein hängender Browser-Prozess
+            try:
+                await asyncio.sleep(10)
+            except asyncio.CancelledError:
+                continue
+
+    return renderer
+
+
+def test_watchdog_bricht_haengende_domain_ab_und_lauf_endet(storage, monkeypatch):
+    import recherche.crawl as crawl
+
+    monkeypatch.setattr(crawl, "RESTWARTEN_S", 0.1)
+    impressum = "<body><h1>Impressum</h1><p>Wall 5, 24103 Kiel</p><p>" + "Angaben gemäß § 5 DDG. " * 20 + "</p></body>"
+    seiten = {"https://js.example/": (200, JS_SEITE), "https://a.example/": (200, START_OHNE_IMPRESSUM),
+              "https://a.example/impressum": (200, impressum)}
+    web, clock, ids = _setup(storage, seiten, ("js.example", {}), ("a.example", {}))
+    meldungen = []
+    stat = run_crawl(storage, _watchdog_cfg(), "SH", set(), client=web.client(), renderer=_haengt_auch_beim_abbruch(),
+                     fortschritt=meldungen.append)
+    assert stat.fertig == 1 and stat.nicht_gefunden == 1
+    ng = storage.nicht_gefunden("SH")[0]
+    assert ng.domain == "js.example" and ng.grund.startswith("Watchdog: Domain abgebrochen (nach 0 s, Playwright")
+    assert any(m.startswith("Domain 1/2 · ") for m in meldungen) and any(m.startswith("Domain 2/2 · ") for m in meldungen)
+
+
+def test_haenger_meldung_nennt_domains_in_arbeit(storage, monkeypatch):
+    import recherche.crawl as crawl
+
+    monkeypatch.setattr(crawl, "RESTWARTEN_S", 0.1)
+    web, clock, _ = _setup(storage, {"https://js.example/": (200, JS_SEITE)}, ("js.example", {}))
+    meldungen = []
+    run_crawl(storage, _watchdog_cfg(domain_timeout_s=0.6, haenger_meldung_s=0.2), "SH", set(), client=web.client(),
+              renderer=_haengt_auch_beim_abbruch(), fortschritt=meldungen.append)
+    haenger = [m for m in meldungen if "keine Domain fertig" in m]
+    assert haenger and "in Arbeit: js.example (seit" in haenger[0] and "Playwright https://js.example/" in haenger[0]
+
+
+def test_strg_c_listet_domains_in_arbeit(storage, monkeypatch):
+    import asyncio
+
+    import recherche.crawl as crawl
+
+    monkeypatch.setattr(crawl, "RESTWARTEN_S", 0.1)
+    web, clock, _ = _setup(storage, {"https://js.example/": (200, JS_SEITE)}, ("js.example", {}))
+
+    async def renderer(url):
+        await asyncio.sleep(0)
+        raise KeyboardInterrupt
+
+    meldungen = []
+    with pytest.raises(KeyboardInterrupt):
+        run_crawl(storage, _watchdog_cfg(domain_timeout_s=5), "SH", set(), client=web.client(), renderer=renderer,
+                  fortschritt=meldungen.append)
+    assert any(m.startswith("Abgebrochen – noch in Arbeit: js.example") for m in meldungen)

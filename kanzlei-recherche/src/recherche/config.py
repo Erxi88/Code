@@ -223,6 +223,8 @@ class CrawlConfig(BaseModel):
     min_text_zeichen: int = 300  # darunter gilt eine Seite als „ohne Text" (JavaScript)
     playwright: bool = False  # Rückfall für JavaScript-Seiten, nur wenn aktiviert
     playwright_timeout_s: float = 20.0
+    domain_timeout_s: float = 90.0  # harte Obergrenze je Domain für alle Schritte inkl. Playwright (Watchdog)
+    haenger_meldung_s: float = 120.0  # so lange keine Domain fertig → laufende Domains melden
     playwright_warten_s: float = 2.0  # nach domcontentloaded (statt networkidle – läuft oft in den Timeout)
     # Teamseite trotz großem HTML fast ohne Text → mit Playwright nachladen (nur mit playwright: true)
     playwright_team_min_html: int = 20_000

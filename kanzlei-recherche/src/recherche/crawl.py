@@ -16,8 +16,10 @@ Haupttext für den LLM-Prompt (haupttext()).
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import logging
 import re
+import threading
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
@@ -460,6 +462,9 @@ class CrawlErgebnis:
 
 
 DNS_GRUND = "Domain nicht erreichbar (DNS)"
+WATCHDOG_GRUND = "Watchdog: Domain abgebrochen"
+RESTWARTEN_S = 5.0  # so lange auf abgebrochene (hängende) Aufgaben warten, dann Loop schließen
+_AKTUELL: contextvars.ContextVar[str | None] = contextvars.ContextVar("crawl_domain", default=None)
 _DNS_MELDUNG = re.compile(
     r"name or service not known|getaddrinfo|nodename nor servname|no address associated|could not resolve|"
     r"name resolution|temporary failure in name|errno -[235]\b|errno 11001|errno 11004|no such host",
@@ -504,6 +509,8 @@ class Crawler:
         self._robots: dict[str, Robots | bool | str] = {}
         self.gruendlich = gruendlich  # crawl --wiederholen: mehr Impressum-Pfade raten
         self.anfragen = 0
+        self.in_arbeit: dict[str, dict] = {}  # Domain → Start, Schritt, URL (Watchdog, Strg+C)
+        self.letzte_fertig = time.monotonic()
 
     @property
     def client(self) -> httpx.AsyncClient:
@@ -522,7 +529,42 @@ class Crawler:
 
     async def schliessen(self) -> None:
         if self._client is not None:
-            await self._client.aclose()
+            try:
+                await asyncio.wait_for(self._client.aclose(), 10)
+            except (asyncio.TimeoutError, Exception) as e:  # noqa: B014 – hängender Abbau darf den Lauf nicht halten
+                log.warning("HTTP-Client nicht sauber geschlossen: %s", e)
+
+    async def _get(self, url: str, **kw) -> httpx.Response:
+        """GET mit hartem Gesamt-Timeout – httpx' Timeout gilt nur je Lesevorgang (tröpfelnde Server)."""
+        try:
+            return await asyncio.wait_for(self.client.get(url, **kw), self.cfg.timeout_s + 5)
+        except asyncio.TimeoutError:
+            raise httpx.ReadTimeout(f"Gesamt-Timeout {self.cfg.timeout_s + 5:.0f} s") from None
+
+    async def _rendern_url(self, url: str) -> str | None:
+        """Playwright mit harter Obergrenze (Start, Laden, Frames, Schließen)."""
+        renderer = self._renderer or (lambda u: playwright_render(
+            u, self.cfg.playwright_timeout_s, self.cfg.user_agent, self.cfg.playwright_warten_s))
+        self._melden(schritt="Playwright", url=url)
+        try:
+            return await asyncio.wait_for(renderer(url), self.cfg.playwright_timeout_s + 20)
+        except asyncio.TimeoutError:
+            raise TimeoutError(f"Playwright nach {self.cfg.playwright_timeout_s + 20:.0f} s abgebrochen") from None
+
+    # -------------------------------------------------------------- in Arbeit (Watchdog, Strg+C)
+
+    def _melden(self, schritt: str | None = None, url: str | None = None) -> None:
+        if (schluessel := _AKTUELL.get()) is not None and schluessel in self.in_arbeit:
+            eintrag = self.in_arbeit[schluessel]
+            eintrag["schritt"] = schritt or ("Abruf" if url else eintrag.get("schritt"))
+            if url:
+                eintrag["url"] = url
+
+    def laufende(self) -> list[str]:
+        """„domain (seit 95 s, Playwright https://…)" für alle Domains in Arbeit, älteste zuerst."""
+        jetzt = time.monotonic()
+        return [f"{d} (seit {jetzt - e['start']:.0f} s, {e.get('schritt') or 'Start'} {e.get('url') or ''})".replace(" )", ")")
+                for d, e in sorted(self.in_arbeit.items(), key=lambda x: x[1]["start"])]
 
     # -------------------------------------------------------------- robots.txt
 
@@ -560,7 +602,7 @@ class Crawler:
         await self.drossel.warten(normalize_domain(url) or url)
         self.anfragen += 1
         try:
-            resp = await self.client.get(f"{url}/robots.txt", follow_redirects=True)
+            resp = await self._get(f"{url}/robots.txt", follow_redirects=True)
             return {"status": resp.status_code, "text": resp.text if resp.status_code == 200 else "", "url": url}
         except httpx.TimeoutException:
             return {"status": None, "text": "", "fehler": "Timeout", "url": url}
@@ -669,7 +711,8 @@ class Crawler:
                 raise _Verboten(aktuell)
             await self.drossel.warten(domain if gleiche_site(aktuell, domain) else ziel_domain)
             self.anfragen += 1
-            resp = await self.client.get(aktuell)
+            self._melden(url=aktuell)
+            resp = await self._get(aktuell)
             if resp.status_code in (301, 302, 303, 307, 308) and resp.headers.get("location"):
                 aktuell = urljoin(aktuell, resp.headers["location"])
                 continue
@@ -688,11 +731,8 @@ class Crawler:
 
     async def _rendern_nach_403(self, abruf: Abruf) -> Abruf:
         """Bot-Schutz: Startseite mit HTTP 403 im echten Browser versuchen."""
-        renderer = self._renderer or (
-            lambda u: playwright_render(u, self.cfg.playwright_timeout_s, self.cfg.user_agent, self.cfg.playwright_warten_s)
-        )
         try:
-            html = await renderer(abruf.url)
+            html = await self._rendern_url(abruf.url)
         except Exception as e:  # Playwright nicht installiert, Timeout …
             abruf.playwright = f"nach HTTP 403 fehlgeschlagen ({type(e).__name__})"
             return abruf
@@ -709,11 +749,8 @@ class Crawler:
                 and len(abruf.text or "") < self.cfg.playwright_team_min_anteil * html)  # fmt: skip
 
     async def _rendern(self, abruf: Abruf) -> Abruf:
-        renderer = self._renderer or (
-            lambda u: playwright_render(u, self.cfg.playwright_timeout_s, self.cfg.user_agent, self.cfg.playwright_warten_s)
-        )
         try:
-            html = await renderer(abruf.final_url or abruf.url)
+            html = await self._rendern_url(abruf.final_url or abruf.url)
         except Exception as e:  # Playwright nicht installiert, Timeout …
             log.warning("Playwright-Rückfall für %s fehlgeschlagen: %s", abruf.url, e)
             text = str(e).splitlines()[0][:120] if str(e) else ""
@@ -857,10 +894,8 @@ class Crawler:
                 erg.impressum_hinweis = f"Impressum auf {urlsplit(abruf.url).path or '/'}"
                 return
         if self.cfg.playwright and not (start.playwright or "").startswith("gerendert"):
-            renderer = self._renderer or (lambda u: playwright_render(
-                u, self.cfg.playwright_timeout_s, self.cfg.user_agent, self.cfg.playwright_warten_s))
             try:
-                html = await renderer(start.final_url or start.url)
+                html = await self._rendern_url(start.final_url or start.url)
             except Exception as e:  # Playwright fehlt, Timeout …
                 log.info("%s: Playwright für Menü-Links fehlgeschlagen: %s", site, e)
                 html = None
@@ -880,23 +915,50 @@ class Crawler:
     ) -> CrawlStatistik:
         stat = CrawlStatistik()
         sem = asyncio.Semaphore(max(1, self.cfg.parallel_domains))
+        gesamt, fertig = len(kandidaten), 0
 
         async def einer(k: Kandidat) -> None:
+            nonlocal fertig
             async with sem:
-                try:
-                    erg = await self.crawl_kandidat(k)
-                except Exception as e:  # unerwarteter Fehler: Kandidat markieren, Lauf geht weiter
-                    log.exception("Crawl %s fehlgeschlagen", k.domain)
-                    erg = CrawlErgebnis(k.id, k.domain or "", grund=f"Fehler: {type(e).__name__}: {e}")
+                schluessel = k.domain or k.website or f"id:{k.id}"
+                self.in_arbeit[schluessel] = {"start": time.monotonic(), "schritt": "Start", "url": k.website}
+                _AKTUELL.set(schluessel)
+                erg = await self._mit_watchdog(k, schluessel)
+                self.in_arbeit.pop(schluessel, None)
+                self.letzte_fertig = time.monotonic()
             self.speichern(k, erg, bundesland)
             stat.zaehlen(erg)
+            fertig += 1
             if fortschritt:
                 zusatz = "".join(f", {h}" for h in (erg.hinweis, erg.impressum_hinweis) if h)
-                fortschritt(f"{erg.domain}: {'ok' if erg.ok else erg.grund} ({len(erg.seiten)} Seiten{zusatz})")
+                fortschritt(f"Domain {fertig}/{gesamt} · {erg.domain}: {'ok' if erg.ok else erg.grund} "
+                            f"({len(erg.seiten)} Seiten{zusatz})")
 
         await asyncio.gather(*(einer(k) for k in kandidaten))
         stat.anfragen = self.anfragen
         return stat
+
+    async def _mit_watchdog(self, k: Kandidat, schluessel: str) -> CrawlErgebnis:
+        """Harte Obergrenze je Domain (`domain_timeout_s`) für alle Schritte inkl. Playwright. `asyncio.wait` statt
+        `wait_for`: ein Abbruch, der selbst hängt (Browser-Prozess), hält den Lauf nicht auf."""
+        task = asyncio.ensure_future(self.crawl_kandidat(k))
+        try:
+            done, _ = await asyncio.wait({task}, timeout=self.cfg.domain_timeout_s)
+        except asyncio.CancelledError:
+            task.cancel()
+            raise
+        if not done:
+            task.cancel()
+            e = self.in_arbeit.get(schluessel, {})
+            stand = " ".join(x for x in (e.get("schritt"), e.get("url")) if x)
+            log.warning("Watchdog: %s nach %.0f s abgebrochen (%s)", schluessel, self.cfg.domain_timeout_s, stand)
+            return CrawlErgebnis(k.id, k.domain or "", url=e.get("url") or k.website,
+                                 grund=f"{WATCHDOG_GRUND} (nach {self.cfg.domain_timeout_s:.0f} s, {stand or 'Start'})")
+        try:
+            return task.result()
+        except Exception as e:  # unerwarteter Fehler: Kandidat markieren, Lauf geht weiter
+            log.exception("Crawl %s fehlgeschlagen", k.domain, exc_info=e)
+            return CrawlErgebnis(k.id, k.domain or "", grund=f"Fehler: {type(e).__name__}: {e}")
 
     def speichern(self, k: Kandidat, erg: CrawlErgebnis, bundesland: str) -> None:
         for typ, abruf in erg.seiten.items():
@@ -995,8 +1057,9 @@ def run_crawl(
         aussen = [(k, g) for k in kandidaten if (g := gruende[k.id])]
         kandidaten = [k for k in kandidaten if not gruende[k.id]]
 
+    crawler = Crawler(cfg, storage, blocklist, client=client, renderer=renderer, gruendlich=gruendlich)
+
     async def lauf() -> CrawlStatistik:
-        crawler = Crawler(cfg, storage, blocklist, client=client, renderer=renderer, gruendlich=gruendlich)
         try:
             stat = await crawler.run(kandidaten, bundesland, fortschritt)
         finally:
@@ -1010,7 +1073,51 @@ def run_crawl(
                 fortschritt(f"{erg.domain}: nicht gecrawlt – {grund}")
         return stat
 
-    return asyncio.run(lauf())
+    return _ausfuehren(lauf(), crawler, cfg, fortschritt)
+
+
+def _ausfuehren(coro, crawler: Crawler, cfg: CrawlConfig, fortschritt: Callable[[str], None] | None):
+    """Event-Loop mit Hänger-Meldung (Wächter-Thread – meldet auch, wenn die Loop blockiert ist) und Liste der
+    Domains in Arbeit bei Strg+C. Hängende Restaufgaben (Watchdog-Abbrüche) werden höchstens 5 s abgewartet."""
+    melden = fortschritt or (lambda m: log.warning(m))
+    stop = threading.Event()
+
+    def waechter() -> None:
+        zuletzt = 0.0
+        while not stop.wait(min(5.0, max(cfg.haenger_meldung_s / 4, 0.05))):
+            jetzt = time.monotonic()
+            still = jetzt - crawler.letzte_fertig
+            if crawler.in_arbeit and still >= cfg.haenger_meldung_s and jetzt - zuletzt >= cfg.haenger_meldung_s:
+                zuletzt = jetzt
+                melden(f"Seit {still:.0f} s keine Domain fertig – in Arbeit: " + "; ".join(crawler.laufende()))
+
+    threading.Thread(target=waechter, name="crawl-waechter", daemon=True).start()
+    loop = asyncio.new_event_loop()
+
+    def ausnahmen(lp, kontext: dict) -> None:
+        if "destroyed but it is pending" in kontext.get("message", ""):
+            log.info("abgebrochene Aufgabe nicht beendet (Watchdog): %s", kontext.get("task"))
+        else:
+            lp.default_exception_handler(kontext)
+
+    loop.set_exception_handler(ausnahmen)
+    try:
+        return loop.run_until_complete(coro)
+    except KeyboardInterrupt:
+        if crawler.in_arbeit:
+            melden("Abgebrochen – noch in Arbeit: " + "; ".join(crawler.laufende()))
+        raise
+    finally:
+        stop.set()
+        rest = [t for t in asyncio.all_tasks(loop) if not t.done()]
+        for t in rest:
+            t.cancel()
+        if rest:
+            try:
+                loop.run_until_complete(asyncio.wait(rest, timeout=RESTWARTEN_S))
+            except BaseException:  # noqa: BLE001 – Aufräumen darf das Ergebnis nicht verdecken
+                pass
+        loop.close()
 
 
 # ---------------------------------------------------------------------- Diagnose
