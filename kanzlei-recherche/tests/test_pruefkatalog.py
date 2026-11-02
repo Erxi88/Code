@@ -859,9 +859,22 @@ def test_standortgesellschaft_mit_logo_wort_und_kein_satz():
         return Seite(url="https://fehmarn.nordtreu.example/x", domain="fehmarn.nordtreu.example", seitentyp=Seitentyp.START,
                      text="\n".join(zeilen))
 
+    # „Steuerberatungsgesellschaft" hinter der Rechtsform bleibt (Rückmeldung 02.11.2026)
     assert standort_gesellschaft([seite("nordtreu", "Holstein KG Steuerberatungsgesellschaft")], None, "nordtreu") \
-        == "nordtreu Holstein KG"
+        == "nordtreu Holstein KG Steuerberatungsgesellschaft"
     assert standort_gesellschaft([seite("nordtreu Holstein KG | Steuerberatungsgesellschaft")], None, "nordtreu") \
-        == "nordtreu Holstein KG"
+        == "nordtreu Holstein KG Steuerberatungsgesellschaft"
     assert standort_gesellschaft([seite("Die nordtreu Holstein KG betreut Mandanten auf Fehmarn")], None, "nordtreu") is None
     assert name_zerlegen("Anwendbares Recht") is None
+
+
+def test_name_zweizeilig_hinter_vielen_navigationszeilen(ausschluss):
+    """etl-holstein (fixture-eval --live): Navigationszeilen verbrauchten die 8 Kopfzeilen von anbieter_text, die
+    Kanzleiform-Zeile wurde nie erreicht."""
+    nav = ["Startseite", "Leistungen", "Steuerberatung", "Lohnbuchhaltung", "Unternehmensberatung", "Über uns", "Team",
+           "Karriere", "Aktuelles", "Kontakt"]
+    impressum = [*nav, "Impressum", "ETL NORDLAND", "Steuerberatungsgesellschaft mbH", "Bahnhofstraße 2",
+                 "23730 Neustadt in Holstein", "Vertretung", "StB Jan Dorn"]
+    k = _merge("etl-nordland.example", impressum, {Seitentyp.START: [*nav, "Willkommen"], Seitentyp.KONTAKT: [*nav, "Kontakt"]},
+               LlmErgebnis(kanzleiname="ETL NORDLAND"), ausschluss)
+    assert k.kanzleiname == "ETL NORDLAND Steuerberatungsgesellschaft mbH"

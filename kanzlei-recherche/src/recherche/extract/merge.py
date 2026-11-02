@@ -472,16 +472,15 @@ def standort_gesellschaft(seiten: list[Seite], kette=None, kennwort: str | None 
                 continue
             if kennwort and kennwort not in z.lower() and k > 0 and segmente[k - 1].lower() == kennwort:
                 z = f"{segmente[k - 1]} {z}"  # Logo-Wort in eigener Zeile: „wetreu" ⏎ „Holstein KG …"
+            if k + 1 < len(segmente) and _NUR_KANZLEIFORM.match(segmente[k + 1]):
+                z = f"{z} {segmente[k + 1]}"  # „wetreu Holstein KG | Steuerberatungsgesellschaft" gehört zusammen
             if _ANBIETER_FIRMA.search(z) or (kennwort and kennwort in z.lower()):
-                z = _BESCHREIBUNG_HINTEN.sub(r"\1", z).strip()  # „wetreu Holstein KG Steuerberatungsgesellschaft"
                 if kette is None or _name_norm(z) != _name_norm(kette.name):
                     return z
     return None
 
 
 _SATZANFANG = re.compile(r"^(?:die|der|das|wir|unsere?|ihre?|als|mit|in|seit)\b", re.IGNORECASE)
-# reine Gattungsangabe hinter der Rechtsform („… KG Steuerberatungsgesellschaft") – nicht Teil der Firmierung
-_BESCHREIBUNG_HINTEN = re.compile(r"(\b(?:KG|GmbH|mbH|AG|mbB|OHG|GbR))\s*[|,–-]?\s*Steuerberatungsgesellschaft$")
 
 
 def kopf_personen(impressum: str, rahmen: set[str] | None = None, fremd_zeilen=None) -> list[ErkanntePerson]:
@@ -534,13 +533,30 @@ _NUR_KANZLEIFORM = re.compile(
     r"wirtschaftsprüfungsgesellschaft(?:\s+mbh)?|partnerschaftsgesellschaft(?:\s+mbb)?|partg\s?mbb|gmbh|mbh)$", re.I)
 
 
-def kopf_name_zweizeilig(impressum: str | None, name: str | None = None) -> str | None:
+def kopfzeilen(impressum: str | None, rahmen: set[str] | None = None, hoechstens: int = 14) -> list[str]:
+    """Inhaltszeilen des Impressum-Kopfs bis zum ersten Abschnitt Kammer/Register/Vertretung – ohne Navigation und
+    Fußzeile (`rahmen`), ohne Überschrift „Impressum" und Menüwörter davor. Anders als `anbieter_text` zählen
+    Navigationszeilen nicht gegen die Zeilengrenze (etl-holstein, steuerberater-barsbuettel)."""
+    from .kanzlei import _ANBIETER_ENDE, _KAMMER, _KOPFZEILE, _MENUEZEILE
+
+    rahmen = rahmen or set()
+    kopf: list[str] = []
+    for z in (text_normalisieren(impressum) or "").splitlines():
+        z = z.strip()
+        if not z or " ".join(z.lower().split()) in rahmen or (_KOPFZEILE.match(z) and len(z) < 60) \
+                or (not kopf and _MENUEZEILE.match(z)):
+            continue
+        if _ANBIETER_ENDE.match(z) or _KAMMER.search(z) or len(kopf) >= hoechstens:
+            break
+        kopf.append(z)
+    return kopf
+
+
+def kopf_name_zweizeilig(impressum: str | None, name: str | None = None, rahmen: set[str] | None = None) -> str | None:
     """Kanzleiname über zwei Kopfzeilen: „ETL HOLSTEIN" ⏎ „Steuerberatungsgesellschaft mbH", „Steuerberater-
     Sozietät" ⏎ „Rosenwinkel-Schadly + Rosenwinkel" → zusammengefügt (Reihenfolge der Seite). Ohne `name` die erste
     solche Verbindung, sonst nur, wenn `name` eine der beiden Zeilen ist."""
-    from .kanzlei import anbieter_text
-
-    zeilen = [z.strip() for z in anbieter_text(impressum).splitlines() if z.strip()]
+    zeilen = kopfzeilen(impressum, rahmen)
     for i, z in enumerate(zeilen):
         if not _NUR_KANZLEIFORM.match(z):
             continue
@@ -1155,7 +1171,7 @@ def zusammenfuehren(
     if name_wie_domain(name, kandidat.domain):
         abweichungen.append(f"Name „{name}“ ist nur die Domain – verworfen")
         name = None
-    if (zweizeilig := kopf_name_zweizeilig(impressum_text, name)) and (not name or _name_norm(zweizeilig) != _name_norm(name)):
+    if (zweizeilig := kopf_name_zweizeilig(impressum_text, name, rahmen)) and (not name or _name_norm(zweizeilig) != _name_norm(name)):
         name = zweizeilig  # „ETL HOLSTEIN" ⏎ „Steuerberatungsgesellschaft mbH", „Steuerberater-Sozietät" ⏎ „…"
     if not name and (firmierung := kopf_firmierung(impressum_text)):
         name = firmierung  # Anbieterzeile „Steuerbüro Thomas Schütt" (Impressum-Kopf)

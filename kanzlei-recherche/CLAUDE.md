@@ -434,7 +434,8 @@ der nächsten Quelle füllen.**
     Abschnitts, Rang hinter den Berufsträgern der Teamseite, vorn nur, wenn sonst niemand genannt ist.
   - **Echte Strukturen (fixture-prompt 02.11.2026):** Kopf-Personen werden ohne Rahmen-Filter gesucht (Name und
     Telefon stehen oft in einer Seitenleiste auf jeder Seite – grunewald-stb), sonst im ganzen Impressum ohne
-    Fremd-Abschnitte; ein LLM-Name, der nur die Domain ist („Stb-Grunewald"), wird verworfen. Menüzeilen vor dem
+    Fremd-Abschnitte; ein LLM-Name, der nur die Domain ist („Stb-Grunewald"), wird verworfen. Der zweizeilige Name
+    wird im Kopf ohne Navigation/Fußzeile gesucht (`kopfzeilen`, bis 14 Inhaltszeilen). Menüzeilen vor dem
     Kopf („Copyright", „Datenschutz", „Disclaimer") beenden die Anbieterzeile nicht. Kanzleiname über zwei Kopfzeilen,
     wenn eine nur die Kanzleiform nennt („ETL HOLSTEIN" ⏎ „Steuerberatungsgesellschaft mbH", „Steuerberater-Sozietät" ⏎
     „Rosenwinkel-Schadly + Rosenwinkel"). Vertretung: Schlüsselwort „Vertretung" und Überschrift „Leitung"/
@@ -646,7 +647,8 @@ der nächsten Quelle füllen.**
   Vertretungsberechtigten der Zentrale („Ansprechpartner-Rang: Standortleitung …"), danach die übrigen Personen der
   Standortseiten, erst dann die Zentrale; eine eigene Standortgesellschaft mit Rechtsform auf Kontakt-/Startseite
   („wetreu Holstein KG", Kanzleiwort oder Name der Kette bzw. der Domain; Logo-Wort in eigener Zeile davor wird
-  vorangestellt, „Steuerberatungsgesellschaft" hinter der Rechtsform entfällt, Sätze zählen nicht) ist der
+  vorangestellt, „Steuerberatungsgesellschaft" hinter der Rechtsform bleibt – auch hinter „ | " –, Sätze zählen
+  nicht) ist der
   Kanzleiname; sonst Anbieter aus dem
   Impressum („SHBB Steuerberatungsgesellschaft mbH"; ohne Anbieterzeile im Kopf die erste Firmenzeile mit Rechtsform
   außerhalb der Fremd-Abschnitte, sonst der Name aus ketten.yaml), der Name der Standortseite als „Standortbezeichnung: …" in
