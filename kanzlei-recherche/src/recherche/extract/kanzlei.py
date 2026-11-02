@@ -73,6 +73,9 @@ _ANBIETER_ENDE = re.compile(r"^(?:zuständig|aufsicht|kammer|berufsbezeichnung|b
                             r"haftpflicht|mitglied|umsatzsteuer|ust|register|handelsregister|partnerschaftsregister|"
                             r"amtsgericht|vertreten|vertretungsberechtigt|verantwortlich|geschäftsführ|inhaber|haftung|"
                             r"streitschlichtung|datenschutz|bildnachweis|quellenangaben)", re.IGNORECASE)
+_MENUEZEILE = re.compile(r"^(?:copyright|datenschutz(?:erklärung)?|disclaimer|haftungsausschluss|home|startseite|kontakt|"
+                         r"agb|cookie[- ]?einstellungen|barrierefreiheit|sitemap|services(?:\s+\w+)?|you are here\b.*)\s*$",
+                         re.IGNORECASE)
 _KOPFZEILE = re.compile(r"^(?:impressum|imprint|anbieterkennzeichnung|angaben\s+gem(?:äß|\.)|"
                         r"informationspflichten|diensteanbieter|anbieter)\b", re.IGNORECASE)
 # Steuerberatung irgendwo belegt → gemischte Kanzlei (StB + RA) bleibt
@@ -107,6 +110,8 @@ def anbieter_text(impressum_text: str | None, zeilen: int = 8) -> str:
         z = z.strip()
         if not z or (_KOPFZEILE.match(z) and len(z) < 60):
             continue
+        if not kopf and _MENUEZEILE.match(z):
+            continue  # „Copyright" ⏎ „Datenschutz" ⏎ „Disclaimer" vor dem Kopf (Menü, steuerberater-barsbuettel)
         if _ANBIETER_ENDE.match(z) or _KAMMER.search(z) or len(kopf) >= zeilen:
             break
         kopf.append(z)

@@ -39,12 +39,18 @@ _AT = re.compile(r"\s*(?:\(|\[|\{)\s*(?:at|ät|@)\s*(?:\)|\]|\})\s*", re.I)
 _DOT = re.compile(r"\s*(?:\(|\[|\{)\s*(?:dot|punkt)\s*(?:\)|\]|\})\s*", re.I)
 
 
+EMAIL_AUSGESCHLOSSEN = ("datenschutz", "dsb", "bewerbung", "karriere", "noreply", "no-reply", "webmaster",
+                        "postmaster", "hostmaster", "abuse")
+
+
 @dataclass
 class Ausschluss:
     abschnitt_zeilen: int = 6
     abschnitt_muster: list[re.Pattern] = field(default_factory=list)
     adressen: dict[str, str] = field(default_factory=dict)  # adresse_key → Name der Institution
     email_nachrangig: tuple[str, ...] = ()
+    # Prüfkatalog 2: nie die Kanzlei-E-Mail (webmaster@stewoda.de bei steuerberater-ploen.de)
+    email_ausgeschlossen: tuple[str, ...] = EMAIL_AUSGESCHLOSSEN
 
     @classmethod
     def laden(cls, pfad: str | Path | None) -> Ausschluss:
@@ -57,6 +63,7 @@ class Ausschluss:
             adressen={k: a.get("name") or "" for a in d.get("adressen", [])
                       if (k := adresse_key(a.get("strasse"), str(a.get("plz"))))},
             email_nachrangig=tuple(d.get("email_nachrangig", [])),
+            email_ausgeschlossen=tuple(d.get("email_ausgeschlossen", EMAIL_AUSGESCHLOSSEN)),
         )
 
     def fremd_zeilen(self, zeilen: list[str]) -> set[int]:
@@ -533,8 +540,23 @@ def extract_impressum(
         quelle = "tel:-Link" if erg.telefon in tel_links else "Schema.org"
         erg.hinweise.append(f"Telefon aus dem Text {text_erste}, {quelle} nennt {erg.telefon}")
         erg.telefon = text_erste
+    if erg.plz and not erg.strasse:
+        # Impressum nennt PLZ/Ort ohne Straße: Straße von Kontakt-/Startseite mit derselben PLZ
+        # (steuerberater-ploen.de: „Fehrenböteler Dorfstr. 36, 24635 Rickling" nur auf der Kontaktseite)
+        for txt, _ in weitere_texte or []:
+            zeilen = txt.splitlines()
+            fremd = ausschluss.fremd_zeilen(zeilen)
+            if a := next((a for a in adressen(zeilen) if a.plz == erg.plz and a.strasse and a.zeile not in fremd), None):
+                erg.strasse, erg.adresszusatz = a.strasse, a.zusatz
+                erg.hinweise.append(f"Straße von einer anderen Seite (Impressum ohne Straße): {a.strasse}")
+                break
+    gesperrt = tuple(f"{x}@" for x in ausschluss.email_ausgeschlossen)
+    mails = [m for m in mails if not m.lower().startswith(gesperrt)]
+    weitere_mails = [m for m in weitere_mails if not m.lower().startswith(gesperrt)]
     if mails and not any(allgemeine_email(m, domain) and m not in kontext_mails for m in mails):
         mails = mails + weitere_mails
+    elif not mails:
+        mails = list(weitere_mails)
     erg.email = beste_email(mails, domain, ausschluss.email_nachrangig, kontext_mails)
     if erg.email and mails and erg.email != mails[0] and mails[0] in kontext_mails:
         erg.hinweise.append(f"E-Mail: Personenadresse {mails[0]} übergangen, Kanzlei {erg.email}")

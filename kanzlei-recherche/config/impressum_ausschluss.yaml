@@ -30,5 +30,8 @@ adressen:
   - {name: Hetzner Online GmbH, strasse: Industriestr. 25, plz: "91710"}
   - {name: ALL-INKL.COM, strasse: Hauptstraße 68, plz: "02742"}
 
+# E-Mail-Präfixe, die nie die Kanzlei-E-Mail sind (Prüfkatalog 2)
+email_ausgeschlossen: [datenschutz, dsb, bewerbung, karriere, noreply, no-reply, webmaster, postmaster, hostmaster, abuse]
+
 # E-Mail-Präfixe, die nur nachrangig genommen werden
 email_nachrangig: [datenschutz, privacy, webmaster, noreply, no-reply, abuse, postmaster]

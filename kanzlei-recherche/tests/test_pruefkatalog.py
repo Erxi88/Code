@@ -781,3 +781,87 @@ def test_impressum_kopf_person_ohne_firmierung():
     assert [(p.name, p.funktion) for p in ansprechpartner(None, [], imp)] == [
         ("Henrike Weidemann", "Steuerberaterin (laut Impressum)")]
     assert kopf_firmierung("Impressum\nSteuerbüro Jens Wiese\nDorfstr. 36\n24635 Rickling") == "Steuerbüro Jens Wiese"
+
+
+# ---------------------------------------------------------------------- echte Strukturen (fixture-prompt, 02.11.2026)
+
+
+def _merge(domain, impressum, weitere=None, llm=None, ausschluss=None):
+    seiten = {Seitentyp.IMPRESSUM: Seite(url=f"https://www.{domain}/impressum", domain=domain, seitentyp=Seitentyp.IMPRESSUM,
+                                         text="\n".join(impressum), html=_html(impressum))}
+    for typ, zeilen in (weitere or {}).items():
+        seiten[typ] = Seite(url=f"https://www.{domain}/{typ.value}", domain=domain, seitentyp=typ, text="\n".join(zeilen),
+                            html=_html(zeilen))
+    kandidat = Kandidat(id=9, bundesland="SH", domain=domain, website=f"https://www.{domain}/")
+    return zusammenfuehren(kandidat, [], seiten, regeln_fuer(seiten, ausschluss, domain), llm,
+                           lambda p, o: PlzPruefung(True, SH, ort_kanonisch=o), ausschluss)
+
+
+def test_name_in_der_seitenleiste_und_llm_name_wie_domain(ausschluss):
+    """grunewald-stb.de: „Name, Steuerberater" steht in der Seitenleiste jeder Seite (Rahmen) und fehlte im
+    Impressum-Kopf; das LLM nannte nur „Stb-Grunewald"."""
+    leiste = ["Malte Grünberg, Steuerberater", "Holstenstraße 5", "24103 Kiel", "Telefon: 0431 111111"]
+    impressum = ["Services Basic", "You Are Here : Home Impressum", *leiste, "Adresse", "Telefon:", "Fax:",
+                 "+49 (0)431- 11 11 12", "Die gesetzliche Berufsbezeichnung Steuerberater wurde in der Bundesrepublik "
+                 "Deutschland, Land Schleswig-Holstein verliehen."]
+    k = _merge("gruenberg-stb.example", impressum, {Seitentyp.START: ["Willkommen", *leiste],
+                                                     Seitentyp.KONTAKT: ["Kontakt", *leiste]},
+               LlmErgebnis(kanzleiname="Stb-Gruenberg"), ausschluss)
+    assert k.kanzleiname == "Steuerberater Malte Grünberg" and k.rechtsform == "Einzelkanzlei"
+    assert k.hauptansprechpartner.name == "Malte Grünberg"
+
+
+def test_vertretungsberechtigte_mit_titelzeilen_und_kanzleiname_zweizeilig(ausschluss):
+    """steuerberater-barsbuettel: Titelzeile zwischen Schlüsselwort und Name; Name über zwei Kopfzeilen."""
+    impressum = ["Copyright", "Datenschutz", "Disclaimer", "Steuerberater-Sozietät", "Loewe-Hartmann + Loewe",
+                 "Vertretungsberechtigte:", "Diplom-Kaufmann", "Heike Loewe-Hartmann", "Diplom-Volkswirt",
+                 "Siemer Loewe", "Hauptstraße 22", "22885 Barsbüttel", "Telefon:", "040 / 670 10 99"]
+    k = _merge("stb-loewe.example", impressum, llm=LlmErgebnis(), ausschluss=ausschluss)
+    assert k.kanzleiname == "Steuerberater-Sozietät Loewe-Hartmann + Loewe"
+    assert [p.name for p in k.ansprechpartner[:2]] == ["Heike Loewe-Hartmann", "Siemer Loewe"]
+
+
+def test_vertretung_ueberschrift_mit_stb_praefix_und_name_zweizeilig(ausschluss):
+    """etl-holstein: „Vertretung" ⏎ „StB …"/„StBin …"; „ETL …" ⏎ „Steuerberatungsgesellschaft mbH"."""
+    impressum = ["ETL NORDLAND", "Steuerberatungsgesellschaft mbH", "Bahnhofstraße 2", "23730 Neustadt in Holstein",
+                 "Telefon: (04561) 5281111", "Sitz der Gesellschaft", "Neustadt in Holstein", "Vertretung",
+                 "StB Jan Dorn", "StBin Maike Graf", "Registereintrag", "AG Lübeck"]
+    k = _merge("etl-nordland.example", impressum, llm=LlmErgebnis(kanzleiname="ETL NORDLAND"), ausschluss=ausschluss)
+    assert k.kanzleiname == "ETL NORDLAND Steuerberatungsgesellschaft mbH"
+    assert [p.name for p in k.ansprechpartner[:2]] == ["Jan Dorn", "Maike Graf"] and k.berufstraeger_anzahl == 2
+
+
+def test_impressum_ohne_zeilenumbrueche_strasse(ausschluss):
+    """steuerberater-fk.de: „Name Steuerberater Straße Nr PLZ Ort" in einer Zeile."""
+    impressum = ["Angaben gemäß § 5 TMG", "Frank Kleibusch Steuerberater Röpckes Mühle 2 25436 Uetersen",
+                 "Telefon: +49 (0) 4122 921111"]
+    k = _merge("stb-kleibusch.example", impressum, llm=LlmErgebnis(), ausschluss=ausschluss)
+    assert (k.strasse, k.plz, k.ort) == ("Röpckes Mühle 2", "25436", "Uetersen")
+
+
+def test_strasse_von_kontaktseite_und_webmaster_nie_kanzlei_email(ausschluss):
+    """steuerberater-ploen: Impressum nur mit PLZ/Ort und webmaster@ der Agentur, Straße auf der Kontaktseite."""
+    impressum = ["Impressum", "Steuerbüro Jens Wiese", "24635 Rickling", "Telefon 04328 170999",
+                 "E-Mail: webmaster@agentur-nord.example", "Vertreten durch: Jens Wiese"]
+    kontakt = ["Kontakt", "Fehrenböteler Dorfstr. 36, 24635 Rickling OT Fehrenbötel", "info@stb-wiese.example"]
+    k = _merge("stb-wiese.example", impressum, {Seitentyp.KONTAKT: kontakt}, LlmErgebnis(), ausschluss)
+    assert (k.strasse, k.plz) == ("Fehrenböteler Dorfstr. 36", "24635")
+    assert k.email == "info@stb-wiese.example"
+
+
+def test_standortgesellschaft_mit_logo_wort_und_kein_satz():
+    """fehmarn.wetreu.de: „wetreu" als eigene Logo-Zeile über „Holstein KG Steuerberatungsgesellschaft"; ein Satz mit
+    Rechtsform ist keine Firmierung; „Anwendbares Recht" ist kein Name."""
+    from recherche.extract.merge import standort_gesellschaft
+    from recherche.extract.personen import name_zerlegen
+
+    def seite(*zeilen):
+        return Seite(url="https://fehmarn.nordtreu.example/x", domain="fehmarn.nordtreu.example", seitentyp=Seitentyp.START,
+                     text="\n".join(zeilen))
+
+    assert standort_gesellschaft([seite("nordtreu", "Holstein KG Steuerberatungsgesellschaft")], None, "nordtreu") \
+        == "nordtreu Holstein KG"
+    assert standort_gesellschaft([seite("nordtreu Holstein KG | Steuerberatungsgesellschaft")], None, "nordtreu") \
+        == "nordtreu Holstein KG"
+    assert standort_gesellschaft([seite("Die nordtreu Holstein KG betreut Mandanten auf Fehmarn")], None, "nordtreu") is None
+    assert name_zerlegen("Anwendbares Recht") is None

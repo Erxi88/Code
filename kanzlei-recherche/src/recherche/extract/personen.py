@@ -50,6 +50,7 @@ _KEINE_NAMEN = frozenset(
     steuernummer umsatzsteuer gesellschaft kammer versicherung aufsichtsbehörde berufsbezeichnung haftung
     inhalte urheberrecht verantwortlich inhaltlich sitz deutschland bundesrepublik zuständige zuständiger
     berufshaftpflicht berufsordnung streitschlichtung information informationen allgemeine
+    anwendbares anwendbar recht rechts gerichtsstand rubrik
     vertretungsberechtigte vertretungsberechtigter gesellschafter
     berufsträger berufstraeger firmenphilosophie philosophie historie geschichte leitbild werte vision
     mandantenportal portal aktuelles blog presse veranstaltungen seminare newsletter formulare rechner

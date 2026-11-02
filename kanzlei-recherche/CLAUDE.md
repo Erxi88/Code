@@ -325,6 +325,8 @@ der nächsten Quelle füllen.**
     nicht Attribute/Skripte), bei mehreren Standorten die Nummer nächst der Kanzlei-PLZ.
     Mobil nur als Rückfall. Gültig ist nur eine Rufnummer mit Ortsnetz 2–9, Mobil 15–17 oder
     Service 18 (Zahlenkolonnen und SVG-Pfade sind keine Nummern).
+  - E-Mail nie mit den Präfixen aus `email_ausgeschlossen` (impressum_ausschluss.yaml; Prüfkatalog 2: datenschutz@,
+    dsb@, bewerbung@, karriere@, noreply@, webmaster@, postmaster@ …).
   - E-Mail: Impressum-Text vor Navigation/Fußzeile vor mailto-Links; allgemeine Adressen (info@, kanzlei@, mail@,
     kontakt@, <ort>@) vor Personenadressen, auch von späteren Seiten.
   - **Kanzlei-Kontakt vs. Ansprechpartner** (Rückmeldung SHBB 30.10.2026): Telefon und E-Mail in einem Personen-Eintrag
@@ -430,6 +432,14 @@ der nächsten Quelle füllen.**
     Rang 1/2). Kopfzeile „Steuerbüro Jens Wiese" ist die Firmierung, der Name darin der Inhaber (Berufsbezeichnung aus
     dem Impressum). „Verantwortlich nach § 18 MStV" ist kein Vertretungsberechtigter: keine Berufsbezeichnung des
     Abschnitts, Rang hinter den Berufsträgern der Teamseite, vorn nur, wenn sonst niemand genannt ist.
+  - **Echte Strukturen (fixture-prompt 02.11.2026):** Kopf-Personen werden ohne Rahmen-Filter gesucht (Name und
+    Telefon stehen oft in einer Seitenleiste auf jeder Seite – grunewald-stb), sonst im ganzen Impressum ohne
+    Fremd-Abschnitte; ein LLM-Name, der nur die Domain ist („Stb-Grunewald"), wird verworfen. Menüzeilen vor dem
+    Kopf („Copyright", „Datenschutz", „Disclaimer") beenden die Anbieterzeile nicht. Kanzleiname über zwei Kopfzeilen,
+    wenn eine nur die Kanzleiform nennt („ETL HOLSTEIN" ⏎ „Steuerberatungsgesellschaft mbH", „Steuerberater-Sozietät" ⏎
+    „Rosenwinkel-Schadly + Rosenwinkel"). Vertretung: Schlüsselwort „Vertretung" und Überschrift „Leitung"/
+    „Kanzleileitung"; Titelzeilen zwischen Schlüsselwort und Namen („Diplom-Kaufmann" ⏎ Name) werden übersprungen;
+    „StB …"/„StBin …" vor dem Namen ist die Berufsbezeichnung. „Anwendbares Recht", „Gerichtsstand" sind keine Namen.
   - Ansprechpartner = nur **Berufsträger und Leitung**; Mehrfachnennungen werden
     vereinigt (Funktionen und Titel). Reihenfolge: Vertretungsberechtigte in der
     Reihenfolge des Impressum-Abschnitts „vertretungsberechtigt/vertreten durch", dann alle
@@ -484,7 +494,9 @@ der nächsten Quelle füllen.**
     („Hamburg-Rissen" → „Hamburg").
   - Discovery-Adresse ohne Straße schlägt keine vollständige Website-Adresse mehr (auch bei anderer PLZ – Abweichung
     „… (ohne Straße) / Website …"); Firmenname vor der Straße („… mbH Röpckes Mühle 2", „Steuerkanzlei Lund · Markt 1")
-    wird abgeschnitten, wenn danach eine Straße mit Hausnummer bleibt (`strasse_ohne_firma`).
+    wird abgeschnitten, wenn danach eine Straße mit Hausnummer bleibt (`strasse_ohne_firma`), ebenso Person +
+    Berufsbezeichnung („Frank … Steuerberater Röpckes Mühle 2" – Impressum ohne Zeilenumbrüche). Nennt das Impressum
+    PLZ/Ort ohne Straße, kommt die Straße von Kontakt-/Startseite mit derselben PLZ.
   - Adresszusatz („/ Haus 8 Süd", eigene Zeile mit Haus, Gebäude, Eingang, Etage, OG,
     Hinterhof, c/o; auch in Klammern, mehrteilig oder nach einem Zeilenumbruch hinter
     „/") steht im eigenen Feld; die PLZ-Zeile darf bis zu zwei Zeilen unter der Straße
@@ -633,7 +645,9 @@ der nächsten Quelle füllen.**
   Kontaktseite; Standortleitung („Leiter", „Kanzleileitung", „Standortleitung", „Niederlassungsleitung") vor den
   Vertretungsberechtigten der Zentrale („Ansprechpartner-Rang: Standortleitung …"), danach die übrigen Personen der
   Standortseiten, erst dann die Zentrale; eine eigene Standortgesellschaft mit Rechtsform auf Kontakt-/Startseite
-  („wetreu Holstein KG", Kanzleiwort oder Name der Kette bzw. der Domain) ist der Kanzleiname; sonst Anbieter aus dem
+  („wetreu Holstein KG", Kanzleiwort oder Name der Kette bzw. der Domain; Logo-Wort in eigener Zeile davor wird
+  vorangestellt, „Steuerberatungsgesellschaft" hinter der Rechtsform entfällt, Sätze zählen nicht) ist der
+  Kanzleiname; sonst Anbieter aus dem
   Impressum („SHBB Steuerberatungsgesellschaft mbH"; ohne Anbieterzeile im Kopf die erste Firmenzeile mit Rechtsform
   außerhalb der Fremd-Abschnitte, sonst der Name aus ketten.yaml), der Name der Standortseite als „Standortbezeichnung: …" in
   „Abweichung" und in „Zentrale/Standort" („Standort von SHBB … (SHBB Steuerberatungskanzlei Heide)").
