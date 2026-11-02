@@ -878,3 +878,36 @@ def test_name_zweizeilig_hinter_vielen_navigationszeilen(ausschluss):
     k = _merge("etl-nordland.example", impressum, {Seitentyp.START: [*nav, "Willkommen"], Seitentyp.KONTAKT: [*nav, "Kontakt"]},
                LlmErgebnis(kanzleiname="ETL NORDLAND"), ausschluss)
     assert k.kanzleiname == "ETL NORDLAND Steuerberatungsgesellschaft mbH"
+
+
+# ---------------------------------------------------------------------- echte HTML-Dateien (02.11.2026)
+
+
+def test_strasse_ohne_leerzeichen_hinter_abkuerzungspunkt():
+    """steuerberater-ploen.de: „Fehrenböteler Dorfstr.36" ⏎ „24635 Rickling OT Fehrenbötel" im Impressum."""
+    from recherche.extract.rules import adressen
+
+    assert [(a.strasse, a.plz, a.ort) for a in adressen(["Lindenweg Dorfstr.36", "24635 Rickling OT Fehrenbötel"])] == [
+        ("Lindenweg Dorfstr. 36", "24635", "Rickling")]
+    assert adressen(["Hauptstr.5, 24103 Kiel"])[0].strasse == "Hauptstr. 5"
+    assert adressen(["St.-Jürgen-Ring 4", "23564 Lübeck"])[0].strasse == "St.-Jürgen-Ring 4"
+    assert adressen(["HRB 13705", "24103 Kiel"])[0].strasse is None
+
+
+def test_standortgesellschaft_logo_als_bild_fassung_mit_kennwort_von_der_seite():
+    """fehmarn.wetreu.de: erste Zeile „Holstein KG Steuerberatungsgesellschaft" (Logo „wetreu" ist ein Bild), weiter
+    unten „Standort der wetreu Holstein KG Steuerberatungsgesellschaft"."""
+    from recherche.extract.merge import standort_gesellschaft
+
+    text = "\n".join(["Holstein KG Steuerberatungsgesellschaft", "zu nordtreu.example", "Ansprechpartner*innen",
+                      "Steuerberatung mit Rückenwind", "Standort der nordtreu Holstein KG Steuerberatungsgesellschaft"])
+    seite = Seite(url="https://www.nordtreu.example/gesellschaften/holstein", domain="fehmarn.nordtreu.example",
+                  seitentyp=Seitentyp.START, text=text)
+    assert standort_gesellschaft([seite], None, "nordtreu") == "nordtreu Holstein KG Steuerberatungsgesellschaft"
+
+
+def test_name_zweizeilig_wenn_llm_nur_die_kanzleiform_nennt(ausschluss):
+    impressum = ["Copyright", "Datenschutz", "Disclaimer", "Steuerberater-Sozietät", "Loewe-Hartmann + Loewe",
+                 "Vertretungsberechtigte:", "Diplom-Kaufmann", "Heike Loewe-Hartmann"]
+    k = _merge("stb-loewe.example", impressum, llm=LlmErgebnis(kanzleiname="Steuerberater-Sozietät"), ausschluss=ausschluss)
+    assert k.kanzleiname == "Steuerberater-Sozietät Loewe-Hartmann + Loewe"

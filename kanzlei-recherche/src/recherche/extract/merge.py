@@ -472,6 +472,9 @@ def standort_gesellschaft(seiten: list[Seite], kette=None, kennwort: str | None 
                 continue
             if kennwort and kennwort not in z.lower() and k > 0 and segmente[k - 1].lower() == kennwort:
                 z = f"{segmente[k - 1]} {z}"  # Logo-Wort in eigener Zeile: „wetreu" ⏎ „Holstein KG …"
+            if kennwort and kennwort not in z.lower() and (
+                    m := re.search(rf"\b{re.escape(kennwort)}\s+{re.escape(z)}", s.text or "", re.IGNORECASE)):
+                z = m.group(0)  # Logo als Bild: die Fassung mit Kennwort von derselben Seite (fehmarn.wetreu.de)
             if k + 1 < len(segmente) and _NUR_KANZLEIFORM.match(segmente[k + 1]):
                 z = f"{z} {segmente[k + 1]}"  # „wetreu Holstein KG | Steuerberatungsgesellschaft" gehört zusammen
             if _ANBIETER_FIRMA.search(z) or (kennwort and kennwort in z.lower()):
@@ -567,7 +570,7 @@ def kopf_name_zweizeilig(impressum: str | None, name: str | None = None, rahmen:
             if re.search(r"\d|:|@", n) or len(n.split()) > 6 or _NUR_KANZLEIFORM.match(n) or _wie_navigation(n) \
                     or n.lower() in _MENUEWOERTER or _schluessel(n):
                 continue
-            if name is None or _name_norm(name) == _name_norm(n):
+            if name is None or _name_norm(name) in (_name_norm(n), _name_norm(z)):
                 return f"{n} {z}" if j < i else f"{z} {n}"
     return None
 

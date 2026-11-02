@@ -497,7 +497,8 @@ der nächsten Quelle füllen.**
     „… (ohne Straße) / Website …"); Firmenname vor der Straße („… mbH Röpckes Mühle 2", „Steuerkanzlei Lund · Markt 1")
     wird abgeschnitten, wenn danach eine Straße mit Hausnummer bleibt (`strasse_ohne_firma`), ebenso Person +
     Berufsbezeichnung („Frank … Steuerberater Röpckes Mühle 2" – Impressum ohne Zeilenumbrüche). Nennt das Impressum
-    PLZ/Ort ohne Straße, kommt die Straße von Kontakt-/Startseite mit derselben PLZ.
+    PLZ/Ort ohne Straße, kommt die Straße von Kontakt-/Startseite mit derselben PLZ. Straße auch ohne Leerzeichen hinter dem
+    Abkürzungspunkt („Dorfstr.36" → „Dorfstr. 36", steuerberater-ploen.de).
   - Adresszusatz („/ Haus 8 Süd", eigene Zeile mit Haus, Gebäude, Eingang, Etage, OG,
     Hinterhof, c/o; auch in Klammern, mehrteilig oder nach einem Zeilenumbruch hinter
     „/") steht im eigenen Feld; die PLZ-Zeile darf bis zu zwei Zeilen unter der Straße
@@ -647,7 +648,8 @@ der nächsten Quelle füllen.**
   Vertretungsberechtigten der Zentrale („Ansprechpartner-Rang: Standortleitung …"), danach die übrigen Personen der
   Standortseiten, erst dann die Zentrale; eine eigene Standortgesellschaft mit Rechtsform auf Kontakt-/Startseite
   („wetreu Holstein KG", Kanzleiwort oder Name der Kette bzw. der Domain; Logo-Wort in eigener Zeile davor wird
-  vorangestellt, „Steuerberatungsgesellschaft" hinter der Rechtsform bleibt – auch hinter „ | " –, Sätze zählen
+  vorangestellt; ist das Logo ein Bild, gilt die Fassung mit Kennwort von derselben Seite („Standort der wetreu Holstein
+  KG Steuerberatungsgesellschaft"); „Steuerberatungsgesellschaft" hinter der Rechtsform bleibt – auch hinter „ | " –, Sätze zählen
   nicht) ist der
   Kanzleiname; sonst Anbieter aus dem
   Impressum („SHBB Steuerberatungsgesellschaft mbH"; ohne Anbieterzeile im Kopf die erste Firmenzeile mit Rechtsform

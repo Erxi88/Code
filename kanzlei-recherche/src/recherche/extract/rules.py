@@ -24,7 +24,8 @@ _PLZ_ORT = re.compile(
     r"(?=\s*$|\s*[,;|·•–]|\s+(?:Tel|Fon|Fax|Telefon|E-?Mail|Mail|Deutschland|Germany|DE)\b)"
 )
 _STRASSE = re.compile(
-    r"^([A-ZÄÖÜ][A-Za-zÄÖÜäöüß.\-' ]{1,50}?\.?\s+\d{1,4}\s*[a-zA-Z]?(?:\s*[-/]\s*\d{1,4}\s*[a-zA-Z]?)?)$"
+    # „Dorfstr.36" ohne Leerzeichen hinter dem Abkürzungspunkt (steuerberater-ploen.de)
+    r"^([A-ZÄÖÜ][A-Za-zÄÖÜäöüß.\-' ]{1,50}?(?:\.\s*|\s+)\d{1,4}\s*[a-zA-Z]?(?:\s*[-/]\s*\d{1,4}\s*[a-zA-Z]?)?)$"
 )
 # Zahlen nach diesen Kennzeichen sind keine PLZ (Registernummern, Konten, Jahresangaben …)
 _KEINE_PLZ_DAVOR = re.compile(r"(?:HR\s?[AB]|PR|VR|GnR|Nr\.?|Nummer|Konto|IBAN|BLZ|seit|ab|bis|von|ca\.?)\s*:?\s*$", re.I)
@@ -106,9 +107,12 @@ def ist_zusatz(text: str) -> bool:
     return bool(_ZUSATZ_ZEILE.match(text.strip())) and len(text.strip()) <= 60
 
 
+_PUNKT_NUMMER = re.compile(r"(?<=[a-zäöüß])\.(?=\d)")
+
+
 def strasse_zerlegen(text: str) -> tuple[str, str | None] | None:
     """'Luruper Chaussee 125 / Haus 8 Süd' → ('Luruper Chaussee 125', 'Haus 8 Süd'); keine Straße → None."""
-    text = text.strip()
+    text = _PUNKT_NUMMER.sub(". ", text.strip())  # „Dorfstr.36" → „Dorfstr. 36"
     if _ist_strasse(text):
         return text, None
     if (m := _STRASSE_MIT_ZUSATZ.match(text)) and _ist_strasse(m.group("strasse").strip()):
