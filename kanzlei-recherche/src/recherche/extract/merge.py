@@ -512,11 +512,12 @@ _KANZLEI_VORN = re.compile(r"^(?:steuerbüro|steuerkanzlei|kanzlei|steuerberatun
 
 
 def impressum_berufsbezeichnung(impressum: str, fremd: set[int] | None = None) -> str | None:
-    """Die eine Berufsbezeichnung des Impressums („Berufsbezeichnung: Steuerberater …"), sonst None."""
+    """Die eine Berufsbezeichnung des Impressums („Berufsbezeichnung: Steuerberater …"), sonst None. Zählt auch im
+    Kammer-Block (Fremd-Abschnitt): die Berufsbezeichnung gehört dort immer zur Kanzlei (luemers.de)."""
     zeilen = (text_normalisieren(impressum) or "").splitlines()
     gefunden = set()
     for j, z in enumerate(zeilen):
-        if (b := _BERUFSBEZEICHNUNG.search(z)) and j not in (fremd or set()):
+        if b := _BERUFSBEZEICHNUNG.search(z):
             text = b.group(1) or (zeilen[j + 1] if j + 1 < len(zeilen) else "")
             gefunden |= {name for name, muster in _BEZEICHNUNGEN.items() if muster.search(text)}
     return gefunden.pop() if len(gefunden) == 1 else None
@@ -624,6 +625,14 @@ def ansprechpartner(
         for p in kopf_personen(impressum, rahmen, lambda z: set(fremd or ())):
             vertreter.append(p.name)
             v.funktionen[p.name] = p.funktion
+        if not vertreter and (beruf := bezeichnung or impressum_berufsbezeichnung(impressum, fremd)):
+            # erste Kopfzeile ist nur ein Name („Noémie Lümers" ⏎ „Noémie Lümers Steuerberatung"), die
+            # Berufsbezeichnung steht weiter unten: die Person ist die Inhaberin (luemers.de)
+            kopf = kopfzeilen(impressum, rahmen)
+            if kopf and (nt := name_zerlegen(kopf[0])) and nt[0] == " ".join(kopf[0].split()) \
+                    and not _KANZLEI_VORN.match(kopf[0]):
+                vertreter.append(nt[0])
+                v.funktionen[nt[0]] = beruf
         if not vertreter and (firma := kopf_firmierung(impressum)):
             # „Steuerbüro Jens Wiese" mit Berufsbezeichnung im Impressum: Jens Wiese ist der Inhaber
             inhaber = _KANZLEI_VORN.sub("", firma)
@@ -817,6 +826,15 @@ def rechtsform_belegt(form: str | None, name: str | None, impressum: str | None,
         return False
     texte = [name or "", *_impressum_kopf(impressum, fremd, rahmen, 400)]
     return any(normalize_rechtsform(rechtsform_aus_text(z)) == form for z in texte if not _REGISTERGERICHT.search(z))
+
+
+def _impressum_vertreter(impressum: str | None, fremd, rahmen, personen) -> list[str]:
+    """Vertretungsberechtigte laut Impressum – sonst die Personen, die die Zusammenführung aus dem Impressum
+    übernommen hat (Kopf-Person, Inhaber einer Firmierung)."""
+    if not impressum:
+        return []
+    return vertretung(impressum, fremd, rahmen).namen or [
+        p.name for p in personen if "(laut Impressum)" in (p.funktion or "")]
 
 
 def ist_einzelkanzlei(name: str | None, impressum: str | None, vertreter: list[str]) -> bool:
@@ -1161,7 +1179,7 @@ def zusammenfuehren(
         if (tel or mail) and not (p.durchwahl or p.email):
             personen[i] = p.model_copy(update={"durchwahl": tel, "email": mail})
     if rechtsform is None and ist_einzelkanzlei(name, impressum_text,
-                                                vertretung(impressum_text, fremd, rahmen).namen if impressum_text else []):
+                                                _impressum_vertreter(impressum_text, fremd, rahmen, personen)):
         rechtsform = "Einzelkanzlei"
     angabe = mitarbeiterzahl([_text(s) for s in seiten.values()])
     zahl, klasse, basis = teamgroesse(llm, team_seiten, erkannte, angabe)
@@ -1183,7 +1201,7 @@ def zusammenfuehren(
         name = name_aus_ansprechpartner(personen[0], berufstraeger)
         abweichungen.append(f"Name abgeleitet aus Ansprechpartner {personen[0].name} – kein Kanzleiname gefunden")
         if rechtsform is None and berufstraeger == 1 and ist_einzelkanzlei(
-                name, impressum_text, vertretung(impressum_text, fremd, rahmen).namen if impressum_text else []):
+                name, impressum_text, _impressum_vertreter(impressum_text, fremd, rahmen, personen)):
             rechtsform = "Einzelkanzlei"  # „Steuerberaterin Henrike Weidemann" ohne Register
     if zahl is not None and berufstraeger > zahl:
         # danrevision: 2 Personen auf der Teamseite eines Standorts, aber 7 Berufsträger – Zahl unplausibel,

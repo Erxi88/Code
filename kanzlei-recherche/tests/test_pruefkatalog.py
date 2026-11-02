@@ -911,3 +911,23 @@ def test_name_zweizeilig_wenn_llm_nur_die_kanzleiform_nennt(ausschluss):
                  "Vertretungsberechtigte:", "Diplom-Kaufmann", "Heike Loewe-Hartmann"]
     k = _merge("stb-loewe.example", impressum, llm=LlmErgebnis(kanzleiname="Steuerberater-Sozietät"), ausschluss=ausschluss)
     assert k.kanzleiname == "Steuerberater-Sozietät Loewe-Hartmann + Loewe"
+
+
+def test_kopfzeile_nur_name_und_berufsbezeichnung_im_kammerblock(ausschluss):
+    """luemers.de: „Name" ⏎ „Name Steuerberatung" im Kopf, „Berufsbezeichnung: Steuerberater" nur im Kammer-Block →
+    Inhaberin, Einzelkanzlei."""
+    impressum = ["Impressum", "Angaben gemäß § 5 TMG", "Inés Brandt", "Inés Brandt Steuerberatung", "Markt 5a",
+                 "23611 Bad Schwartau", "Kontakt", "Telefon: 0176 99999999", "Aufsichtsbehörde",
+                 "Steuerberaterkammer Schleswig-Holstein", "Hopfenstraße 2d", "24114 Kiel", "Berufsbezeichnung:",
+                 "Steuerberater", "Verliehen in:", "Deutschland"]
+    k = _merge("brandt-stb.example", impressum, llm=LlmErgebnis(kanzleiname="Inés Brandt Steuerberatung"),
+               ausschluss=ausschluss)
+    assert [p.name for p in k.ansprechpartner] == ["Inés Brandt"] and k.rechtsform == "Einzelkanzlei"
+
+
+def test_sozietaet_ohne_gesellschaftszusatz():
+    """„Sozietät" ohne Gesellschaftszusatz → Rechtsform „Sozietät", kein Raten auf GbR (Entscheidung 02.11.2026)."""
+    from recherche.normalize import rechtsform_aus_text
+
+    assert rechtsform_aus_text("Steuerberater-Sozietät Loewe-Hartmann + Loewe") == "Sozietät"
+    assert rechtsform_aus_text("Sozietät Lund & Kittel GbR") == "GbR"

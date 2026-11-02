@@ -441,6 +441,9 @@ der nächsten Quelle füllen.**
     „Rosenwinkel-Schadly + Rosenwinkel"). Vertretung: Schlüsselwort „Vertretung" und Überschrift „Leitung"/
     „Kanzleileitung"; Titelzeilen zwischen Schlüsselwort und Namen („Diplom-Kaufmann" ⏎ Name) werden übersprungen;
     „StB …"/„StBin …" vor dem Namen ist die Berufsbezeichnung. „Anwendbares Recht", „Gerichtsstand" sind keine Namen.
+    Erste Kopfzeile nur ein Name („Noémie Lümers" ⏎ „Noémie Lümers Steuerberatung") und eine Berufsbezeichnung im
+    Impressum → Inhaberin, Einzelkanzlei (luemers.de); die Berufsbezeichnung zählt auch im Kammer-Block.
+    „Sozietät" ohne Gesellschaftszusatz → Rechtsform „Sozietät" (`config/rechtsformen.yaml`; kein Raten auf GbR).
   - Ansprechpartner = nur **Berufsträger und Leitung**; Mehrfachnennungen werden
     vereinigt (Funktionen und Titel). Reihenfolge: Vertretungsberechtigte in der
     Reihenfolge des Impressum-Abschnitts „vertretungsberechtigt/vertreten durch", dann alle

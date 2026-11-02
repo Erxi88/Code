@@ -51,3 +51,7 @@
     - 'einzelkanzlei'
     - 'einzelunternehm'
     - 'einzelpraxis'
+- form: Sozietät
+  # ohne Gesellschaftszusatz kein Raten auf GbR (Entscheidung 02.11.2026, steuerberater-barsbuettel)
+  varianten:
+    - '\bsozietät\b'
