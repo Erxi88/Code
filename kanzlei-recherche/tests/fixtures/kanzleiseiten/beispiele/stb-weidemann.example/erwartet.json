@@ -1,0 +1,13 @@
+{
+ "_status": "fertig",
+ "kanzleiname": "Steuerberaterin Henrike Weidemann",
+ "rechtsform": "Einzelkanzlei",
+ "strasse": "Kieler Straße 12",
+ "plz": "24340",
+ "ort": "Eckernförde",
+ "telefon": "+49 4351 712340",
+ "email": "info@stb-weidemann.example",
+ "erster_ansprechpartner": "Henrike Weidemann",
+ "berufstraeger_anzahl": 1,
+ "teamgroesse": null
+}

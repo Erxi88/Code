@@ -1,0 +1,9 @@
+{
+ "domain": "stb-rickling.example",
+ "urls": {
+  "start": "https://www.stb-rickling.example/",
+  "impressum": "https://www.stb-rickling.example/impressum"
+ },
+ "abgerufen_am": "2026-11-02T10:00:00",
+ "_hinweis": "Fiktive Kanzlei (Testdaten) – Straße, PLZ und Ortsteil in einer Zeile (Stichprobe Seed 1, steuerberater-ploen.de)"
+}

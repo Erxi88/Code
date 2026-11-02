@@ -36,3 +36,12 @@ ketten:
     uebersicht: https://www.shbb.de/kanzlei-suche
     link_muster: 'https?://(?!www\.)[a-z0-9-]+\.shbb\.de/?'
     standortmuster: subdomain
+  wetreu:
+    # Standorte mit eigener Gesellschaft (fehmarn.wetreu.de, lbb.wetreu.de → wetreu Holstein KG): Firmierung und
+    # Personen der Standortseite vor denen der Kieler Zentrale (Stichprobe Seed 1, 02.11.2026).
+    # uebersicht noch offen – bitte die Seite mit allen Standorten eintragen, dann `recherche ketten --kette wetreu`.
+    name: wetreu
+    zentrale: wetreu.de
+    uebersicht:
+    link_muster: 'https?://(?!www\.)[a-z0-9-]+\.wetreu\.de/?'
+    standortmuster: subdomain

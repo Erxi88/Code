@@ -1,0 +1,24 @@
+{
+ "_hinweis": "Handgeschriebene Beispielantwort für Tests – keine echte Modellausgabe.",
+ "ergebnis": {
+  "kanzleiname": null,
+  "rechtsform": null,
+  "strasse": "Kieler Straße 12",
+  "plz": "24340",
+  "ort": "Eckernförde",
+  "telefon": "04351 712340",
+  "email": "info@stb-weidemann.example",
+  "verantwortliche_person": null,
+  "personen": [],
+  "mitarbeiterzahl": null,
+  "mitarbeiterzahl_beleg": null,
+  "teamgroesse_klasse": null
+ },
+ "modell": "qwen3.5:9b",
+ "laufzeit_s": 15.0,
+ "prompt_tokens": 3000,
+ "antwort_tokens": 300,
+ "prompt_zeichen": 9000,
+ "kuerzung": null,
+ "num_ctx": 16384
+}

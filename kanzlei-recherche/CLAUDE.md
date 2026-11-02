@@ -387,6 +387,9 @@ der nächsten Quelle füllen.**
   derselben Person mit Vornamen. Zusätzlich Personen aus JSON-LD (schema.org `Person` mit `jobTitle`)
   und aus Bild-Attributen („Name, Funktion …" in alt/title); dieselbe Person aus mehreren
   Quellen → Funktionen vereinigt. `fixture-prompt --namen` zeigt die Zeilen ab jedem Namen.
+  Ohne Trennzeichen („Hauke Rathje Steuerberater" aus nebeneinanderliegenden Elementen) und als Namensliste unter
+  einer Berufs-Überschrift („Unsere Steuerberater" ⏎ „Finn Ohlsen und Merle Kock") – Stichprobe Seed 1; Berufswörter
+  sind nie Teil eines Namens.
   Mitarbeiterzahl-Regel auf allen Seiten inkl. Startseite („28 Expert:innen", „Team von 28",
   „15-köpfig"; Gender-Schreibweisen normalisiert; „über N" → Klasse über N).
 - Fehlende Felder bleiben `null` – **nie raten**. Konfidenz berechnet der Code, nicht das LLM.
@@ -421,6 +424,12 @@ der nächsten Quelle füllen.**
     Titel und Berufskürzel vor dem Namen (Dr., Prof., Dipl.-Kfm., WP/StB, M.Sc., B.A., LL.M. …) wandern **vor** der
     Vorname-Prüfung in den Titel („Dr. Dr. Rolf Harrie" bleibt); Berufsbezeichnung/Anrede + Nachname („Steuerberaterin
     Schröder", „Herr Lund") gilt als ohne Vorname.
+  - **Stichprobe Seed 1 (02.11.2026):** Impressum ohne Firmierung, nur „Vorname Nachname, Steuerberater/in" im Kopf
+    (Anbieterzeile) → die Person ist Inhaberin/Hauptansprechpartner (1B Rang 2), Kanzleiname „Steuerberaterin Vorname
+    Nachname" („Name abgeleitet"), Rechtsform Einzelkanzlei, Konfidenz **hoch** (abgeleiteter Name deckelt nur ohne
+    Rang 1/2). Kopfzeile „Steuerbüro Jens Wiese" ist die Firmierung, der Name darin der Inhaber (Berufsbezeichnung aus
+    dem Impressum). „Verantwortlich nach § 18 MStV" ist kein Vertretungsberechtigter: keine Berufsbezeichnung des
+    Abschnitts, Rang hinter den Berufsträgern der Teamseite, vorn nur, wenn sonst niemand genannt ist.
   - Ansprechpartner = nur **Berufsträger und Leitung**; Mehrfachnennungen werden
     vereinigt (Funktionen und Titel). Reihenfolge: Vertretungsberechtigte in der
     Reihenfolge des Impressum-Abschnitts „vertretungsberechtigt/vertreten durch", dann alle
@@ -473,6 +482,9 @@ der nächsten Quelle füllen.**
     OHG, GbR) nur in der Namenszeile („AG Kiel" ist das Amtsgericht); eine LLM-Rechtsform nur
     mit Beleg in Name oder Impressum. Kanonisch nach `config/rechtsformen.yaml`; Ort laut OpenPLZ
     („Hamburg-Rissen" → „Hamburg").
+  - Discovery-Adresse ohne Straße schlägt keine vollständige Website-Adresse mehr (auch bei anderer PLZ – Abweichung
+    „… (ohne Straße) / Website …"); Firmenname vor der Straße („… mbH Röpckes Mühle 2", „Steuerkanzlei Lund · Markt 1")
+    wird abgeschnitten, wenn danach eine Straße mit Hausnummer bleibt (`strasse_ohne_firma`).
   - Adresszusatz („/ Haus 8 Süd", eigene Zeile mit Haus, Gebäude, Eingang, Etage, OG,
     Hinterhof, c/o; auch in Klammern, mehrteilig oder nach einem Zeilenumbruch hinter
     „/") steht im eigenen Feld; die PLZ-Zeile darf bis zu zwei Zeilen unter der Straße
@@ -618,7 +630,9 @@ der nächsten Quelle füllen.**
   laut `config/ketten.yaml` (nicht die Zentrale) oder mit Impressum auf einem anderen Host derselben Stammdomain →
   Telefon, Adresse, E-Mail aus Kontakt- und Startseite vor dem Impressum der Zentrale; Personen auch von Start- und
   Kontaktseite; Standortleitung („Leiter", „Kanzleileitung", „Standortleitung", „Niederlassungsleitung") vor den
-  Vertretungsberechtigten der Zentrale („Ansprechpartner-Rang: Standortleitung …"); Kanzleiname = Anbieter aus dem
+  Vertretungsberechtigten der Zentrale („Ansprechpartner-Rang: Standortleitung …"), danach die übrigen Personen der
+  Standortseiten, erst dann die Zentrale; eine eigene Standortgesellschaft mit Rechtsform auf Kontakt-/Startseite
+  („wetreu Holstein KG", Kanzleiwort oder Name der Kette bzw. der Domain) ist der Kanzleiname; sonst Anbieter aus dem
   Impressum („SHBB Steuerberatungsgesellschaft mbH"; ohne Anbieterzeile im Kopf die erste Firmenzeile mit Rechtsform
   außerhalb der Fremd-Abschnitte, sonst der Name aus ketten.yaml), der Name der Standortseite als „Standortbezeichnung: …" in
   „Abweichung" und in „Zentrale/Standort" („Standort von SHBB … (SHBB Steuerberatungskanzlei Heide)").
@@ -692,7 +706,8 @@ Schemaversion über `PRAGMA user_version` (aktuell 4, `adresszusatz`); ältere D
   Platzhalter: `serpapi`, `places` (stillgelegt); Verzeichnisse mit Parsern (aus Kiel-Seiten), aktiv.
 - Stufe 2 (Lesen und Extrahieren): `crawl`, `extract` (Regeln + Ollama), Zusammenführung
   mit Abweichung und Konfidenz, OpenPLZ-Prüfung, Schema v3, `fixture-add`,
-  `fixture-eval` mit 6 fiktiven Beispielen. Die 15 echten Fixtures folgen (lokal).
+  `fixture-eval` mit 6 fiktiven Beispielen (dazu 6 Nachbauten der Fehlerfälle der Stichprobe Seed 1). Die 15 echten
+  Fixtures folgen (lokal).
 - Nach dem ersten echten Fixture-Lauf: Prompt-Aufbau ohne Abschneiden, `fixture-prompt`,
   Personen- und Mitarbeiterzahl-Regeln, Adresszusatz (Schema v4), kanonische
   Rechtsform und Ort, Berufsträger- und Ansprechpartner-Reihenfolge.

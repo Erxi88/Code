@@ -25,10 +25,18 @@ AUSSCHLUSS = Ausschluss.laden(S.pfad(S.pfade.impressum_ausschluss))
 
 BEISPIELE = ["baur-drews-steuer.example", "foerde-steuer.example", "hansen-steuerberatung.example", "mittelstand-steuer.example",
              "nordlicht-steuerberatung.example", "steuerbuero-schuett.example"]
+# fiktive Nachbauten der Fehlerfälle aus der Stichprobe Seed 1 (02.11.2026)
+STICHPROBE = ["fehmarn.nordtreu.example", "mstv-steuerberatung.example", "stb-mueller-rendsburg.example",
+              "stb-rickling.example", "stb-weidemann.example", "ueber-uns-steuer.example"]
+
+
+def _beispiele():
+    """Die ersten sechs Beispiele (Laufzeiten, Modellvergleich) – ohne die Stichproben-Fälle."""
+    return [f for f in fixtures_finden([BSP]) if f.domain in BEISPIELE]
 
 
 def test_beispiele_vollstaendig():
-    fx = fixtures_finden([BSP])
+    fx = _beispiele()
     assert [f.domain for f in fx] == BEISPIELE
     assert all(f.fertig for f in fx)
     assert aufgezeichnete_modelle(fx) == ["qwen3.5:9b", "qwen3.6:27b"]
@@ -39,7 +47,7 @@ def test_beispiele_vollstaendig():
 
 
 def test_beispiele_alle_felder_richtig():
-    erg = auswerten(fixtures_finden([BSP]), AUSSCHLUSS, "qwen3.5:9b", plz_pruefen=fake_pruefer().pruefe)
+    erg = auswerten(_beispiele(), AUSSCHLUSS, "qwen3.5:9b", plz_pruefen=fake_pruefer().pruefe)
     assert erg.fixtures == 6 and erg.fehler == []
     assert all(erg.quote(f) == 1.0 for f in KERNFELDER)
     assert erg.mittlere_laufzeit_s == pytest.approx((41.3 + 36.9 + 22.5 + 48.2 + 31.4 + 18.2) / 6)
@@ -48,13 +56,13 @@ def test_beispiele_alle_felder_richtig():
 
 
 def test_ort_ohne_openplz_nicht_vereinheitlicht():
-    erg = auswerten(fixtures_finden([BSP]), AUSSCHLUSS, "qwen3.5:9b")
+    erg = auswerten(_beispiele(), AUSSCHLUSS, "qwen3.5:9b")
     assert [(f.domain, f.feld, f.ist) for f in erg.fehler if f.feld == "ort"] == [
         ("nordlicht-steuerberatung.example", "ort", "Kiel-Holtenau")]
 
 
 def test_anderes_modell_mit_fehler():
-    erg = auswerten(fixtures_finden([BSP]), AUSSCHLUSS, "qwen3.6:27b", plz_pruefen=fake_pruefer().pruefe)
+    erg = auswerten(_beispiele(), AUSSCHLUSS, "qwen3.6:27b", plz_pruefen=fake_pruefer().pruefe)
     # handgeschriebene 27b-Antwort für Förde mit falsch gelesener Mitarbeiterzahl (das LLM hat Vorrang)
     assert [(f.domain, f.feld) for f in erg.fehler] == [("foerde-steuer.example", "teamgroesse")]
     assert erg.ohne_aufzeichnung == ["baur-drews-steuer.example", "mittelstand-steuer.example",
@@ -64,7 +72,7 @@ def test_anderes_modell_mit_fehler():
 
 
 def test_ohne_aufzeichnung_nur_regelfelder():
-    erg = auswerten(fixtures_finden([BSP]), AUSSCHLUSS, "gemma4:26b", plz_pruefen=fake_pruefer().pruefe)
+    erg = auswerten(_beispiele(), AUSSCHLUSS, "gemma4:26b", plz_pruefen=fake_pruefer().pruefe)
     assert erg.ohne_aufzeichnung == BEISPIELE
     assert "kanzleiname" not in erg.bewertet and "erster_ansprechpartner" not in erg.bewertet
     assert erg.quote("adresse") == erg.quote("telefon") == erg.quote("email") == 1.0
@@ -208,3 +216,11 @@ def test_fixture_prompt_diagnose():
     assert d.regel_felder == {"strasse": True, "adresszusatz": True, "plz": True, "ort": True, "telefon": True, "email": True}
     assert d.aufzeichnung.zeichen_je_token == pytest.approx(15890 / 5210)
     assert {typ.value for typ in d.links} >= {"impressum", "kontakt", "team"}
+
+
+def test_stichprobe_seed1_faelle_alle_richtig():
+    """Je Fehlerfall der Stichprobe Seed 1 eine fiktive Fixture – alle Felder richtig (offline, Ort wie im Sollwert)."""
+    fx = [f for f in fixtures_finden([BSP]) if f.domain in STICHPROBE]
+    assert sorted(f.domain for f in fx) == sorted(STICHPROBE)
+    erg = auswerten(fx, AUSSCHLUSS, "qwen3.5:9b")
+    assert erg.fixtures == 6 and erg.fehler == [], [(f.domain, f.feld, f.ist) for f in erg.fehler]

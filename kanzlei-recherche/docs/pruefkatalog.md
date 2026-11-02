@@ -50,7 +50,7 @@ Namensmerkmale aus 1A (Lohnsteuerhilfe, „e. V.“, Kammer/Verband, Rechtsanwal
 ### Kanzleiname
 
 - Quelle in dieser Reihenfolge: Impressum-Anbieter → Rechtsform-Zeile → `<title>`/Logo-Alt → Ableitung aus Berufsträger („Steuerberater Vorname Nachname“).
-- Abgeleitete Namen bekommen Konfidenz „mittel“, Abweichung „Name abgeleitet“. Ohne Kammer und ohne Berufsbezeichnung → nie Hauptblatt.
+- Abgeleitete Namen bekommen Abweichung „Name abgeleitet“ und Konfidenz „mittel“ – außer bei Rang 1/2 (Kammer oder Person mit Berufsbezeichnung): dann „hoch“. Impressum nur mit „Vorname Nachname, Steuerberater/in“ ohne Firmierung → Kanzleiname „Steuerberater/in Vorname Nachname“, die Person ist Ansprechpartner (Stichprobe Seed 1, 02.11.2026). Ohne Kammer und ohne Berufsbezeichnung → nie Hauptblatt.
 - Verboten als Name: Navigationswörter (Start, Kontakt, Impressum, Datenschutz, Leistungen, Aktuelles), Alt-Text-Reste, Ortsnamen allein, „Regionen“, „Homepages“, Rollen („Die Amtsdirektorin“).
 - Mehrstandort-Gesellschaften (SHBB, wetreu, ETL, ECOVIS): Zentrale einmal, je Standort eine Zeile mit Spalte „Zentrale/Standort“; Standortseite schlägt Zentralseite bei Telefon und Ansprechpartner.
 

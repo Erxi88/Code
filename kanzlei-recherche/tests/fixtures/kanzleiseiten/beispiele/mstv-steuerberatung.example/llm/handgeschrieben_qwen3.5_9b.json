@@ -1,0 +1,40 @@
+{
+ "_hinweis": "Handgeschriebene Beispielantwort für Tests – keine echte Modellausgabe.",
+ "ergebnis": {
+  "kanzleiname": "Lorenzen & Albers Steuerberatungsgesellschaft mbH",
+  "rechtsform": "GmbH",
+  "strasse": null,
+  "plz": null,
+  "ort": null,
+  "telefon": null,
+  "email": null,
+  "verantwortliche_person": "Per-Ove Jacobsen",
+  "personen": [
+   {
+    "name": "Per-Ove Jacobsen",
+    "titel": null,
+    "funktion": "Marketing und Kommunikation"
+   },
+   {
+    "name": "Tobias Lorenzen",
+    "titel": null,
+    "funktion": "Steuerberater, Geschäftsführer"
+   },
+   {
+    "name": "Wiebke Albers",
+    "titel": null,
+    "funktion": "Steuerberaterin, Geschäftsführerin"
+   }
+  ],
+  "mitarbeiterzahl": null,
+  "mitarbeiterzahl_beleg": null,
+  "teamgroesse_klasse": null
+ },
+ "modell": "qwen3.5:9b",
+ "laufzeit_s": 15.0,
+ "prompt_tokens": 3000,
+ "antwort_tokens": 300,
+ "prompt_zeichen": 9000,
+ "kuerzung": null,
+ "num_ctx": 16384
+}

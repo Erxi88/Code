@@ -1,0 +1,24 @@
+{
+ "_hinweis": "Handgeschriebene Beispielantwort für Tests – keine echte Modellausgabe.",
+ "ergebnis": {
+  "kanzleiname": "Müller & Kühl Steuerberatungsgesellschaft mbH",
+  "rechtsform": "GmbH",
+  "strasse": "Müller & Kühl Steuerberatungsgesellschaft mbH Röpckes Mühle 2",
+  "plz": "24768",
+  "ort": "Rendsburg",
+  "telefon": null,
+  "email": null,
+  "verantwortliche_person": "Kai Müller",
+  "personen": [],
+  "mitarbeiterzahl": null,
+  "mitarbeiterzahl_beleg": null,
+  "teamgroesse_klasse": null
+ },
+ "modell": "qwen3.5:9b",
+ "laufzeit_s": 15.0,
+ "prompt_tokens": 3000,
+ "antwort_tokens": 300,
+ "prompt_zeichen": 9000,
+ "kuerzung": null,
+ "num_ctx": 16384
+}

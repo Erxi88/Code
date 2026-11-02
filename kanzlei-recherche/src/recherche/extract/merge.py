@@ -387,6 +387,7 @@ class Vertretung:
     funktionen: dict[str, str]  # Berufsbezeichnung direkt am Namen („Yvonne Baur, Steuerberaterin")
     bezeichnung: str | None  # einzige Berufsbezeichnung des Abschnitts
     protokoll: list[str] = field(default_factory=list)  # je Schlüsselwort-Zeile: Ergebnis (Diagnose)
+    verantwortliche: list[str] = field(default_factory=list)  # nur „Verantwortlich gemäß § 18 MStV" (Teil von namen)
 
 
 def vertretungsberechtigte(
@@ -448,7 +449,59 @@ def vertretung(impressum: str, fremd: set[int] | None = None, rahmen: set[str] |
             gefunden |= {name for name, muster in _BEZEICHNUNGEN.items() if muster.search(text)}
         if len(gefunden) == 1 and bezeichnung is None:
             bezeichnung = gefunden.pop()
-    return Vertretung(namen + verantwortliche, funktionen, bezeichnung, protokoll)
+    return Vertretung(namen + verantwortliche, funktionen, bezeichnung, protokoll, verantwortliche)
+
+
+def standort_gesellschaft(seiten: list[Seite], kette=None, kennwort: str | None = None) -> str | None:
+    """Firmierung mit Rechtsform auf der Standortseite („wetreu Holstein KG", „SHBB … Heide GmbH") – die Gesellschaft
+    des Standorts, wenn sie sich von der Zentrale unterscheidet. Zählt nur mit Kanzleiwort oder dem Namen der Kette."""
+    kennwort = (kette.name.split()[0].lower() if kette and kette.name else None) or kennwort
+    for s in seiten:
+        for z in (seg for zeile in (text_normalisieren(s.text) or "").splitlines() for seg in re.split(r"\s+[·|]\s+", zeile)):
+            z = z.strip(" ·|,")
+            if not z or len(z) > 80 or not rechtsform_aus_text(z) or re.search(r"\d{5}|@|tel|fax", z, re.I):
+                continue
+            if _ANBIETER_FIRMA.search(z) or (kennwort and kennwort in z.lower()):
+                if kette is None or _name_norm(z) != _name_norm(kette.name):
+                    return z
+    return None
+
+
+def kopf_personen(impressum: str, rahmen: set[str] | None = None) -> list[ErkanntePerson]:
+    """Personen mit Berufsbezeichnung im Impressum-Kopf (Anbieterzeile): „Anna Grunewald, Steuerberaterin",
+    „Anna Grunewald" ⏎ „Steuerberaterin", „Steuerberaterin Anna Grunewald" – Impressum ohne Firmierung."""
+    from .kanzlei import anbieter_text
+
+    ergebnis = []
+    for p in erkenne_personen(anbieter_text(impressum), rahmen=rahmen):
+        if not ist_berufstraeger(LlmPerson(name=p.name, funktion=p.funktion, titel=p.titel)):
+            continue
+        name = _KANZLEI_VORN.sub("", p.name)  # „Steuerbüro Thomas Schütt" → Inhaber Thomas Schütt
+        if len(name.split()) >= 2:
+            ergebnis.append(ErkanntePerson(name, p.titel, p.funktion, p.zeile))
+    return ergebnis
+
+
+_KANZLEI_VORN = re.compile(r"^(?:steuerbüro|steuerkanzlei|kanzlei|steuerberatung|steuerberatungsbüro)\s+", re.IGNORECASE)
+
+
+def impressum_berufsbezeichnung(impressum: str, fremd: set[int] | None = None) -> str | None:
+    """Die eine Berufsbezeichnung des Impressums („Berufsbezeichnung: Steuerberater …"), sonst None."""
+    zeilen = (text_normalisieren(impressum) or "").splitlines()
+    gefunden = set()
+    for j, z in enumerate(zeilen):
+        if (b := _BERUFSBEZEICHNUNG.search(z)) and j not in (fremd or set()):
+            text = b.group(1) or (zeilen[j + 1] if j + 1 < len(zeilen) else "")
+            gefunden |= {name for name, muster in _BEZEICHNUNGEN.items() if muster.search(text)}
+    return gefunden.pop() if len(gefunden) == 1 else None
+
+
+def kopf_firmierung(impressum: str | None) -> str | None:
+    """„Steuerbüro Thomas Schütt" als Anbieterzeile – Firmierung einer Einzelkanzlei (Name vor der Ableitung)."""
+    from .kanzlei import anbieter_text
+
+    return next((z.strip() for z in anbieter_text(impressum).splitlines()
+                 if _KANZLEI_VORN.match(z.strip()) and name_zerlegen(_KANZLEI_VORN.sub("", z.strip()))), None)
 
 
 def bezeichnung_aus_partnerschaftsname(name: str | None) -> str | None:
@@ -484,7 +537,20 @@ def ansprechpartner(
             v.namen[v.namen.index(alt)] = neu
             if f_wort or alt in v.funktionen:
                 v.funktionen[neu] = _funktion_vereinigen(v.funktionen.pop(alt, None), f_wort)
-    vertreter, bezeichnung = v.namen, v.bezeichnung
+    # Vertretungsberechtigte; „Verantwortlich gemäß § 18 MStV" ist keine Vertretung und kein Rang (Prüfkatalog 2:
+    # Vertretungsberechtigter → erster Berufsträger der Teamseite → Inhaber) – Stichprobe 02.11.2026, bhatti.pro
+    vertreter, bezeichnung = [n for n in v.namen if n not in v.verantwortliche], v.bezeichnung
+    if not vertreter and impressum:
+        # Impressum ohne Firmierung: „Anna Grunewald, Steuerberaterin" im Kopf ist die Inhaberin (1B Rang 2)
+        for p in kopf_personen(impressum, rahmen):
+            vertreter.append(p.name)
+            v.funktionen[p.name] = p.funktion
+        if not vertreter and (firma := kopf_firmierung(impressum)):
+            # „Steuerbüro Jens Wiese" mit Berufsbezeichnung im Impressum: Jens Wiese ist der Inhaber
+            inhaber = _KANZLEI_VORN.sub("", firma)
+            beruf = bezeichnung or impressum_berufsbezeichnung(impressum, fremd)
+            vertreter.append(inhaber)
+            v.funktionen[inhaber] = beruf or "Inhaber"
     # Hauptansprechpartner: erste/r Vertretungsberechtigte laut Impressum, sonst die vom LLM genannte Person
     verantwortlich = vertreter[0] if vertreter else (
         funktion_aus_namen(llm.verantwortliche_person)[0] if llm and llm.verantwortliche_person else None)
@@ -493,6 +559,9 @@ def ansprechpartner(
             roh.append(LlmPerson(name=name, funktion=f"{funktion} (laut Impressum)"))
         elif not any(gleiche_person(name, p.name) for p in roh):
             roh.append(LlmPerson(name=name, funktion="laut Impressum vertretungsberechtigt"))
+    for name in v.verantwortliche:
+        if funktion := v.funktionen.get(name):
+            roh.append(LlmPerson(name=name, funktion=f"{funktion} (laut Impressum)"))
     roh += list(llm.personen) if llm else []
     personen = personen_vereinigen(roh)
     if not bezeichnung and vertreter:
@@ -504,9 +573,13 @@ def ansprechpartner(
             for p in personen
         ]
     auswahl = [p for p in personen if ist_berufstraeger(p) or ist_leitung(p) or any(gleiche_person(p.name, v) for v in vertreter)]
+    if not vertreter and not auswahl and v.verantwortliche:
+        verantwortlich = verantwortlich or v.verantwortliche[0]  # sonst niemand genannt: der Verantwortliche
     if verantwortlich and not any(gleiche_person(verantwortlich, p.name) for p in auswahl):
-        # im Impressum genannt, aber ohne Funktion in der Personenliste: als Leitung aufnehmen
-        auswahl.insert(0, LlmPerson(name=verantwortlich, funktion="laut Impressum verantwortlich"))
+        # im Impressum genannt, aber ohne Funktion in der Personenliste: als Leitung aufnehmen – vorn nur als
+        # Vertretungsberechtigter oder wenn sonst niemand genannt ist
+        eintrag = LlmPerson(name=verantwortlich, funktion="laut Impressum verantwortlich")
+        auswahl.insert(0 if vertreter or not auswahl else len(auswahl), eintrag)
     team_reihenfolge = [p.name for p in erkannte or []]
 
     def rang(p: LlmPerson) -> tuple[int, int]:
@@ -515,7 +588,8 @@ def ansprechpartner(
         for i, v in enumerate(vertreter):
             if gleiche_person(p.name, v):
                 return (0, i)
-        if not vertreter and gleiche_person(p.name, verantwortlich):
+        if not vertreter and gleiche_person(p.name, verantwortlich) and (ist_berufstraeger(p) or ist_leitung(p)
+                                                                         or len(auswahl) == 1):
             return (0, 0)
         # danach die Reihenfolge der Teamseite (Leitung und Berufsträger gleichrangig), sonst der LLM-Liste
         pos = next((i for i, n in enumerate(team_reihenfolge) if gleiche_person(p.name, n)), None)
@@ -796,6 +870,29 @@ def name_aus_ansprechpartner(p: Ansprechpartner, berufstraeger: int) -> str:
     return f"{beruf} {p.name}"
 
 
+_FIRMA_WORT = re.compile(r"\b(?:gmbh|mbb|mbh|partg\w*|partnerschaft\w*|kg|ag|ohg|gbr|e\.\s?k\.|steuerberat\w*|steuerbüro|"
+                         r"steuerkanzlei|kanzlei|treuhand\w*)\b", re.IGNORECASE)
+_RECHTSFORM_WORT = re.compile(r"\b(?:gmbh|mbb|mbh|partg\w*|kg|ag|ohg|gbr|e\.\s?k\.)\b", re.IGNORECASE)
+_STRASSE_MIT_NR = re.compile(r"^[A-Za-zÄÖÜäöüß][\w.ÄÖÜäöüß' -]{2,}\s\d+\s?[a-zA-Z]?(?:\s*[-–/]\s*\d+\s?[a-zA-Z]?)?$")
+
+
+def strasse_ohne_firma(strasse: str | None) -> str | None:
+    """„FK Steuerberatungsgesellschaft mbH Röpckes Mühle 2" / „Steuerkanzlei Lund · Markt 1" → nur die Straße:
+    Firmenname vor der Straße (Verzeichnis-/LLM-Adresse) abschneiden – nur, wenn danach eine Straße mit Hausnummer
+    bleibt (Stichprobe 02.11.2026, steuerberater-fk.de)."""
+    if not strasse:
+        return strasse
+    teile = [t.strip() for t in re.split(r"\s*[,·|]\s*", strasse) if t.strip()]
+    if len(teile) > 1 and any(_FIRMA_WORT.search(t) for t in teile[:-1]) and _STRASSE_MIT_NR.match(teile[-1]):
+        return teile[-1]
+    # ohne Trennzeichen nur hinter einer Rechtsform („… mbH Röpckes Mühle 2")
+    if len(teile) == 1 and (m := list(_RECHTSFORM_WORT.finditer(strasse))):
+        rest = strasse[m[-1].end():].strip(" ,.·|/–-")
+        if _STRASSE_MIT_NR.match(rest):
+            return rest
+    return strasse
+
+
 def _adresse_text(strasse: str | None, plz: str | None, ort: str | None) -> str:
     return ", ".join(x for x in (strasse, " ".join(y for y in (plz, ort) if y)) if x)
 
@@ -880,9 +977,15 @@ def zusammenfuehren(
         web_adresse, regel_zusatz = (llm_strasse, regel.plz, regel.ort), llm_zusatz
     elif not regel.plz:
         regel_zusatz = llm_zusatz
-    if disc["plz"] and not disc["strasse"] and web_adresse[1] == disc["plz"] and web_adresse[0]:
-        # Discovery kennt nur PLZ/Ort, die Website dieselbe PLZ mit Straße: vollständige Adresse nehmen
+    if disc["strasse"]:
+        disc["strasse"] = strasse_ohne_firma(disc["strasse"])
+    if disc["plz"] and not disc["strasse"] and web_adresse[0] and web_adresse[1]:
+        # Discovery kennt nur PLZ/Ort, die Website eine vollständige Adresse: die vollständige nehmen
+        # (Stichprobe 02.11.2026, steuerberater-ploen.de: „Fehrenböteler Dorfstr. 36, 24635 Rickling OT Fehrenbötel")
         strasse, plz, ort = web_adresse
+        if web_adresse[1] != disc["plz"]:
+            abweichungen.append(f"Adresse: {disc['quelle_adresse']} {_adresse_text(None, disc['plz'], disc['ort'])} "
+                                f"(ohne Straße) / Website {_adresse_text(*web_adresse)}")
     elif disc["plz"]:
         strasse, plz, ort = disc["strasse"], disc["plz"], disc["ort"]
         if web_adresse[1]:
@@ -894,6 +997,7 @@ def zusammenfuehren(
                 )
     else:
         strasse, plz, ort = web_adresse
+    strasse = strasse_ohne_firma(strasse)
     if strasse and _POSTFACH.match(strasse) and llm_strasse and not _POSTFACH.match(llm_strasse) and llm and llm.plz == plz:
         # Prüfkatalog 2: Postfach nur, wenn keine Straße vorhanden
         strasse = llm_strasse
@@ -939,10 +1043,21 @@ def zusammenfuehren(
         leitung = [p for p in personen if ist_standort_leitung(p.funktion)]
         if leitung and personen and personen[0] not in leitung:
             abweichungen.append(f"Ansprechpartner-Rang: Standortleitung {leitung[0].name} vor {personen[0].name} (Zentrale)")
-        personen = leitung + [p for p in personen if p not in leitung]
-        from .kanzlei import anbieter_text
+        # danach die Personen der Standortseiten, erst dann die Vertretungsberechtigten der Zentrale (wetreu: die
+        # Geschäftsführer der Kieler Zentrale sind nicht die Ansprechpartner auf Fehmarn)
+        vor_ort = [p for p in personen if p not in leitung and any(gleiche_person(p.name, e.name) for e in erkannte)]
+        neu = leitung + vor_ort + [p for p in personen if p not in leitung and p not in vor_ort]
+        if not leitung and neu and personen and neu[0] is not personen[0]:
+            abweichungen.append(f"Ansprechpartner-Rang: {neu[0].name} (Standortseite) vor {personen[0].name} (Zentrale)")
+        personen = neu
+        # eigene Standortgesellschaft auf der Standortseite („wetreu Holstein KG") vor dem Anbieter der Zentrale
+        from .kanzlei import anbieter_text, stammdomain
 
-        anbieter = next((z for z in anbieter_text(impressum_text).splitlines() if rechtsform_aus_text(z)), None)
+        anbieter = standort_gesellschaft([seiten[t] for t in (Seitentyp.KONTAKT, Seitentyp.START) if t in seiten],
+                                         standort if not isinstance(standort, bool) else None,
+                                         stammdomain(kandidat.domain).split(".")[0] if kandidat.domain else None)
+        if anbieter is None:
+            anbieter = next((z for z in anbieter_text(impressum_text).splitlines() if rechtsform_aus_text(z)), None)
         if anbieter is None:  # Kopf ohne Anbieterzeile: erste Zeile mit Rechtsform außerhalb der Fremd-Abschnitte,
             # sonst der Name der Kette aus ketten.yaml (SHBB Heide: Standortbezeichnung blieb im Namen)
             imp_zeilen = (impressum_text or "").splitlines()
@@ -974,10 +1089,15 @@ def zusammenfuehren(
         # erkannte Berufsangabe – die Person ist der Berufsträger (§ 50 StBerG), Basis „abgeleitet"
         berufstraeger = 1
         abweichungen.append(f"Berufsträger abgeleitet: {personen[0].name} ({rechtsform or name})")
+    if not name and (firmierung := kopf_firmierung(impressum_text)):
+        name = firmierung  # Anbieterzeile „Steuerbüro Thomas Schütt" (Impressum-Kopf)
     if not name and personen and berufstraeger >= 1:
         # kein Kanzleiname gefunden (Logo als Bild, Name nur im Seitentitel): aus dem Hauptansprechpartner
         name = name_aus_ansprechpartner(personen[0], berufstraeger)
         abweichungen.append(f"Name abgeleitet aus Ansprechpartner {personen[0].name} – kein Kanzleiname gefunden")
+        if rechtsform is None and berufstraeger == 1 and ist_einzelkanzlei(
+                name, impressum_text, vertretung(impressum_text, fremd, rahmen).namen if impressum_text else []):
+            rechtsform = "Einzelkanzlei"  # „Steuerberaterin Henrike Weidemann" ohne Register
     if zahl is not None and berufstraeger > zahl:
         # danrevision: 2 Personen auf der Teamseite eines Standorts, aber 7 Berufsträger – Zahl unplausibel,
         # Untergrenze als Klasse

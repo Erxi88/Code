@@ -105,7 +105,10 @@ def test_ohne_llm(storage, ausschluss):
     k = storage.kanzlei_fuer_kandidat(kid)
     assert stat.llm_aufrufe == 0
     assert (k.strasse, k.telefon, k.email) == ("Großflecken 3", "+49 4321 559012", "kanzlei@steuerbuero-schuett.example")
-    assert k.kanzleiname is None and k.ansprechpartner == [] and k.berufstraeger_anzahl is None
+    # ohne LLM aus dem Impressum-Kopf: Firmierung „Steuerbüro Thomas Schütt", Inhaber mit Berufsbezeichnung
+    assert k.kanzleiname == "Steuerbüro Thomas Schütt"
+    assert [(p.name, p.funktion) for p in k.ansprechpartner] == [("Thomas Schütt", "Steuerberater (laut Impressum)")]
+    assert k.berufstraeger_anzahl == 1
 
 
 def test_ollama_nicht_erreichbar_beendet_lauf(storage, ausschluss):

@@ -296,7 +296,8 @@ def anwenden(k: Kanzlei, grund: str | None, impressum_gelesen: bool, ziel_land: 
     Speichern, Storage.upsert_kanzlei).
 
     Konfidenz aus dem ersten Positivsignal (Rang 1–3 hoch, 4 mittel, 5 niedrig); höchstens mittel bei keiner
-    Kanzlei, nicht verifizierter PLZ, Q4 (Telefon ungültig, Vorwahl passt nicht) und abgeleitetem Namen. Rang 4/5
+    Kanzlei, nicht verifizierter PLZ, Q4 (Telefon ungültig, Vorwahl passt nicht) und abgeleitetem Namen ohne Rang 1/2.
+    Rang 4/5
     steht als „1B Rang n: …" in „Abweichung" – solche Zeilen gehen ins Blatt „Zu prüfen" (qualitaet.py)."""
     rest = _GRUND_EINTRAG.sub("", k.abweichung or "").strip().rstrip(";").strip()
     rest = _TEAM_EINTRAG.sub("", _RANG_EINTRAG.sub("", rest)).strip().rstrip(";").strip()
@@ -311,7 +312,8 @@ def anwenden(k: Kanzlei, grund: str | None, impressum_gelesen: bool, ziel_land: 
                                            f"{k.berufstraeger_anzahl or 0} Berufsträger)") if x)  # Q13
     k.abweichung = (GRUND_PRAEFIX + grund + (f"; {rest}" if rest else "")) if grund else (rest or None)
     k.konfidenz = Konfidenz.HOCH if rang <= 3 else Konfidenz.MITTEL if rang == 4 else Konfidenz.NIEDRIG
-    if grund or not k.plz_verifiziert or NAME_ABGELEITET in (k.abweichung or "") or any(
+    # abgeleiteter Name deckelt nur ohne Kammer und ohne Berufsbezeichnung (Rang 1/2 → hoch; Stichprobe 02.11.2026)
+    if grund or not k.plz_verifiziert or (NAME_ABGELEITET in (k.abweichung or "") and rang > 2) or any(
             w in (k.abweichung or "") for w in DECKEL_WOERTER):
         k.konfidenz = _hoechstens(k.konfidenz, Konfidenz.MITTEL)
     return status_setzen(k, ziel_land, impressum_text)

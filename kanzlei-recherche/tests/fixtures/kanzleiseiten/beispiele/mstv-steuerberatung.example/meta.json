@@ -1,0 +1,10 @@
+{
+ "domain": "mstv-steuerberatung.example",
+ "urls": {
+  "start": "https://www.mstv-steuerberatung.example/",
+  "impressum": "https://www.mstv-steuerberatung.example/impressum",
+  "team": "https://www.mstv-steuerberatung.example/team"
+ },
+ "abgerufen_am": "2026-11-02T10:00:00",
+ "_hinweis": "Fiktive Kanzlei (Testdaten) – „Verantwortlich nach § 18 MStV“ ist Marketing, nicht Geschäftsführung (Stichprobe Seed 1, bhatti.pro)"
+}

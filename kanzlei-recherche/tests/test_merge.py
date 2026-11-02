@@ -160,9 +160,11 @@ def test_discovery_ohne_strasse_wird_mit_website_adresse_vervollstaendigt():
     ohne_strasse = PLACES.model_copy(update={"strasse": None})
     k = zusammenfuehren(K, [ohne_strasse], SEITEN, REGEL, LLM, OK)
     assert (k.strasse, k.plz, k.ort) == ("Holstenstraße 42", "24103", "Kiel") and k.abweichung is None
+    # andere PLZ ohne Straße: die vollständige Website-Adresse gilt, die Discovery-PLZ steht in „Abweichung"
+    # (Stichprobe 02.11.2026, steuerberater-ploen.de)
     andere_plz = PLACES.model_copy(update={"strasse": None, "plz": "24105"})
     k = zusammenfuehren(K, [andere_plz], SEITEN, REGEL, LLM, OK)
-    assert (k.strasse, k.plz) == (None, "24105") and "Adresse" in k.abweichung
+    assert (k.strasse, k.plz) == ("Holstenstraße 42", "24103") and "24105" in k.abweichung and "ohne Straße" in k.abweichung
 
 
 def test_llm_strasse_wenn_regel_nur_plz_findet():

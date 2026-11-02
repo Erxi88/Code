@@ -1,0 +1,9 @@
+{
+ "domain": "stb-weidemann.example",
+ "urls": {
+  "start": "https://www.stb-weidemann.example/",
+  "impressum": "https://www.stb-weidemann.example/impressum"
+ },
+ "abgerufen_am": "2026-11-02T10:00:00",
+ "_hinweis": "Fiktive Kanzlei (Testdaten) – Impressum ohne Firmierung, nur Person mit Berufsbezeichnung (Stichprobe Seed 1)"
+}

@@ -1,0 +1,35 @@
+{
+ "_hinweis": "Handgeschriebene Beispielantwort für Tests – keine echte Modellausgabe.",
+ "ergebnis": {
+  "kanzleiname": "Nordtreu Fehmarn",
+  "rechtsform": "GmbH",
+  "strasse": "Holstenbrücke 20",
+  "plz": "24103",
+  "ort": "Kiel",
+  "telefon": "0431 990000",
+  "email": null,
+  "verantwortliche_person": "Jörg Petersen",
+  "personen": [
+   {
+    "name": "Jörg Petersen",
+    "titel": null,
+    "funktion": "Geschäftsführer, Steuerberater"
+   },
+   {
+    "name": "Malte Ehlers",
+    "titel": null,
+    "funktion": "Steuerberater"
+   }
+  ],
+  "mitarbeiterzahl": null,
+  "mitarbeiterzahl_beleg": null,
+  "teamgroesse_klasse": null
+ },
+ "modell": "qwen3.5:9b",
+ "laufzeit_s": 15.0,
+ "prompt_tokens": 3000,
+ "antwort_tokens": 300,
+ "prompt_zeichen": 9000,
+ "kuerzung": null,
+ "num_ctx": 16384
+}

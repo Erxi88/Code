@@ -739,3 +739,45 @@ def test_ansprechpartner_kontakt_bleibt_bei_bereinigung():
 
     liste, _ = bereinigen([Ansprechpartner(name="Dr. Ole Lund", durchwahl="+49 431 555012", email="o.lund@x.example")])
     assert (liste[0].name, liste[0].durchwahl, liste[0].email) == ("Ole Lund", "+49 431 555012", "o.lund@x.example")
+
+
+# ---------------------------------------------------------------------- Stichprobe Seed 1 (02.11.2026)
+
+
+def test_strasse_ohne_firmenname():
+    from recherche.extract.merge import strasse_ohne_firma
+
+    assert strasse_ohne_firma("FK Steuerberatungsgesellschaft mbH Röpckes Mühle 2") == "Röpckes Mühle 2"
+    assert strasse_ohne_firma("Steuerkanzlei Lund · Markt 1") == "Markt 1"
+    for bleibt in ("Röpckes Mühle 2", "Kanzleistraße 5", "Am Kanzleiberg 3", "Lund GmbH", "Markt 1, 2. OG"):
+        assert strasse_ohne_firma(bleibt) == bleibt
+
+
+def test_personen_name_mit_beruf_ohne_trennzeichen_und_namensliste():
+    from recherche.extract.personen import erkenne_personen, name_zerlegen
+
+    assert name_zerlegen("Imke Sievers Steuerberaterin") is None  # Berufswort ist kein Namensteil
+    text = "Über uns\nHauke Rathje Steuerberater\nImke Sievers Steuerberaterin\nUnsere Steuerberater\nFinn Ohlsen und Merle Kock"
+    assert [(p.name, p.funktion) for p in erkenne_personen(text)] == [
+        ("Hauke Rathje", "Steuerberater"), ("Imke Sievers", "Steuerberaterin"), ("Finn Ohlsen", "Steuerberater"),
+        ("Merle Kock", "Steuerberater")]
+    # Fließtext ist keine Namensliste
+    assert erkenne_personen("Unsere Steuerberater\nberaten Sie gern, rufen Sie an und vereinbaren Sie einen Termin") == []
+
+
+def test_mstv_verantwortlicher_ist_kein_vertreter_und_kein_berufstraeger():
+    from recherche.extract.merge import ansprechpartner
+
+    imp = ("Impressum\nLund GmbH Steuerberatungsgesellschaft\nGeschäftsführer: Ole Lund\nBerufsbezeichnung: Steuerberater\n"
+           "Verantwortlich nach § 18 Abs. 2 MStV: Per Jacobsen")
+    namen = [(p.name, p.funktion) for p in ansprechpartner(None, [], imp)]
+    assert namen[0][0] == "Ole Lund" and all(n != "Per Jacobsen" for n, _ in namen)
+
+
+def test_impressum_kopf_person_ohne_firmierung():
+    from recherche.extract.merge import ansprechpartner, kopf_firmierung
+
+    imp = "Impressum\nAngaben gemäß § 5 DDG\nHenrike Weidemann, Steuerberaterin\nKieler Straße 12\n24340 Eckernförde"
+    assert [(p.name, p.funktion) for p in ansprechpartner(None, [], imp)] == [
+        ("Henrike Weidemann", "Steuerberaterin (laut Impressum)")]
+    assert kopf_firmierung("Impressum\nSteuerbüro Jens Wiese\nDorfstr. 36\n24635 Rickling") == "Steuerbüro Jens Wiese"

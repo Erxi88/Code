@@ -136,9 +136,15 @@ def name_zerlegen(text: str) -> tuple[str, str | None] | None:
     if not 2 <= len(gross) <= 4 or len(woerter) > 6:
         return None
     if not all(_NAME_WORT.match(w) or (k == 0 and _INITIALE.match(w)) for k, w in enumerate(gross)) \
-            or any(w.lower().strip(".") in _KEINE_NAMEN or _INSTITUTION.search(w) for w in woerter):
+            or any(w.lower().strip(".") in _KEINE_NAMEN or _INSTITUTION.search(w) or _BERUF_IM_NAMEN.fullmatch(w.strip(".,"))
+                   for w in woerter):
         return None
     return text, " ".join(titel_teile) or None
+
+
+# Berufswörter sind nie Teil eines Namens („Imke Sievers Steuerberaterin" ist Name + Berufsbezeichnung)
+_BERUF_IM_NAMEN = re.compile(r"(?:steuerberater(?:in|innen)?|steuerbevollmächtigte[rn]?|wirtschaftsprüfer(?:in)?|"
+                             r"rechtsanwält(?:in|e)|rechtsanwalt|notar(?:in)?|buchprüfer(?:in)?)", re.IGNORECASE)
 
 
 _ARTIKEL = frozenset({"den", "der", "die", "dem", "des"})
@@ -326,7 +332,45 @@ def erkenne_personen(
         elif titel and (b := f.muster_berufstraeger.search(titel)):
             hinzu((nt[0], titel), b.group(0), i)  # „StB Justyna Slama": die Berufsbezeichnung steht vor dem Namen
             vergeben.update({i, *titel_zusatz})
+    for i, z in enumerate(zeilen):
+        if not z or i in vergeben or i in im_rahmen:
+            continue
+        # „Max Muster Steuerberater" (Name und Berufsbezeichnung in nebeneinanderliegenden Elementen, ohne Trennzeichen)
+        if (m := _NAME_BERUF.match(z)) and (nt := name_zerlegen(m.group(1))):
+            hinzu(nt, m.group(2), i)
+            vergeben.add(i)
+            continue
+        # Namensliste unter einer Berufs-Überschrift: „Unsere Steuerberater" ⏎ „Max Muster, Eva Lund und Ole Rau"
+        if i > 0 and _BERUF_UEBERSCHRIFT.search(zeilen[i - 1] or "") and len(zeilen[i - 1].split()) <= 6 \
+                and (namen := _namensliste(z)):
+            for nt in namen:
+                hinzu(nt, _beruf_einzahl(zeilen[i - 1]), i)
+            vergeben.add(i)
     return gefunden
+
+
+# Rückmeldung Stichprobe Seed 1 (02.11.2026, dg-steuern/etl-holstein): Berufsträger auf /ueber-uns/ ohne Trennzeichen
+_BERUFE = (r"steuerberater(?:in)?|steuerbevollmächtigte[r]?|wirtschaftsprüfer(?:in)?|rechtsanwalt|rechtsanwältin|"
+           r"vereidigte[r]?\s+buchprüfer(?:in)?|stb|wp")
+_NAME_BERUF = re.compile(rf"^(.+?)\s+((?:{_BERUFE})(?:\s*(?:[,/|&]|und)\s*(?:{_BERUFE}))*)\s*$", re.IGNORECASE)
+_BERUF_UEBERSCHRIFT = re.compile(r"\b(?:steuerberater(?:innen|n)?|berufsträger(?:innen)?|wirtschaftsprüfer(?:innen)?|"
+                                 r"partner(?:innen)?)\b", re.IGNORECASE)
+
+
+def _namensliste(zeile: str) -> list[tuple[str, str | None]] | None:
+    """„Max Muster, Eva Lund und Ole Rau" → mindestens zwei Namen, sonst None (kein Fließtext)."""
+    teile = [t.strip(" .") for t in re.split(r",|\bund\b|&|;", zeile) if t.strip(" .")]
+    namen = [name_zerlegen(t) for t in teile]
+    return namen if len(namen) >= 2 and all(namen) else None
+
+
+def _beruf_einzahl(ueberschrift: str) -> str:
+    u = ueberschrift.lower()
+    if "wirtschaftsprüf" in u:
+        return "Wirtschaftsprüfer"
+    if "partner" in u and "steuerberat" not in u:
+        return "Partner"
+    return "Steuerberater"
 
 
 def ist_berufstraeger_funktion(funktion: str | None, f: Funktionen | None = None) -> bool:

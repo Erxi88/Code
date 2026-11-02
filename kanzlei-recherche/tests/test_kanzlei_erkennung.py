@@ -329,7 +329,8 @@ def test_lohnsteuerhilfe_und_reine_anwaltskanzlei(name, impressum, personen, gru
 
 def test_name_abgeleitet_ohne_kammer():
     """Name aus dem Ansprechpartner ohne Kammer und Berufsbezeichnung: Kanzlei, aber 1B Rang 4 (mittel) – Q5
-    schiebt die Zeile nach „Zu prüfen"; mit Berufsbezeichnung Rang 2, abgeleiteter Name → höchstens mittel."""
+    schiebt die Zeile nach „Zu prüfen"; mit Berufsbezeichnung Rang 2 → hoch trotz abgeleitetem Namen
+    (Stichprobe Seed 1, 02.11.2026)."""
     abw = "Name abgeleitet aus Ansprechpartner Ina Lund – kein Kanzleiname gefunden"
     seiten = {Seitentyp.IMPRESSUM: _seite("gemeinde-x.example", Seitentyp.IMPRESSUM,
                                           ["Impressum", "Praxis Lund", "Ina Lund", "Dorfstraße 1", "24999 X"])}
@@ -339,7 +340,7 @@ def test_name_abgeleitet_ohne_kammer():
     mit_beruf = {Seitentyp.IMPRESSUM: _seite("lund.example", Seitentyp.IMPRESSUM,
                                              ["Impressum", "Ina Lund", "Berufsbezeichnung: Steuerberaterin"])}
     k = pruefen(_zeile(kanzleiname="Steuerkanzlei Lund", abweichung=abw, berufstraeger_anzahl=1), mit_beruf, ziel_land=SH)
-    assert k.status == Status.NEU and k.konfidenz == Konfidenz.MITTEL and "1B Rang" not in k.abweichung
+    assert k.status == Status.NEU and k.konfidenz == Konfidenz.HOCH and "1B Rang" not in k.abweichung
 
 
 def test_blocklist_domain_keine_zeile():

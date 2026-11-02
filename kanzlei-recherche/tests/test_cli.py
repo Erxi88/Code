@@ -221,9 +221,9 @@ def fake_openplz_pruefer(monkeypatch):
 def test_fixture_eval(fake_openplz_pruefer):
     r = runner.invoke(cli.app, ["fixture-eval", "--nur", "beispiele"])
     assert r.exit_code == 0, r.output
-    assert "Fixtures: 6 ausgewertet; Modell qwen3.5:9b" in r.output
-    assert "Trefferquote je Feld" in r.output and "6/6 (100%)" in r.output
-    assert "Je Kanzlei im Mittel: 33.1 s, Token 3154 (Prompt 2842, Antwort 313) über 6 Antworten" in r.output
+    assert "Fixtures: 12 ausgewertet; Modell qwen3.5:9b" in r.output  # 6 Beispiele + 6 Fälle der Stichprobe Seed 1
+    assert "Trefferquote je Feld" in r.output and "12/12 (100%)" in r.output
+    assert "Je Kanzlei im Mittel: 24.0 s" in r.output and "über 12 Antworten" in " ".join(r.output.split())
     assert "Modellvergleich" in r.output and "qwen3.6:27b" in r.output
     assert "✗" not in r.output.split("Modellvergleich")[0]
 
