@@ -15,7 +15,7 @@ from recherche.ketten_crawl import (
     standorte_anlegen,
     uebersicht_laden,
 )
-from recherche.models import Kanzlei
+from recherche.models import Kandidat, Kanzlei
 from recherche.storage import Storage
 
 FIX = Path(__file__).parent / "fixtures" / "ketten"
@@ -131,3 +131,47 @@ def test_crawl_beginnt_bei_pfad_standort():
     with pytest.raises(RuntimeError):
         asyncio.run(c._crawl(k, "kette.example", None))
     assert geholt == ["https://www.kette.example/standorte/kiel"]
+
+
+def test_standorte_fest_ohne_uebersicht(tmp_path):
+    """wetreu: keine Übersichtsseite (JS-Widget) → feste Liste aus ketten.yaml (Domains oder URLs)."""
+    from recherche.ketten_crawl import feste_standorte
+
+    (tmp_path / "ketten.yaml").write_text(
+        "ketten:\n  nordtreu:\n    name: Nordtreu\n    zentrale: nordtreu.example\n    standorte_fest:\n"
+        "      - fehmarn.nordtreu.example\n      - https://lbb.nordtreu.example/start\n      - www.nordtreu.example\n"
+        "      - fehmarn.nordtreu.example/\n", encoding="utf-8")
+    k = KettenConfig.laden(tmp_path / "ketten.yaml").ketten[0]
+    assert k.uebersicht is None
+    assert feste_standorte(k) == ["https://fehmarn.nordtreu.example/", "https://lbb.nordtreu.example/start"]
+    assert k.enthaelt("lbb.nordtreu.example")
+
+
+def test_subdomains_aus_suchtreffern_sind_standorte(storage):
+    from recherche.ketten_crawl import standorte_aus_suchtreffern
+
+    for d in ("kiel.kette.example", "jobs.kette.example", "kette.example", "andere.example"):
+        storage.add_kandidat(Kandidat(bundesland="SH", domain=d, website=f"https://{d}/", quelle="brave"))
+    k = _kette()
+    assert standorte_aus_suchtreffern(storage, "SH", k) == ["https://kiel.kette.example/"]
+    assert not k.enthaelt("jobs.kette.example") and not k.enthaelt("karriere.kette.example")
+    stat = standorte_anlegen(storage, "SH", k, standorte_aus_suchtreffern(storage, "SH", k), "lauf")
+    assert (stat.neu, stat.bekannt) == (0, 1)  # vorhandener Kandidat, nur mit der Zentrale verknüpft
+    assert storage.funde("SH", QUELLE)[0].snippet == "Standort der Kette Kette Steuerberatungsgesellschaft mbH (Zentrale kette.example)"
+
+
+def test_cli_ketten_mit_fester_liste_ohne_netz(tmp_path):
+    from typer.testing import CliRunner
+
+    from recherche import cli
+
+    cfg = tmp_path / "settings.yaml"
+    (tmp_path / "ketten.yaml").write_text(
+        "ketten:\n  nordtreu:\n    name: Nordtreu\n    zentrale: nordtreu.example\n    standorte_fest:\n"
+        "      - fehmarn.nordtreu.example\n      - lbb.nordtreu.example\n", encoding="utf-8")
+    cfg.write_text(f"bundeslaender:\n  SH:\n    name: Schleswig-Holstein\n    orte_datei: x.csv\n"
+                   f"pfade:\n  db: {tmp_path / 'db.sqlite'}\n  ketten: {tmp_path / 'ketten.yaml'}\n", encoding="utf-8")
+    r = CliRunner().invoke(cli.app, ["ketten", "-b", "SH", "--config", str(cfg)])
+    assert r.exit_code == 0, r.output
+    ausgabe = " ".join(r.output.split())
+    assert "Nordtreu: 2 Standorte (0 aus der Übersicht, 2 aus standorte_fest, 0 aus Suchtreffern), 3 neu" in ausgabe

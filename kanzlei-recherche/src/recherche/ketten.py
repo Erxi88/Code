@@ -24,6 +24,15 @@ import yaml
 from .models import Kanzlei
 
 KETTE_AB_STANDORTEN = 3
+# Subdomains einer Ketten-Domain, die keine Standorte sind
+KEINE_STANDORTE = frozenset({"www", "jobs", "karriere", "career", "careers", "mail", "webmail", "portal", "login",
+                             "cloud", "intranet", "shop", "blog", "news", "akademie", "service", "kundenportal"})
+
+
+def _domain(eintrag: str) -> str:
+    from .search.pipeline import normalize_domain
+
+    return normalize_domain(eintrag) or eintrag.lower()
 GROSSGESELLSCHAFT, KETTE, EINZELKANZLEI, MITTELSTAND = "Großgesellschaft", "Kette", "Einzelkanzlei", "Mittelstand"
 _IMPRESSUM_PFAD = re.compile(r"impressum|imprint|anbieterkennzeichnung|rechtliche?s?|legal", re.IGNORECASE)
 
@@ -43,12 +52,17 @@ class Kette:
     uebersicht: str | None = None
     link_muster: re.Pattern | None = None
     standortmuster: str = "subdomain"  # subdomain | pfad | domain
+    # feste Standortliste (Domains oder URLs) – wenn es keine Übersichtsseite gibt (wetreu: Standortsuche als JS-Widget)
+    standorte_fest: list[str] = field(default_factory=list)
 
     def enthaelt(self, domain: str | None, website: str | None = None) -> bool:
-        """Zentrale oder Standort dieser Kette (Subdomain der Zentrale, Treffer des Link-Musters)."""
+        """Zentrale oder Standort dieser Kette: Subdomain der Zentrale (außer jobs., karriere., mail. …), Eintrag der
+        festen Standortliste oder Treffer des Link-Musters."""
         d = (domain or "").lower().removeprefix("www.")
         z = self.zentrale.lower().removeprefix("www.")
-        if d and (d == z or d.endswith("." + z)):
+        if d and (d == z or (d.endswith("." + z) and d.split(".")[0] not in KEINE_STANDORTE)):
+            return True
+        if d and d in {_domain(x) for x in self.standorte_fest}:
             return True
         return bool(self.link_muster and website and self.link_muster.match(website))
 
@@ -71,7 +85,7 @@ class KettenConfig:
                  for g in daten.get("grossgesellschaften") or []]
         ketten = [Kette(s, k.get("name") or s, k["zentrale"], k.get("uebersicht"),
                         re.compile(k["link_muster"], re.IGNORECASE) if k.get("link_muster") else None,
-                        k.get("standortmuster") or "subdomain")
+                        k.get("standortmuster") or "subdomain", [str(x) for x in k.get("standorte_fest") or []])
                   for s, k in (daten.get("ketten") or {}).items()]
         return cls(gross, ketten)
 

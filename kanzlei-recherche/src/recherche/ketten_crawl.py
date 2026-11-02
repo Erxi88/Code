@@ -53,6 +53,27 @@ def standort_links(html: str, basis_url: str, kette: Kette) -> list[str]:
     return list(gefunden)
 
 
+def feste_standorte(kette: Kette) -> list[str]:
+    """Standorte aus `standorte_fest` (Domain oder URL) als URLs, ohne die Zentrale, je Standort einmal."""
+    urls: dict[str, None] = {}
+    zentrale = kette.zentrale.lower().removeprefix("www.")
+    for eintrag in kette.standorte_fest:
+        url = eintrag if "://" in eintrag else f"https://{eintrag.strip().strip('/')}/"
+        n = _normal(url)
+        if kette.standortmuster != "pfad" and (normalize_domain(n) or "") == zentrale:
+            continue
+        urls.setdefault(n, None)
+    return list(urls)
+
+
+def standorte_aus_suchtreffern(storage: Storage, bundesland: str, kette: Kette) -> list[str]:
+    """Subdomains der Ketten-Domain, die schon als Kandidat aus Suchtreffern oder Verzeichnissen da sind
+    („kiel.kette.de") – ohne Zentrale und ohne jobs./karriere./mail. …"""
+    zentrale = kette.zentrale.lower().removeprefix("www.")
+    return [f"https://{k.domain}/" for k in storage.kandidaten(bundesland)
+            if k.domain and k.domain != zentrale and k.domain.endswith("." + zentrale) and kette.enthaelt(k.domain)]
+
+
 @dataclass
 class KettenStatistik:
     standorte: int = 0

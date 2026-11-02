@@ -644,6 +644,10 @@ der nächsten Quelle füllen.**
   Wiederholbar ohne Dubletten. Standortmuster `subdomain`/`domain` → eigene Domain; `pfad` → Kandidat ohne Domain
   (Domain UNIQUE gehört der Zentrale), Website = Standort-URL; crawl beginnt dort, extract wendet Kanzlei-Prüfung und
   Standortseiten-Regel über die Website an. Alle Zeilen einer Kette aus ketten.yaml bilden eine Standort-Gruppe.
+  Ohne Übersichtsseite (wetreu: Standortsuche als JS-Widget) `standorte_fest: [Domains/URLs]`; beides ist kombinierbar.
+  **Subdomains der Ketten-Domain aus Suchtreffern** gelten in extract und export automatisch als Standort (Ausnahme
+  `KEINE_STANDORTE`: www., jobs., karriere., mail., portal. …); `recherche ketten` verknüpft sie zusätzlich mit der
+  Zentrale (Fund „kette") und meldet „n aus der Übersicht, n aus standorte_fest, n aus Suchtreffern".
   Danach `crawl` und `extract`.
 - Spalte **„Kanzleityp"** (hinter „Zentrale", `ketten.py`, Prüfkatalog 9): Großgesellschaft (Namensmuster/Domain
   aus `config/ketten.yaml`) vor Kette (Eintrag in `ketten.yaml` oder ≥ 3 Standorte mit derselben Impressum-URL bzw.

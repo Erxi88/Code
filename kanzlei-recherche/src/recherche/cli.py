@@ -849,7 +849,13 @@ def ketten_cmd(
     import httpx
 
     from .ketten import KettenConfig
-    from .ketten_crawl import standort_links, standorte_anlegen, uebersicht_laden
+    from .ketten_crawl import (
+        feste_standorte,
+        standort_links,
+        standorte_anlegen,
+        standorte_aus_suchtreffern,
+        uebersicht_laden,
+    )
 
     ctx = _kontext(config, bundesland, db)
     cfg = KettenConfig.laden(ctx.settings.pfad(ctx.settings.pfade.ketten))
@@ -861,15 +867,19 @@ def ketten_cmd(
     with ctx.storage() as st, httpx.Client(timeout=ctx.settings.crawl.timeout_s, follow_redirects=True,
                                            headers={"User-Agent": ua}) as client:
         for c in auswahl:
-            if not c.uebersicht:
-                console.print(f"{c.schluessel}: keine Übersichts-URL – übersprungen")
+            aus_liste: list[str] = []
+            if c.uebersicht:
+                html = uebersicht_laden(c, client, ua, st, melden=lambda t: console.print(f"[yellow]{t}[/yellow]"))
+                aus_liste = standort_links(html, c.uebersicht, c) if html is not None else []
+            fest = feste_standorte(c)
+            gefunden = standorte_aus_suchtreffern(st, ctx.bundesland, c)
+            urls = list(dict.fromkeys(aus_liste + fest + gefunden))
+            if not urls:
+                console.print(f"{c.schluessel}: keine Standorte (weder uebersicht noch standorte_fest noch Suchtreffer)")
                 continue
-            html = uebersicht_laden(c, client, ua, st, melden=lambda t: console.print(f"[yellow]{t}[/yellow]"))
-            if html is None:
-                continue
-            urls = standort_links(html, c.uebersicht, c)
             stat = standorte_anlegen(st, ctx.bundesland, c, urls, lauf_id)
-            console.print(f"{c.name}: {stat.standorte} Standorte, {stat.neu} neu, {stat.bekannt} bekannt")
+            console.print(f"{c.name}: {stat.standorte} Standorte ({len(aus_liste)} aus der Übersicht, {len(fest)} aus "
+                          f"standorte_fest, {len(gefunden)} aus Suchtreffern), {stat.neu} neu, {stat.bekannt} bekannt")
     console.print("Weiter mit: recherche crawl, dann recherche extract")
 
 

@@ -6,7 +6,9 @@
 # ketten: Mehrstandort-Gesellschaften mit Standortliste. uebersicht = Seite mit allen Standorten, link_muster =
 #   regulärer Ausdruck für Standort-Links darauf, standortmuster = subdomain (<ort>.kette.de) | pfad
 #   (kette.de/standorte/<ort>) | domain (eigene Domain je Standort). `recherche ketten -b SH` legt je Standort einen
-#   Kandidaten an, verknüpft mit der Zentrale (zentrale = Domain der Zentrale).
+#   Kandidaten an, verknüpft mit der Zentrale (zentrale = Domain der Zentrale). Ohne Übersichtsseite: standorte_fest =
+#   Liste von Domains/URLs. Subdomains der Zentrale aus Suchtreffern gelten immer als Standort (außer www., jobs.,
+#   karriere., mail. …) und werden von `recherche ketten` mit der Zentrale verknüpft.
 grossgesellschaften:
   - {name: BDO, muster: ['\bBDO\b'], domains: [bdo.de, bdo.com]}
   - {name: EY, muster: ['\bEY\b', 'Ernst\s*&\s*Young'], domains: [ey.com]}
@@ -39,9 +41,16 @@ ketten:
   wetreu:
     # Standorte mit eigener Gesellschaft (fehmarn.wetreu.de, lbb.wetreu.de → wetreu Holstein KG): Firmierung und
     # Personen der Standortseite vor denen der Kieler Zentrale (Stichprobe Seed 1, 02.11.2026).
-    # uebersicht noch offen – bitte die Seite mit allen Standorten eintragen, dann `recherche ketten --kette wetreu`.
+    # Keine Übersichtsseite (Standortsuche ist ein JS-Widget, keine Sitemap) → feste Standortliste (02.11.2026).
     name: wetreu
     zentrale: wetreu.de
-    uebersicht:
     link_muster: 'https?://(?!www\.)[a-z0-9-]+\.wetreu\.de/?'
     standortmuster: subdomain
+    standorte_fest:
+      - bad-segeberg.wetreu.de
+      - blb.wetreu.de
+      - eckernfoerde.wetreu.de
+      - fehmarn.wetreu.de
+      - lbb.wetreu.de
+      - mecklenburg.wetreu.de
+      - nordkg.wetreu.de
