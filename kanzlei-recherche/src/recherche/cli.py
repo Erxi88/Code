@@ -402,9 +402,13 @@ def _export(ctx: Kontext, out: Path | None, kontrollblaetter: bool = False) -> P
     with ctx.storage() as st:
         _ortsnamen_setzen(ctx)
         pfad = export_excel(st, ctx.bundesland, pfad, ctx.bl_cfg.name, kontrollblaetter)
-        n = len(lieferliste(st.alle_kanzleien(), ctx.bl_cfg.name))
-    art = "mit Kontrollblättern" if kontrollblaetter else "Lieferformat: Kanzleien + Zu prüfen"
-    console.print(f"Excel geschrieben: [bold]{pfad}[/bold] ({n} Zeilen mit PLZ in {ctx.bl_cfg.name}, {art})")
+        from .export import _aufbereiten
+
+        # genau die Zeilen der Datei: Hauptblatt + „Zu prüfen" (nicht keine Kanzlei, weitere Domains, außerhalb)
+        a = _aufbereiten(lieferliste(st.alle_kanzleien(), ctx.bl_cfg.name), (), ctx.bl_cfg.name)
+    art = "mit Kontrollblättern" if kontrollblaetter else "Lieferformat"
+    console.print(f"Excel geschrieben: [bold]{pfad}[/bold] – {ctx.bl_cfg.name}: {len(a.haupt)} Kanzleien im Blatt "
+                  f"„Kanzleien“, {len(a.zu_pruefen)} im Blatt „Zu prüfen“ ({art})")
     return pfad
 
 

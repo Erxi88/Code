@@ -603,7 +603,8 @@ der nächsten Quelle füllen.**
   Keine Kanzlei, Nicht gefunden, Dubletten, Qualität, Lauf-Protokoll) nur mit `--mit-kontrollblaettern` (auch `run`).
   `recherche export --gesamt --out datei.xlsx`: 16 Länderblätter (genau ihre Kanzleien, auch leer), „Deutschland"
   (alle) und „Zu prüfen"; Kontrollblätter aller Läufe mit `--mit-kontrollblaettern`. `stichprobe` und `qualitaet`
-  arbeiten auf derselben Liste.
+  arbeiten auf derselben Liste. Die Meldung nennt genau die Zeilen der Datei („643 Kanzleien im Blatt „Kanzleien“, 72 im
+  Blatt „Zu prüfen“").
 
 - Blatt „Kanzleien" (bei `--gesamt` je Land): Autofilter, feste Kopfzeile, Dropdown für Status; Spalten u. a.
   „Website vorhanden", „Berufsträger (Anzahl)", „Abweichung". Eine erneute Extraktion

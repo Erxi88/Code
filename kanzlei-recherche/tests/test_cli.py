@@ -55,7 +55,8 @@ def test_export(befuellt, db_pfad, tmp_path):
     out = tmp_path / "x.xlsx"
     r = runner.invoke(cli.app, _args("export", db_pfad, "--out", str(out)))
     assert r.exit_code == 0, r.output
-    assert "Zeilen mit PLZ in Schleswig-Holstein" in r.output and "Lieferformat" in r.output
+    ausgabe = " ".join(r.output.split())
+    assert "Schleswig-Holstein: 18 Kanzleien im Blatt „Kanzleien“, 2 im Blatt „Zu prüfen“ (Lieferformat)" in ausgabe
     assert load_workbook(out)["Kanzleien"].max_row == 19  # 2 Zeilen mit Konfidenz niedrig in „Zu prüfen"
 
 
