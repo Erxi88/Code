@@ -578,11 +578,36 @@ def kopf_name_zweizeilig(impressum: str | None, name: str | None = None, rahmen:
 
 
 def name_wie_domain(name: str | None, domain: str | None) -> bool:
-    """„Stb-Grunewald" bei grunewald-stb.de: der LLM-Name ist nur die Domain – kein Kanzleiname."""
-    if not name or not domain or " " in name.strip():
+    """„Stb-Grunewald" bei grunewald-stb.de, „Schroeder Steuer" bei schroeder-steuer.de, „Mein Steuerberater in Kiel"
+    bei mein-steuerberater-in-kiel.de: der Name besteht nur aus den Wörtern der Domain – kein Kanzleiname."""
+    if not name or not domain:
         return False
-    teile = {t for t in re.split(r"[-_.]", name.lower()) if t}
-    return bool(teile) and teile <= set(re.split(r"[-_.]", domain.lower()))
+    umlaut = str.maketrans({"ä": "ae", "ö": "oe", "ü": "ue", "ß": "ss"})
+    teile = {t for t in re.split(r"[-_.\s]+", name.lower().translate(umlaut)) if t}
+    domain_teile = set(re.split(r"[-_.]", domain.lower().translate(umlaut)))
+    return bool(teile) and (teile <= domain_teile or "".join(sorted(teile)) == "".join(sorted(domain_teile - {"de", "com",
+                                                                                                          "tax", "www"})))
+
+
+# Seitentitel statt Firmierung („Kanzlei für Steuer- und Wirtschaftsberatung", „Mein Steuerberater in Kiel")
+_GENERISCHER_TITEL = re.compile(
+    r"^(?:(?:mein|meine|ihr|ihre|unser|unsere|die|der|das)\s+(?:steuerberater\w*|steuerkanzlei|kanzlei|steuerbüro)\b|"
+    r"(?:steuer)?kanzlei\s+für\b|steuerberat\w*\s+(?:in|für|aus)\s+\w+$|steuerberatung\s+(?:in|aus)\b)", re.IGNORECASE)
+
+
+def generischer_titel(name: str | None) -> bool:
+    return bool(name) and bool(_GENERISCHER_TITEL.match(name.strip()))
+
+
+def seitentitel_statt_firmierung(name: str | None, domain: str | None, impressum: str | None) -> bool:
+    """Domain-Wörter, die nicht als ganze Wörter im Impressum stehen („Schroeder Steuer"), oder ein generischer
+    Titel ohne Rechtsform („Kanzlei für …") – kein Kanzleiname. „Hansen Steuerberatung" im Impressum bleibt."""
+    if not name:
+        return False
+    woerter = re.findall(r"\w+", name)
+    im_impressum = bool(woerter) and bool(re.search(r"\b" + r"\W+".join(map(re.escape, woerter)) + r"\b",
+                                                    impressum or "", re.IGNORECASE))
+    return (name_wie_domain(name, domain) and not im_impressum) or (generischer_titel(name) and not rechtsform_aus_text(name))
 
 
 def bezeichnung_aus_partnerschaftsname(name: str | None) -> str | None:
@@ -1061,8 +1086,13 @@ def zusammenfuehren(
     impressum_text = _text(seiten[Seitentyp.IMPRESSUM]) if Seitentyp.IMPRESSUM in seiten else None
     rahmen = seiten_rahmen(seiten)
     fremd = ausschluss.fremd_zeilen(impressum_text.splitlines()) if ausschluss and impressum_text else None
-    llm_name = name_vervollstaendigen(
-        name_aus_impressum(llm.kanzleiname if llm else None, impressum_text, fremd, rahmen), impressum_text)
+    roh_name = llm.kanzleiname if llm else None
+    if seitentitel_statt_firmierung(roh_name, kandidat.domain, impressum_text):
+        # Seitentitel/Domain statt Firmierung (Stichprobe Seed 2) – vor den Kopfzeilen-Regeln, die sonst „Lund Steuer"
+        # zu „Ina Lund, Steuerberaterin" machen; mit Person + Berufsbezeichnung im Impressum gilt die Ableitung unten
+        abweichungen.append(f"Name „{roh_name}“ ist nur Domain/Seitentitel – verworfen")
+        roh_name = None
+    llm_name = name_vervollstaendigen(name_aus_impressum(roh_name, impressum_text, fremd, rahmen), impressum_text)
     name = disc["name"] or llm_name
     if disc["name"] and llm_name and not (name_tokens(disc["name"]) & name_tokens(llm_name)):
         abweichungen.append(f"Name: {disc['quelle_name']} „{disc['name']}“ / Website „{llm_name}“")
@@ -1200,9 +1230,6 @@ def zusammenfuehren(
         # erkannte Berufsangabe – die Person ist der Berufsträger (§ 50 StBerG), Basis „abgeleitet"
         berufstraeger = 1
         abweichungen.append(f"Berufsträger abgeleitet: {personen[0].name} ({rechtsform or name})")
-    if name_wie_domain(name, kandidat.domain):
-        abweichungen.append(f"Name „{name}“ ist nur die Domain – verworfen")
-        name = None
     if (zweizeilig := kopf_name_zweizeilig(impressum_text, name, rahmen)) and (not name or _name_norm(zweizeilig) != _name_norm(name)):
         name = zweizeilig  # „ETL HOLSTEIN" ⏎ „Steuerberatungsgesellschaft mbH", „Steuerberater-Sozietät" ⏎ „…"
     if not name and (firmierung := kopf_firmierung(impressum_text)):
