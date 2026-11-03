@@ -1008,16 +1008,14 @@ _BERUF_IM_TEXT = re.compile(
 
 
 def name_aus_ansprechpartner(p: Ansprechpartner, berufstraeger: int) -> str:
-    """Rückfall ohne Kanzleinamen: ein Berufsträger → „Steuerberaterin Angelika Just" (Berufsbezeichnung
-    aus Funktion/Titel, sonst „Steuerberater"); mehrere → „Steuerkanzlei Just"."""
-    teile = _name_teile(p.name)
-    nachname = (p.name.split()[-1] if not teile else next(
-        (w for w in reversed(p.name.split()) if w.lower().strip(".,") == teile[1]), teile[1].title()))
-    if berufstraeger > 1:
-        return f"Steuerkanzlei {nachname}"
+    """Rückfall ohne Kanzleinamen: immer „Steuerberater/in Vorname Nachname" aus dem Hauptansprechpartner
+    (Berufsbezeichnung aus Funktion/Titel, sonst „Steuerberater"; Titel wie „Dr." entfallen) – auch bei mehreren
+    Berufsträgern, kein „Steuerkanzlei Nachname" mehr (fixture-eval 03.11.2026)."""
+    from .ansprechpartner import titel_abschneiden
+
     m = _BERUF_IM_TEXT.search(" ".join(x for x in (p.funktion, p.titel) if x))
     beruf = m.group(1)[0].upper() + m.group(1)[1:].lower() if m else "Steuerberater"
-    return f"{beruf} {p.name}"
+    return f"{beruf} {titel_abschneiden(' '.join(p.name.split()))[0]}"
 
 
 _FIRMA_WORT = re.compile(r"\b(?:gmbh|mbb|mbh|partg\w*|partnerschaft\w*|kg|ag|ohg|gbr|e\.\s?k\.|steuerberat\w*|steuerbüro|"

@@ -889,5 +889,8 @@ def test_name_aus_ansprechpartner_wenn_kein_kanzleiname():
     k = zusammenfuehren(Kandidat(id=1, bundesland="SH", domain="j.example"), [], seiten, None, LlmErgebnis())
     assert k.kanzleiname == "Steuerberaterin Angelika Just"
     assert "Name abgeleitet aus Ansprechpartner" in k.abweichung
-    assert name_aus_ansprechpartner(Ansprechpartner(name="Dr. Jens Köhn", funktion="Partner"), 3) == "Steuerkanzlei Köhn"
+    # fixture-eval 03.11.2026: einheitlich „Steuerberater/in Vorname Nachname", auch bei mehreren Berufsträgern
+    assert name_aus_ansprechpartner(Ansprechpartner(name="Dr. Jens Köhn", funktion="Partner"), 3) == "Steuerberater Jens Köhn"
+    assert name_aus_ansprechpartner(Ansprechpartner(name="Ina Gloe", funktion="Steuerberaterin"), 2) == \
+        "Steuerberaterin Ina Gloe"
     assert name_aus_ansprechpartner(Ansprechpartner(name="Jens Köhn", funktion="Partner"), 1) == "Steuerberater Jens Köhn"

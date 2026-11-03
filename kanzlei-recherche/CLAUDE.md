@@ -470,8 +470,9 @@ der nächsten Quelle füllen.**
     mit genau einem Ansprechpartner ohne erkannte Berufsangabe → 1 Berufsträger, Hinweis „Berufsträger
     abgeleitet" in „Abweichung".
   - Kein Kanzleiname gefunden, aber Ansprechpartner und ≥ 1 Berufsträger → Name aus dem
-    Hauptansprechpartner: ein Berufsträger „Steuerberaterin Angelika Just" (Berufsbezeichnung aus
-    Funktion/Titel), mehrere „Steuerkanzlei Köhn"; Hinweis „Name abgeleitet" in „Abweichung".
+    Hauptansprechpartner, einheitlich „Steuerberater/in Vorname Nachname" („Steuerberaterin Angelika Just";
+    Berufsbezeichnung aus Funktion/Titel, Titel wie „Dr." entfallen) – auch bei mehreren Berufsträgern, kein
+    „Steuerkanzlei Nachname" (fixture-eval 03.11.2026); Hinweis „Name abgeleitet" in „Abweichung".
   - Vertretungsberechtigte im Impressum: „vertretungsberechtigt" (auch der Tippfehler
     „vertretungberechtigt" und Gender-Klammern wie „(r)"), „vertreten durch",
     „Geschäftsführer", „Inhaber" (Namen dürfen direkt folgen); „Partner", „Gesellschafter",
