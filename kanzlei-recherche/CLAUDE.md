@@ -447,8 +447,8 @@ der nächsten Quelle füllen.**
     Abschnitts, Rang hinter den Berufsträgern der Teamseite, vorn nur, wenn sonst niemand genannt ist.
   - **Echte Strukturen (fixture-prompt 02.11.2026):** Kopf-Personen werden ohne Rahmen-Filter gesucht (Name und
     Telefon stehen oft in einer Seitenleiste auf jeder Seite – grunewald-stb), sonst im ganzen Impressum ohne
-    Fremd-Abschnitte; ein LLM-Name, der nur die Domain ist („Stb-Grunewald"), wird verworfen – URLs und E-Mail-Adressen im Impressum
-    zählen dabei nicht als Beleg. Der zweizeilige Name
+    Fremd-Abschnitte; ein LLM-Name, der nur die Domain ist („Stb-Grunewald"), wird verworfen – URLs, E-Mail-Adressen und Copyright-Zeilen
+    („Copyright 2026 by Stb-Grunewald") im Impressum zählen dabei nicht als Beleg. Der zweizeilige Name
     wird im Kopf ohne Navigation/Fußzeile gesucht (`kopfzeilen`, bis 14 Inhaltszeilen). Menüzeilen vor dem
     Kopf („Copyright", „Datenschutz", „Disclaimer") beenden die Anbieterzeile nicht. Kanzleiname über zwei Kopfzeilen,
     wenn eine nur die Kanzleiform nennt („ETL HOLSTEIN" ⏎ „Steuerberatungsgesellschaft mbH", „Steuerberater-Sozietät" ⏎

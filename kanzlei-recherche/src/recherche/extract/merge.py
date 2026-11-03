@@ -624,8 +624,10 @@ def seitentitel_statt_firmierung(name: str | None, domain: str | None, impressum
     if not name:
         return False
     woerter = re.findall(r"\w+", name)
-    # URLs und E-Mail-Adressen zählen nicht: „www.stb-grunewald.de" ist kein Beleg für „Stb-Grunewald"
-    text = _URL_ODER_MAIL.sub(" ", impressum or "")
+    # URLs, E-Mail-Adressen und Copyright-Zeilen zählen nicht: „www.stb-grunewald.de" und „Copyright 2026 by
+    # Stb-Grunewald" sind kein Beleg für „Stb-Grunewald" (grunewald-stb.de, fixture-eval 03.11.2026)
+    zeilen = [z for z in (impressum or "").splitlines() if not _COPYRIGHT.search(z)]
+    text = _URL_ODER_MAIL.sub(" ", "\n".join(zeilen))
     im_impressum = bool(woerter) and bool(re.search(r"\b" + r"\W+".join(map(re.escape, woerter)) + r"\b",
                                                     text, re.IGNORECASE))
     if generischer_titel(name) and not rechtsform_aus_text(name):
@@ -635,6 +637,7 @@ def seitentitel_statt_firmierung(name: str | None, domain: str | None, impressum
     return name_wie_domain(name, domain) and not im_impressum
 
 
+_COPYRIGHT = re.compile(r"©|\(c\)\s*\d{4}|\bcopyright\b", re.I)
 _URL_ODER_MAIL = re.compile(r"\S+@\S+|(?:https?://|www\.)\S+|\b[\w.-]+\.(?:de|com|net|org|info|eu|tax|biz)\b", re.I)
 
 

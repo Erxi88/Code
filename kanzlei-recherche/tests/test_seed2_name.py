@@ -63,3 +63,11 @@ def test_kopfzeile_titel_name_und_kanzleibezeichnung():
             assert k.kanzleiname == "Dipl.-Kfm. Ole Brandt – Kanzlei für Steuerberatung", (llm_name, k.kanzleiname)
         else:
             assert k.kanzleiname == "Steuerberater Ole Brandt"
+
+
+def test_domain_name_zaehlt_nicht_ueber_copyright_zeile():
+    """grunewald-stb.de: „Copyright 2026 by Stb-Grunewald" in der Fußzeile ist keine Firmierung."""
+    impressum = ["Impressum", "Malte Grünberg, Steuerberater", "Holstenstraße 5", "24103 Kiel",
+                 "Copyright 2026 by Stb-Gruenberg"]
+    k = _merge("stb-gruenberg.example", impressum, "Stb-Gruenberg")
+    assert k.kanzleiname == "Steuerberater Malte Grünberg" and "Seitentitel" in k.abweichung
