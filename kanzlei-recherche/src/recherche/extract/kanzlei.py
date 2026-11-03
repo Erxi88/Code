@@ -118,6 +118,14 @@ def anbieter_text(impressum_text: str | None, zeilen: int = 8) -> str:
     return "\n".join(kopf)
 
 
+# Stichprobe Seed 2 (bce-elmshorn.de): Unternehmernetzwerke im Namen oder in der Anbieterzeile
+_NETZWERK = re.compile(r"business[\s-]?club|unternehmer(?:netzwerk|stammtisch|club|kreis)|wirtschaftsjunioren|"
+                       r"\bnetzwerk\b|rotary|lions[\s-]?club|round\s+table", re.IGNORECASE)
+# „c/o" in der Anbieterzeile ohne Kanzleiwort: Postanschrift bei einem Dritten, keine Kanzlei
+_CO_ANBIETER = re.compile(r"\bc/o\b", re.IGNORECASE)
+_KANZLEI_IM_ANBIETER = re.compile(r"steuerberat|steuerkanzlei|steuerbüro|kanzlei|treuhand|wirtschaftspr", re.IGNORECASE)
+
+
 def ausschluss_grund(k: Kanzlei, impressum_text: str | None, blocklist: set[str] | None = None) -> str | None:
     """Prüfkatalog 1A: Kategorie (mit Detail), wenn der Treffer nie eine Kanzlei ist – sonst None.
     Ausland steht im Bundesland-Filter (ausserhalb_grund)."""
@@ -144,6 +152,10 @@ def ausschluss_grund(k: Kanzlei, impressum_text: str | None, blocklist: set[str]
         return "Behörde"
     if _VEREIN_DOMAIN.search(domain) or _VEREIN_NAME.search(kopf):
         return "Verein/Partei"
+    if (_NETZWERK.search(kopf) and not _KANZLEI_IM_ANBIETER.search(name)) or (
+            _CO_ANBIETER.search(anbieter) and not _KANZLEI_IM_ANBIETER.search(f"{name}\n{anbieter}")):
+        # Unternehmernetzwerk (Business Club Elmshorn GbR, c/o-Adresse) – auch mit einem Steuerberater als Mitglied
+        return "Verein/Netzwerk"
     # schwache Merkmale (Text außerhalb von Name und Anbieterzeile): ein Positivsignal 1B Rang 1–3 geht vor
     stark = signal_1b(k, impressum_text)[0] <= 3
     if not stark and _BEHOERDE_ROLLE.search(f"{anbieter}\n{personen}\n{k.abweichung or ''}") and not kammer \

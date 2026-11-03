@@ -1,0 +1,19 @@
+# fiktiver Prüffall (Stichprobe Seed 2, bce-elmshorn.de) – keine echten Daten
+kategorie: 1A Verein/Netzwerk
+domain: business-club-musterstadt.example
+impressum:
+- Impressum
+- Business Club Musterstadt GbR
+- c/o Muster Immobilien
+- Markt 1
+- 25335 Elmshorn
+- 'Vertreten durch: Steuerberater Jan Lund'
+- 'Zuständige Kammer: Steuerberaterkammer Schleswig-Holstein'
+llm:
+  kanzleiname: Business Club Musterstadt GbR
+  personen:
+  - name: Jan Lund
+    funktion: Steuerberater, Vorsitzender
+erwartet:
+  status: keine Kanzlei
+  grund: Verein/Netzwerk
