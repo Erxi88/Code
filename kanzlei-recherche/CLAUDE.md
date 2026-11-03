@@ -454,6 +454,8 @@ der nächsten Quelle füllen.**
     „StB …"/„StBin …" vor dem Namen ist die Berufsbezeichnung. „Anwendbares Recht", „Gerichtsstand" sind keine Namen.
     Erste Kopfzeile nur ein Name („Noémie Lümers" ⏎ „Noémie Lümers Steuerberatung") und eine Berufsbezeichnung im
     Impressum → Inhaberin, Einzelkanzlei (luemers.de); die Berufsbezeichnung zählt auch im Kammer-Block.
+    Ebenso mit Titel davor und Kanzleibezeichnung nach Gedankenstrich („Dipl.-Kfm. Jens Eder – Kanzlei für
+    Steuerberatung", kanzlei-eder.tax); ein generischer LLM-Titel, der Teil einer solchen Kopfzeile ist, führt zu ihr.
     „Sozietät" ohne Gesellschaftszusatz → Rechtsform „Sozietät" (`config/rechtsformen.yaml`; kein Raten auf GbR).
   - Ansprechpartner = nur **Berufsträger und Leitung**; Mehrfachnennungen werden
     vereinigt (Funktionen und Titel). Reihenfolge: Vertretungsberechtigte in der

@@ -524,6 +524,24 @@ def impressum_berufsbezeichnung(impressum: str, fremd: set[int] | None = None) -
     return gefunden.pop() if len(gefunden) == 1 else None
 
 
+# „Dipl.-Kfm. Jens Eder – Kanzlei für Steuerberatung": Name vorn, dahinter die Kanzleibezeichnung (kanzlei-eder.tax)
+_KOPF_NAME_ZUSATZ = re.compile(r"^(.+?)\s+[–—-]\s+(?:kanzlei|steuerkanzlei|steuerbüro|steuerberatung|büro)\b", re.I)
+
+
+def _kopf_inhaber(zeile: str) -> str | None:
+    """Erste Kopfzeile, die nur ein Name ist („Noémie Lümers"), auch mit Titel davor und Kanzleibezeichnung nach
+    einem Gedankenstrich („Dipl.-Kfm. Jens Eder – Kanzlei für Steuerberatung") – sonst None."""
+    from .ansprechpartner import titel_abschneiden
+
+    if _KANZLEI_VORN.match(zeile):
+        return None
+    if m := _KOPF_NAME_ZUSATZ.match(zeile):
+        zeile = m.group(1)
+    zeile = titel_abschneiden(" ".join(zeile.split()))[0]
+    nt = name_zerlegen(zeile)
+    return nt[0] if nt and nt[0] == zeile else None
+
+
 def kopf_firmierung(impressum: str | None) -> str | None:
     """„Steuerbüro Thomas Schütt" als Anbieterzeile – Firmierung einer Einzelkanzlei (Name vor der Ableitung)."""
     from .kanzlei import anbieter_text
@@ -599,7 +617,8 @@ def generischer_titel(name: str | None) -> bool:
     return bool(name) and bool(_GENERISCHER_TITEL.match(name.strip()))
 
 
-def seitentitel_statt_firmierung(name: str | None, domain: str | None, impressum: str | None) -> bool:
+def seitentitel_statt_firmierung(name: str | None, domain: str | None, impressum: str | None,
+                                 rahmen: set[str] | None = None) -> bool:
     """Domain-Wörter, die nicht als ganze Wörter im Impressum stehen („Schroeder Steuer"), oder ein generischer
     Titel ohne Rechtsform („Kanzlei für …") – kein Kanzleiname. „Hansen Steuerberatung" im Impressum bleibt."""
     if not name:
@@ -609,7 +628,11 @@ def seitentitel_statt_firmierung(name: str | None, domain: str | None, impressum
     text = _URL_ODER_MAIL.sub(" ", impressum or "")
     im_impressum = bool(woerter) and bool(re.search(r"\b" + r"\W+".join(map(re.escape, woerter)) + r"\b",
                                                     text, re.IGNORECASE))
-    return (name_wie_domain(name, domain) and not im_impressum) or (generischer_titel(name) and not rechtsform_aus_text(name))
+    if generischer_titel(name) and not rechtsform_aus_text(name):
+        # „Kanzlei für Steuerberatung" ist Teil der Kopfzeile „Dipl.-Kfm. Jens Eder – Kanzlei für Steuerberatung":
+        # dann ist die Kopfzeile die Firmierung (kanzlei-eder.tax), nicht der Titel allein
+        return not any(name.lower() in z.lower() and _kopf_inhaber(z) for z in kopfzeilen(impressum, rahmen))
+    return name_wie_domain(name, domain) and not im_impressum
 
 
 _URL_ODER_MAIL = re.compile(r"\S+@\S+|(?:https?://|www\.)\S+|\b[\w.-]+\.(?:de|com|net|org|info|eu|tax|biz)\b", re.I)
@@ -682,10 +705,9 @@ def ansprechpartner(
             # erste Kopfzeile ist nur ein Name („Noémie Lümers" ⏎ „Noémie Lümers Steuerberatung"), die
             # Berufsbezeichnung steht weiter unten: die Person ist die Inhaberin (luemers.de)
             kopf = kopfzeilen(impressum, rahmen)
-            if kopf and (nt := name_zerlegen(kopf[0])) and nt[0] == " ".join(kopf[0].split()) \
-                    and not _KANZLEI_VORN.match(kopf[0]):
-                vertreter.append(nt[0])
-                v.funktionen[nt[0]] = beruf
+            if kopf and (inhaber := _kopf_inhaber(kopf[0])):
+                vertreter.append(inhaber)
+                v.funktionen[inhaber] = beruf
         if not vertreter and (firma := kopf_firmierung(impressum)):
             # „Steuerbüro Jens Wiese" mit Berufsbezeichnung im Impressum: Jens Wiese ist der Inhaber
             inhaber = _KANZLEI_VORN.sub("", firma)
@@ -1112,7 +1134,7 @@ def zusammenfuehren(
     rahmen = seiten_rahmen(seiten)
     fremd = ausschluss.fremd_zeilen(impressum_text.splitlines()) if ausschluss and impressum_text else None
     roh_name = llm.kanzleiname if llm else None
-    if seitentitel_statt_firmierung(roh_name, kandidat.domain, impressum_text):
+    if seitentitel_statt_firmierung(roh_name, kandidat.domain, impressum_text, rahmen):
         # Seitentitel/Domain statt Firmierung (Stichprobe Seed 2) – vor den Kopfzeilen-Regeln, die sonst „Lund Steuer"
         # zu „Ina Lund, Steuerberaterin" machen; mit Person + Berufsbezeichnung im Impressum gilt die Ableitung unten
         abweichungen.append(f"Name „{roh_name}“ ist nur Domain/Seitentitel – verworfen")

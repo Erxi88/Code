@@ -47,3 +47,19 @@ def test_domain_name_zaehlt_nicht_ueber_url_und_email():
     k = _merge("stb-gruenberg.example", impressum, "Stb-Gruenberg")
     assert k.kanzleiname == "Steuerberater Malte Grünberg" and "Seitentitel" in k.abweichung
 
+
+def test_kopfzeile_titel_name_und_kanzleibezeichnung():
+    """kanzlei-eder.tax: „Dipl.-Kfm. Jens Eder – Kanzlei für Steuerberatung" als erste Kopfzeile, Berufsbezeichnung
+    weiter unten (Kammer-Block): Firmierung mit Inhaber; der generische LLM-Titel „Kanzlei für Steuerberatung" ist Teil
+    dieser Zeile und führt zu ihr."""
+    impressum = ["Impressum", "Dipl.-Kfm. Ole Brandt – Kanzlei für Steuerberatung", "Jägerweg 16", "24941 Flensburg",
+                 "Telefon: 0461 900000", "Aufsichtsbehörde", "Steuerberaterkammer Schleswig-Holstein",
+                 "Berufsbezeichnung:", "Steuerberater"]
+    for llm_name in (None, "Kanzlei für Steuerberatung", "Dipl.-Kfm. Ole Brandt – Kanzlei für Steuerberatung"):
+        k = _merge("kanzlei-brandt.example", impressum, llm_name)
+        assert k.hauptansprechpartner and k.hauptansprechpartner.name == "Ole Brandt", llm_name
+        assert k.rechtsform == "Einzelkanzlei"
+        if llm_name:
+            assert k.kanzleiname == "Dipl.-Kfm. Ole Brandt – Kanzlei für Steuerberatung", (llm_name, k.kanzleiname)
+        else:
+            assert k.kanzleiname == "Steuerberater Ole Brandt"
