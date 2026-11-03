@@ -9,6 +9,7 @@
 #   Kandidaten an, verknüpft mit der Zentrale (zentrale = Domain der Zentrale). Ohne Übersichtsseite: standorte_fest =
 #   Liste von Domains/URLs. Subdomains der Zentrale aus Suchtreffern gelten immer als Standort (außer www., jobs.,
 #   karriere., mail. …) und werden von `recherche ketten` mit der Zentrale verknüpft.
+#   telefon = Nummer(n) der Zentrale: an Standorten nur Rückfall (eine Standortnummer geht vor).
 grossgesellschaften:
   - {name: BDO, muster: ['\bBDO\b'], domains: [bdo.de, bdo.com]}
   - {name: EY, muster: ['\bEY\b', 'Ernst\s*&\s*Young'], domains: [ey.com]}
@@ -35,6 +36,7 @@ ketten:
   shbb:
     name: SHBB Steuerberatungsgesellschaft mbH
     zentrale: shbb.de
+    telefon: 0431 59360
     uebersicht: https://www.shbb.de/kanzlei-suche
     link_muster: 'https?://(?!www\.)[a-z0-9-]+\.shbb\.de/?'
     standortmuster: subdomain

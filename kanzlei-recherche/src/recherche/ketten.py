@@ -54,6 +54,8 @@ class Kette:
     standortmuster: str = "subdomain"  # subdomain | pfad | domain
     # feste Standortliste (Domains oder URLs) – wenn es keine Übersichtsseite gibt (wetreu: Standortsuche als JS-Widget)
     standorte_fest: list[str] = field(default_factory=list)
+    # Telefon der Zentrale: an Standorten nur Rückfall (westerland.shbb.de, fixture-eval 03.11.2026)
+    telefon: list[str] = field(default_factory=list)
 
     def enthaelt(self, domain: str | None, website: str | None = None) -> bool:
         """Zentrale oder Standort dieser Kette: Subdomain der Zentrale (außer jobs., karriere., mail. …), Eintrag der
@@ -85,7 +87,8 @@ class KettenConfig:
                  for g in daten.get("grossgesellschaften") or []]
         ketten = [Kette(s, k.get("name") or s, k["zentrale"], k.get("uebersicht"),
                         re.compile(k["link_muster"], re.IGNORECASE) if k.get("link_muster") else None,
-                        k.get("standortmuster") or "subdomain", [str(x) for x in k.get("standorte_fest") or []])
+                        k.get("standortmuster") or "subdomain", [str(x) for x in k.get("standorte_fest") or []],
+                        [str(x) for x in ([k["telefon"]] if isinstance(k.get("telefon"), (str, int)) else k.get("telefon") or [])])
                   for s, k in (daten.get("ketten") or {}).items()]
         return cls(gross, ketten)
 

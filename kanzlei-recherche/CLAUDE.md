@@ -609,7 +609,7 @@ der nächsten Quelle füllen.**
   je Feld, mittlere Laufzeit und Token je Kanzlei; `--live` fragt Ollama und zeichnet
   auf – nur für `echt/`, außer mit `--nur beispiele`. `--offline` prüft PLZ/Ort ohne OpenPLZ.
   `fixture-eval` und `fixture-prompt` laden `config/ketten.yaml` wie der Lauf (Standortseiten-Regel Q11 auch ohne
-  Impressum-URL der Zentrale in meta.json).
+  Impressum-URL der Zentrale in meta.json), dazu Ortsliste, Ortsnamen und den Vorwahl-Prüfer (Q4) des Standard-Bundeslandes.
   Name und Ansprechpartner werden offline nur über Aufzeichnungen bewertet. Sollwerte `null` (oder fehlend) zählen
   als „nicht bewertet", nicht als Fehler. Bei jedem Fehler steht die Regel dabei, die das Ergebnis bestimmt hat
   (Einträge aus „Abweichung" wie „Telefon aus dem Text …, tel:-Link nennt …", „Ansprechpartner-Rang: …",
@@ -663,7 +663,9 @@ der nächsten Quelle füllen.**
   zusammengeführt". Standorte mit eigener Adresse (SHBB) bleiben eigene Zeilen.
 - **Standortseite einer Kette** (Prüfkatalog 9 / Q11): Kandidat auf einer Standort-Subdomain/einem Standortpfad
   laut `config/ketten.yaml` (nicht die Zentrale) oder mit Impressum auf einem anderen Host derselben Stammdomain →
-  Telefon, Adresse, E-Mail aus Kontakt- und Startseite vor dem Impressum der Zentrale; Personen auch von Start- und
+  Telefon, Adresse, E-Mail aus Kontakt- und Startseite vor dem Impressum der Zentrale; die Zentralnummer (`telefon` in
+  ketten.yaml oder nur im Impressum, nicht auf Start/Kontakt/Team) ist nur Rückfall, eine Standortnummer mit zur PLZ
+  passender Vorwahl geht vor Text/Link-Reihenfolge (westerland.shbb.de, 03.11.2026); Personen auch von Start- und
   Kontaktseite; Standortleitung („Leiter", „Kanzleileitung", „Standortleitung", „Niederlassungsleitung") vor den
   Vertretungsberechtigten der Zentrale („Ansprechpartner-Rang: Standortleitung …"), danach die übrigen Personen der
   Standortseiten, erst dann die Zentrale; eine eigene Standortgesellschaft mit Rechtsform auf Kontakt-/Startseite

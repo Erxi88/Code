@@ -47,7 +47,7 @@ def _rufziffern(nummer: str | None) -> str:
 
 
 # Rufnummer im Rohtext, mit Durchwahl-Strich („0431 570490-12", „+49 (0) 431 570 49-0")
-_ROHNUMMER = re.compile(r"\+?\(?\d[\d\s/()–.]{4,}\d\s*[-–]\s*\d{1,5}\b|\+?\(?\d[\d\s/()–.]{4,}\d")
+_ROHNUMMER = re.compile(r"\+?\(?\d[\d \t/()\-–.]{4,}\d")
 
 
 EMAIL_AUSGESCHLOSSEN = ("datenschutz", "dsb", "bewerbung", "karriere", "noreply", "no-reply", "webmaster",

@@ -983,9 +983,17 @@ def fixture_klassen_umstellen(
 
 
 def _fixture_regeln_laden(s: Settings) -> None:
-    """Ketten (ketten.yaml: Standortseiten-Regel Q11) für fixture-eval/-prompt – dieselben Regeln wie im Lauf."""
+    """Dieselben Regeln wie im Lauf für fixture-eval/-prompt: Ketten (ketten.yaml, Standortseiten-Regel Q11), Ortsnamen,
+    Ortsliste und der Vorwahl-Prüfer (BNetzA ↔ PLZ, Q4) des Standard-Bundeslandes – westerland.shbb.de, 03.11.2026."""
     from .ketten import KettenConfig, setze_config
 
+    try:
+        ctx = Kontext.__new__(Kontext)
+        ctx.settings, ctx.bundesland, ctx.db = s, s.standard_bundesland.upper(), None
+        ctx.bl_cfg = s.bundesland(ctx.bundesland)
+        _ortsnamen_setzen(ctx)
+    except (OSError, ValueError, KeyError) as e:
+        console.print(f"[yellow]Ortsliste/Vorwahlen nicht geladen ({e}) – ohne Q4-Prüfung[/yellow]")
     setze_config(KettenConfig.laden(s.pfad(s.pfade.ketten)))
 
 

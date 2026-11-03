@@ -1018,3 +1018,58 @@ def test_eigene_nummer_im_fremd_fenster_bleibt():
     assert not extract_impressum(text, aus).fremde_telefone  # LLM-Telefon wird damit nicht verworfen
     erg = extract_impressum(text.replace("Telefon: ", ""), aus, links=["tel:+4917690000001"])
     assert erg.telefon == "+49 176 90000001"
+
+
+def _westerland_standort(telefon_zentrale: str | None = None):
+    """Standort westerland.nordbund.example einer fiktiven Kette: Impressum der Zentrale (Kiel, 0431 900000) mit dem
+    Standort-Block (04651 8207-0, „Telefon" in eigener Zeile), Startseite nur mit tel:-Link des Standorts."""
+    from recherche.ketten import KettenConfig, setze_config
+
+    kette = {"name": "Nordbund Steuerberatungsgesellschaft mbH", "zentrale": "nordbund.example"}
+    if telefon_zentrale:
+        kette["telefon"] = telefon_zentrale
+    setze_config(KettenConfig.laden_aus({"ketten": {"nordbund": kette}}))
+    imp = ("Impressum\nNordbund Beratungsstelle Westerland\nBismarckstraße 12, 25980 Sylt\nTelefon\n04651 8207-0\n"
+           "Nordbund Steuerberatungsgesellschaft mbH\nHolstenstraße 1\n24103 Kiel\nKontakt\n"
+           "Telefon: +49 (0) 431 - 9000 0\nE-Mail: info@nordbund.example")
+    url = "https://westerland.nordbund.example/"
+    seiten = {Seitentyp.IMPRESSUM: Seite(domain="westerland.nordbund.example", url=url + "impressum", typ=Seitentyp.IMPRESSUM, text=imp,
+                                         html=f"<body>{imp}</body>"),
+              Seitentyp.START: Seite(domain="westerland.nordbund.example", url=url, typ=Seitentyp.START, text="Willkommen auf Sylt\nRufen Sie uns an",
+                                     html='<body><a href="tel:0465182070">Anrufen</a></body>')}
+    return Kandidat(id=1, bundesland="SH", domain="westerland.nordbund.example", website=url), seiten
+
+
+def test_ketten_standort_zentralnummer_nur_rueckfall():
+    """westerland.shbb.de (fixture-eval 03.11.2026): die Kieler Zentrale aus dem Text schlug den tel:-Link des
+    Standorts. An Ketten-Standorten ist die Zentralnummer nur Rückfall – auch ohne BNetzA-Verzeichnis."""
+    from recherche.extract.rules import Ausschluss
+
+    aus = Ausschluss()
+    for telefon_zentrale in (None, "0431 900000"):
+        k, seiten = _westerland_standort(telefon_zentrale)
+        regel = regeln_fuer(seiten, aus, k.domain, k.website)
+        z = zusammenfuehren(k, [], seiten, regel, LlmErgebnis(), lambda p, o: PlzPruefung(True, SH, ort_kanonisch=o), aus)
+        assert z.telefon == "+49 4651 82070", (telefon_zentrale, z.abweichung)
+
+
+def test_ketten_standort_vorwahl_passend_vor_reihenfolge():
+    """Mit Vorwahl-Prüfer: unter den Standortnummern gewinnt die mit passender Vorwahl, die Zentrale ist Rückfall."""
+    from recherche import vorwahl
+    from recherche.extract.base import RegelErgebnis
+
+    class Pruefer:
+        def pruefen(self, telefon, plz):
+            return None if telefon.startswith("+49 4651") else "Vorwahl passt nicht zur PLZ"
+
+    vorwahl.setze_pruefer(Pruefer())
+    k, seiten = _westerland_standort("0431 900000")
+    regel = RegelErgebnis(strasse="Bismarckstraße 12", plz="25980", ort="Sylt", telefon="+49 431 900000",
+                          telefon_kandidaten=["+49 431 900000", "+49 461 900001", "+49 4651 82070"])
+    z = zusammenfuehren(k, [], seiten, regel, None, lambda p, o: PlzPruefung(True, SH, ort_kanonisch=o))
+    assert z.telefon == "+49 4651 82070"
+    # nur die Zentrale bekannt: sie bleibt als Rückfall
+    regel = RegelErgebnis(strasse="Bismarckstraße 12", plz="25980", ort="Sylt", telefon="+49 431 900000",
+                          telefon_kandidaten=["+49 431 900000"])
+    z = zusammenfuehren(k, [], seiten, regel, None, lambda p, o: PlzPruefung(True, SH, ort_kanonisch=o))
+    assert z.telefon == "+49 431 900000"

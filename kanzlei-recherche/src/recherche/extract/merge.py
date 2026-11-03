@@ -610,6 +610,28 @@ def seitentitel_statt_firmierung(name: str | None, domain: str | None, impressum
     return (name_wie_domain(name, domain) and not im_impressum) or (generischer_titel(name) and not rechtsform_aus_text(name))
 
 
+def _zentralnummern(kandidat: Kandidat, seiten: dict) -> set[str]:
+    """Telefonnummern der Zentrale an einem Ketten-Standort: `telefon` aus ketten.yaml und Nummern, die nur im Impressum
+    (der Zentrale) stehen, nicht auf Start-, Kontakt- oder Teamseite des Standorts. Kein Standort → leer."""
+    from ..ketten import standortseite
+    from .rules import _ROHNUMMER
+
+    imp = seiten.get(Seitentyp.IMPRESSUM)
+    kette = standortseite(kandidat.domain, kandidat.website, (imp.final_url or imp.url) if imp else None)
+    if not kette:
+        return set()
+
+    def nummern(s: Seite | None) -> set[str]:
+        if s is None:
+            return set()
+        roh = f"{s.text or ''}\n{s.html or ''}".replace("%20", " ")
+        return {n for m in _ROHNUMMER.finditer(roh) if (n := normalize_telefon(m.group(0)))}
+
+    fest = {n for t in getattr(kette, "telefon", None) or [] if (n := normalize_telefon(t))}
+    standort = set().union(*(nummern(seiten.get(t)) for t in (Seitentyp.START, Seitentyp.KONTAKT, Seitentyp.TEAM)))
+    return fest | (nummern(imp) - standort if standort else set())
+
+
 def bezeichnung_aus_partnerschaftsname(name: str | None) -> str | None:
     """„Brandenburg und Partner mbB Steuerberater" → „Steuerberater": Der Name einer Partnerschaft nennt
     die Berufe aller Partner (§ 2 PartGG) – steht dort genau einer, gilt er für die Vertretungsberechtigten."""
@@ -1159,6 +1181,14 @@ def zusammenfuehren(
         if telefon and (vp := vorwahl.pruefer()) and vp.pruefen(telefon, plz):
             if alt := next((n for n in regel.telefon_kandidaten if n != telefon and not vp.pruefen(n, plz)), None):
                 abweichungen.append(f"Telefon: {telefon} passt nicht zur PLZ {plz}, {alt} genommen")
+                telefon = alt
+        # Standort einer Kette: die Zentralnummer (ketten.yaml `telefon`, oder nur im Zentral-Impressum, nicht auf den
+        # Standortseiten) ist nur Rückfall – eine Nummer der Standortseiten geht vor, mit passender Vorwahl zuerst
+        if telefon and (zentral := _zentralnummern(kandidat, seiten)) and telefon in zentral:
+            vp = vorwahl.pruefer()
+            andere = [n for n in regel.telefon_kandidaten if n not in zentral]
+            if alt := next((n for n in andere if vp is None or not vp.pruefen(n, plz)), None):
+                abweichungen.append(f"Telefon: {telefon} ist die Zentrale der Kette, Standort {alt} genommen")
                 telefon = alt
 
     email = regel.email or ((llm.email or "").strip().lower() or None if llm else None)
