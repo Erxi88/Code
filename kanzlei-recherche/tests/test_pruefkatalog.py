@@ -976,3 +976,15 @@ def test_vorwahl_passt_nicht_andere_kandidatin_der_seite():
     k = zusammenfuehren(Kandidat(id=1, bundesland="SH", domain="westerland.nordbund.example"), [], {}, regel, None,
                         lambda p, o: PlzPruefung(True, SH, ort_kanonisch=o))
     assert k.telefon == "+49 4651 82070" and "passt nicht zur PLZ 25980" in k.abweichung
+
+
+def test_kammer_stammnummer_auch_durchwahl_und_fax():
+    """Liste kammer_telefon (impressum_ausschluss.yaml): Stammnummer ohne „-0" – Durchwahl und Fax der Kammer zählen."""
+    from recherche.extract.rules import Ausschluss, extract_impressum
+
+    aus = Ausschluss.laden(Path(__file__).parent.parent / "config" / "impressum_ausschluss.yaml")
+    assert aus.ist_kammernummer("+49 431 570490") and aus.ist_kammernummer("+49 431 57049012")
+    assert aus.ist_kammernummer("+49 431 5704910") and not aus.ist_kammernummer("+49 431 990000")
+    erg = extract_impressum("Impressum\nLund Steuerberatung\nTel. 0431 570490-12\nTelefon 0431 990000", aus,
+                            links=["tel:+4943157049012"])
+    assert erg.telefon == "+49 431 990000"

@@ -30,10 +30,35 @@ adressen:
   - {name: Hetzner Online GmbH, strasse: Industriestr. 25, plz: "91710"}
   - {name: ALL-INKL.COM, strasse: Hauptstraße 68, plz: "02742"}
 
-# Bekannte Fremdnummern (Kammern …): nie die Kanzlei-Nummer, auch außerhalb eines Fremd-Abschnitts.
-# Nummern, die nur in Fremd-Abschnitten stehen, schließt die Regel ohnehin aus.
-telefone:
-  - {name: Steuerberaterkammer Hamburg, telefon: "040 4480430"}   # Stichprobe Seed 2, steuerberater-krogmann.de
+# Steuerberaterkammern (Telefon und Fax, Quelle jeweils Kammer-Impressum/Kontakt; Stand 03.11.2026): Nummern,
+# deren Stammnummer (ohne Durchwahl, ohne „-0") übereinstimmt, sind nie die Kanzlei-Nummer – auch außerhalb eines
+# Fremd-Abschnitts (Stichprobe Seed 2, steuerberater-krogmann.de).
+kammer_telefon:
+  - {kammer: "Steuerberaterkammer Berlin", telefon: "+49 30 8892610", fax: "+49 30 88926110"}
+  - {kammer: "Steuerberaterkammer Brandenburg", telefon: "+49 331 888520", fax: "+49 331 8885222"}
+  - {kammer: "Hanseatische Steuerberaterkammer Bremen", telefon: "+49 421 365070", fax: "+49 421 3650720"}
+  - {kammer: "Steuerberaterkammer Düsseldorf", telefon: "+49 211 669060", fax: "+49 211 66906600"}
+  - {kammer: "Steuerberaterkammer Hamburg", telefon: "+49 40 4480430", fax: "+49 40 445885"}
+  - {kammer: "Steuerberaterkammer Hessen", telefon: "+49 69 1530020", fax: "+49 69 15300260"}
+  - {kammer: "Steuerberaterkammer Köln", telefon: "+49 221 336430", fax: "+49 221 3364343"}
+  - {kammer: "Steuerberaterkammer Mecklenburg-Vorpommern", telefon: "+49 381 7767676", fax: "+49 381 7767677"}
+  - {kammer: "Steuerberaterkammer München", telefon: "+49 89 1579020", fax: "+49 89 15790219"}
+  - {kammer: "Steuerberaterkammer Niedersachsen", telefon: "+49 511 288900", fax: "+49 511 2834032"}
+  - {kammer: "Steuerberaterkammer Nordbaden", telefon: "+49 6221 183077", fax: "+49 6221 165105"}
+  - {kammer: "Steuerberaterkammer Nürnberg", telefon: "+49 911 946260", fax: "+49 911 9462630"}
+  - {kammer: "Steuerberaterkammer Rheinland-Pfalz", telefon: "+49 6131 952100", fax: "+49 6131 9521040"}
+  - {kammer: "Steuerberaterkammer Saarland", telefon: "+49 681 668320", fax: "+49 681 6683232"}
+  - {kammer: "Steuerberaterkammer des Freistaates Sachsen", telefon: "+49 341 563360", fax: "+49 341 5633620"}
+  - {kammer: "Steuerberaterkammer Sachsen-Anhalt", telefon: "+49 391 611620", fax: "+49 391 6116216"}
+  - {kammer: "Steuerberaterkammer Schleswig-Holstein", telefon: "+49 431 570490", fax: "+49 431 5704910"}
+  - {kammer: "Steuerberaterkammer Stuttgart", telefon: "+49 711 619480", fax: "+49 711 61948703"}
+  - {kammer: "Steuerberaterkammer Südbaden", telefon: "+49 761 705260", fax: "+49 761 7052626"}
+  - {kammer: "Steuerberaterkammer Thüringen", telefon: "+49 361 576920", fax: "+49 361 5769219"}
+  - {kammer: "Steuerberaterkammer Westfalen-Lippe", telefon: "+49 251 417640", fax: "+49 251 4176427"}
+  - {kammer: "Bundessteuerberaterkammer", telefon: "+49 30 2400870", fax: "+49 30 24008799"}
+
+# Weitere bekannte Fremdnummern (genaue Nummer): nie die Kanzlei-Nummer.
+telefone: []
 
 # E-Mail-Präfixe, die nie die Kanzlei-E-Mail sind (Prüfkatalog 2)
 email_ausgeschlossen: [datenschutz, dsb, bewerbung, karriere, noreply, no-reply, webmaster, postmaster, hostmaster, abuse]

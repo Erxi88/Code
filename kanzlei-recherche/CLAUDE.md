@@ -326,7 +326,8 @@ der nächsten Quelle füllen.**
     Mobil nur als Rückfall. Gültig ist nur eine Rufnummer mit Ortsnetz 2–9, Mobil 15–17 oder
     Service 18 (Zahlenkolonnen und SVG-Pfade sind keine Nummern).
     **Stichprobe Seed 2 (03.11.2026):** Eine Nummer, die nur in Fremd-Abschnitten steht (Kammer …), oder eine Nummer
-    der festen Liste `telefone` in `impressum_ausschluss.yaml` (Steuerberaterkammer Hamburg) ist nie die
+    deren Stammnummer (ohne Durchwahl, ohne „-0") mit einer Kammer-Nummer übereinstimmt (`kammer_telefon` in
+    `impressum_ausschluss.yaml`: alle Steuerberaterkammern und BStBK, Telefon und Fax; `Ausschluss.ist_kammernummer`) ist nie die
     Kanzlei-Nummer – auch nicht über tel:-Link, rohes HTML oder LLM. Teilnehmernummer mit führender 0
     („+49 2357 015251043") ist unplausibel → verworfen, nächste Kandidatin. Passt die Vorwahl nicht zur PLZ und eine
     andere Nummer der Seite passt (Kandidatenliste `telefon_kandidaten`), wird sie genommen („Telefon: … passt nicht zur

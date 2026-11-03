@@ -41,6 +41,12 @@ _AT = re.compile(r"\s*(?:\(|\[|\{)\s*(?:at|ät|@)\s*(?:\)|\]|\})\s*", re.I)
 _DOT = re.compile(r"\s*(?:\(|\[|\{)\s*(?:dot|punkt)\s*(?:\)|\]|\})\s*", re.I)
 
 
+def _stammnummer(nummer: str) -> str:
+    """Ziffern ohne die Endung „-0" der Zentrale: +49 431 570490 → 4943157049 (trifft auch 0431 570490-12)."""
+    ziffern = re.sub(r"\D", "", nummer)
+    return ziffern[:-1] if ziffern.endswith("0") else ziffern
+
+
 EMAIL_AUSGESCHLOSSEN = ("datenschutz", "dsb", "bewerbung", "karriere", "noreply", "no-reply", "webmaster",
                         "postmaster", "hostmaster", "abuse")
 
@@ -54,6 +60,12 @@ class Ausschluss:
     # Prüfkatalog 2: nie die Kanzlei-E-Mail (webmaster@stewoda.de bei steuerberater-ploen.de)
     email_ausgeschlossen: tuple[str, ...] = EMAIL_AUSGESCHLOSSEN
     telefone: frozenset[str] = frozenset()  # bekannte Fremdnummern (Kammern …), normalisiert
+    kammer_stamm: tuple[str, ...] = ()  # Ziffern der Stammnummern aller Kammern (Telefon und Fax, ohne „-0")
+
+    def ist_kammernummer(self, nummer: str | None) -> bool:
+        """Stammnummer stimmt mit einer Kammer-Nummer überein – auch Durchwahlen („0431 570490-12")."""
+        ziffern = re.sub(r"\D", "", nummer or "")
+        return bool(ziffern) and any(ziffern.startswith(st) for st in self.kammer_stamm)
 
     @classmethod
     def laden(cls, pfad: str | Path | None) -> Ausschluss:
@@ -69,6 +81,8 @@ class Ausschluss:
             email_ausgeschlossen=tuple(d.get("email_ausgeschlossen", EMAIL_AUSGESCHLOSSEN)),
             telefone=frozenset(n for t in d.get("telefone", []) if (n := normalize_telefon(str(t.get("telefon") if
                                                                                               isinstance(t, dict) else t)))),
+            kammer_stamm=tuple(_stammnummer(n) for k in d.get("kammer_telefon", []) for feld in ("telefon", "fax")
+                               if k.get(feld) and (n := normalize_telefon(str(k[feld])))),
         )
 
     def fremd_zeilen(self, zeilen: list[str]) -> set[int]:
@@ -557,7 +571,9 @@ def extract_impressum(
             weitere_mails += [m for m in seite_mails if allgemeine_email(m, domain) and m not in kontext_mails]
     # fremd ist eine Nummer nur, wenn sie nie außerhalb eines Fremd-Abschnitts steht – oder auf der festen Liste
     # (Kammer-Nummern, impressum_ausschluss.yaml); die eigene Nummer steht oft auch neben „Gestaltung" o. Ä.
+    # Kammer-Nummern (Stammnummer, kammer_telefon in impressum_ausschluss.yaml) nie – auch außerhalb eines Fremd-Abschnitts
     alle_fremden = (alle_fremden - eigene_nummern) | set(ausschluss.telefone)
+    alle_fremden |= {n for n in [*tel_links, *(schema_telefone or []), *text_nummern] if ausschluss.ist_kammernummer(n)}
     tel_links = [n for n in tel_links if n not in alle_fremden]
     text_nummern = [n for n in text_nummern if n not in alle_fremden]
     alle = [n for n in [*tel_links, *(schema_telefone or []), *text_nummern] if n not in alle_fremden]

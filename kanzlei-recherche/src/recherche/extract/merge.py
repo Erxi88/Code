@@ -1139,7 +1139,7 @@ def zusammenfuehren(
     # ---- Telefon: Discovery > Regeln > LLM
     # Prüfkatalog 2: nur laut phonenumbers gültige Nummern – ungültige bleiben leer, mit Hinweis
     llm_tel = normalize_telefon(llm.telefon if llm else None)
-    if llm_tel and llm_tel in regel.fremde_telefone:
+    if llm_tel and (llm_tel in regel.fremde_telefone or (ausschluss and ausschluss.ist_kammernummer(llm_tel))):
         abweichungen.append(f"Telefon {llm_tel} (LLM) ist eine Fremdnummer (Kammer o. Ä.) – verworfen")
         llm_tel = None
     web_tel = regel.telefon or llm_tel
