@@ -31,6 +31,9 @@ _SUFFIX_FUNKTION = re.compile(r"[,\s]+(steuerberater(?:in)?|stb)\.?\s*$", re.IGN
 _SUFFIX_TITEL = re.compile(r"[,\s]+(dipl\.\s*-?\s*kf(?:m|fr)\.?)\s*$", re.IGNORECASE)
 _VERWERFEN = re.compile(r"datenschutz|grundverordnung|amtsdirektor|amtsvorsteher|bürgermeister|präsident|archiv|regionen|"
                         r"homepages|anträge|browser|verein", re.IGNORECASE)
+# Organisationseinheiten statt Personen (Stichprobe Seed 2: stb-tempel.de, hgr-heide.de)
+_KEINE_PERSON = re.compile(r"\b(?:büro|buchstelle|beratungsstelle|zweigstelle|zweigniederlassung|niederlassung|"
+                           r"standort|geschäftsstelle|außenstelle|filiale)\b", re.IGNORECASE)
 _TITEL_WORT = re.compile(r"^(?:dr|prof|dipl|mag|ll|m\.?a|m\.?sc|b\.?a|b\.?sc|herr|frau|stb|wp|ra|rain)\b\.?", re.IGNORECASE)
 _BERUF_ANREDE = re.compile(r"^(?:steuerberater(?:in)?|steuerbevollmächtigte[rn]?|rechtsanwält(?:in)?|rechtsanwalt|"
                           r"wirtschaftsprüfer(?:in)?|notar(?:in)?|herr|frau)$", re.IGNORECASE)
@@ -82,6 +85,8 @@ def verwerf_grund(p: Ansprechpartner) -> str | None:
     text = " ".join(x for x in (p.name, p.titel, p.funktion) if x)
     if m := _VERWERFEN.search(text):
         return m.group(0)
+    if m := _KEINE_PERSON.search(p.name):
+        return m.group(0)  # „Büro Neumünster", „Landwirtschaftliche Buchstelle" (nur im Namen – „Leitung Büro Kiel" bleibt)
     if re.search(r"fachanwalt", text, re.I) and any(_sonderwoerter(_woerter(text))):
         return "Fachanwalt mit Ortsname"
     woerter = [w for w in _woerter(p.name) if w.casefold() not in _PARTIKEL]

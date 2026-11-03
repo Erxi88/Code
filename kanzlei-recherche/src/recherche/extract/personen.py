@@ -39,7 +39,7 @@ _TITEL_HINTEN = re.compile(
 )
 _PARTIKEL = frozenset({"von", "van", "de", "der", "den", "zu", "la", "le", "di", "da", "ten"})
 _NAME_WORT = re.compile(r"^[A-ZÄÖÜ][a-zäöüßé]+(?:-[A-ZÄÖÜ][a-zäöüßé]+)?\.?$")
-_INITIALE = re.compile(r"^[A-ZÄÖÜ]\.$")  # „W. Drews" – nur als erstes Wort
+_INITIALE = re.compile(r"^[A-ZÄÖÜ]\.$")  # „W. Drews", „Jörg G. Eick" – nie als Nachname
 _ANREDE = re.compile(r"^(?:Frau|Herr|Herrn)\s+")
 _KEINE_NAMEN = frozenset(
     """unser unsere unseres team kanzlei kontakt steuerberatung leistungen impressum datenschutz startseite home über
@@ -51,6 +51,7 @@ _KEINE_NAMEN = frozenset(
     inhalte urheberrecht verantwortlich inhaltlich sitz deutschland bundesrepublik zuständige zuständiger
     berufshaftpflicht berufsordnung streitschlichtung information informationen allgemeine
     anwendbares anwendbar recht rechts gerichtsstand rubrik
+    büro buchstelle beratungsstelle zweigstelle zweigniederlassung niederlassung geschäftsstelle außenstelle filiale
     vertretungsberechtigte vertretungsberechtigter gesellschafter
     berufsträger berufstraeger firmenphilosophie philosophie historie geschichte leitbild werte vision
     mandantenportal portal aktuelles blog presse veranstaltungen seminare newsletter formulare rechner
@@ -136,7 +137,8 @@ def name_zerlegen(text: str) -> tuple[str, str | None] | None:
     gross = [w for w in woerter if w.lower() not in _PARTIKEL]
     if not 2 <= len(gross) <= 4 or len(woerter) > 6:
         return None
-    if not all(_NAME_WORT.match(w) or (k == 0 and _INITIALE.match(w)) for k, w in enumerate(gross)) \
+    # Initialen an jeder Stelle außer dem Nachnamen: „W. Drews", „Jörg G. Eick" (Stichprobe Seed 2, kanzleidelta.de)
+    if not all(_NAME_WORT.match(w) or (k < len(gross) - 1 and _INITIALE.match(w)) for k, w in enumerate(gross)) \
             or any(w.lower().strip(".") in _KEINE_NAMEN or _INSTITUTION.search(w) or _BERUF_IM_NAMEN.fullmatch(w.strip(".,"))
                    for w in woerter):
         return None
