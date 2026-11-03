@@ -325,9 +325,11 @@ der nächsten Quelle füllen.**
     nicht Attribute/Skripte), bei mehreren Standorten die Nummer nächst der Kanzlei-PLZ.
     Mobil nur als Rückfall. Gültig ist nur eine Rufnummer mit Ortsnetz 2–9, Mobil 15–17 oder
     Service 18 (Zahlenkolonnen und SVG-Pfade sind keine Nummern).
-    **Stichprobe Seed 2 (03.11.2026):** Eine Nummer, die nur in Fremd-Abschnitten steht (Kammer …), oder eine Nummer
-    deren Stammnummer (ohne Durchwahl, ohne „-0") mit einer Kammer-Nummer übereinstimmt (`kammer_telefon` in
-    `impressum_ausschluss.yaml`: alle Steuerberaterkammern und BStBK, Telefon und Fax; `Ausschluss.ist_kammernummer`) ist nie die
+    **Stichprobe Seed 2 (03.11.2026):** Eine Nummer, die nur in Fremd-Abschnitten steht (Kammer …; außerhalb zählen
+    beschriftete Nummern, Nummernzeilen und tel:-Links; Mobilnummern sind nie fremd), oder eine Kammer-Nummer
+    (`kammer_telefon` in `impressum_ausschluss.yaml`: alle Steuerberaterkammern und BStBK, Telefon und Fax;
+    `Ausschluss.ist_kammernummer`: vollständig gleich oder mit Durchwahl-Suffix nach „-" – „0431 570490-12" –, nie nur
+    Vorwahl + Anfangsziffern: 0431 94322 trifft 0431 570490 nicht, fixture-eval 03.11.2026) ist nie die
     Kanzlei-Nummer – auch nicht über tel:-Link, rohes HTML oder LLM. Teilnehmernummer mit führender 0
     („+49 2357 015251043") ist unplausibel → verworfen, nächste Kandidatin. Passt die Vorwahl nicht zur PLZ und eine
     andere Nummer der Seite passt (Kandidatenliste `telefon_kandidaten`), wird sie genommen („Telefon: … passt nicht zur

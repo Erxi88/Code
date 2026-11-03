@@ -41,10 +41,13 @@ _AT = re.compile(r"\s*(?:\(|\[|\{)\s*(?:at|ät|@)\s*(?:\)|\]|\})\s*", re.I)
 _DOT = re.compile(r"\s*(?:\(|\[|\{)\s*(?:dot|punkt)\s*(?:\)|\]|\})\s*", re.I)
 
 
-def _stammnummer(nummer: str) -> str:
-    """Ziffern ohne die Endung „-0" der Zentrale: +49 431 570490 → 4943157049 (trifft auch 0431 570490-12)."""
-    ziffern = re.sub(r"\D", "", nummer)
-    return ziffern[:-1] if ziffern.endswith("0") else ziffern
+def _rufziffern(nummer: str | None) -> str:
+    """Ziffern der normalisierten Nummer (+49 …), sonst der rohen."""
+    return re.sub(r"\D", "", normalize_telefon(nummer) or nummer or "") if nummer else ""
+
+
+# Rufnummer im Rohtext, mit Durchwahl-Strich („0431 570490-12", „+49 (0) 431 570 49-0")
+_ROHNUMMER = re.compile(r"\+?\(?\d[\d\s/()–.]{4,}\d\s*[-–]\s*\d{1,5}\b|\+?\(?\d[\d\s/()–.]{4,}\d")
 
 
 EMAIL_AUSGESCHLOSSEN = ("datenschutz", "dsb", "bewerbung", "karriere", "noreply", "no-reply", "webmaster",
@@ -60,12 +63,29 @@ class Ausschluss:
     # Prüfkatalog 2: nie die Kanzlei-E-Mail (webmaster@stewoda.de bei steuerberater-ploen.de)
     email_ausgeschlossen: tuple[str, ...] = EMAIL_AUSGESCHLOSSEN
     telefone: frozenset[str] = frozenset()  # bekannte Fremdnummern (Kammern …), normalisiert
-    kammer_stamm: tuple[str, ...] = ()  # Ziffern der Stammnummern aller Kammern (Telefon und Fax, ohne „-0")
+    kammer_nummern: tuple[str, ...] = ()  # Ziffern aller Kammer-Nummern (Telefon und Fax), vollständig
 
     def ist_kammernummer(self, nummer: str | None) -> bool:
-        """Stammnummer stimmt mit einer Kammer-Nummer überein – auch Durchwahlen („0431 570490-12")."""
-        ziffern = re.sub(r"\D", "", nummer or "")
-        return bool(ziffern) and any(ziffern.startswith(st) for st in self.kammer_stamm)
+        """Die Nummer ist eine Kammer-Nummer: vollständig gleich, oder – nur mit Durchwahl-Strich in der rohen Form –
+        die Stammnummer vor dem „-" ist die Kammer-Nummer („0431 570490-12", „0431 57049-0" zu 0431 570490). Nie ein
+        bloßer Anfang: 0431 94322 ist keine Nummer der Kammer 0431 570490 (fixture-eval 03.11.2026)."""
+        if not nummer or not self.kammer_nummern:
+            return False
+        if _rufziffern(nummer) in self.kammer_nummern:
+            return True
+        teile = re.split(r"\s*[-–]\s*(?=\d{1,5}\s*$)", nummer.strip())
+        if len(teile) != 2:
+            return False
+        stamm = _rufziffern(teile[0])
+        return bool(stamm) and (stamm in self.kammer_nummern or stamm + "0" in self.kammer_nummern)
+
+    def kammer_im_text(self, text: str | None) -> set[str]:
+        """Normalisierte Nummern im Text (auch tel:-Ziele), die Kammer-Nummern sind – mit Blick auf den Durchwahl-Strich
+        der rohen Schreibweise, der bei der Normalisierung verloren geht."""
+        if not text or not self.kammer_nummern:
+            return set()
+        return {n for m in _ROHNUMMER.finditer(text) if self.ist_kammernummer(m.group(0))
+                and (n := normalize_telefon(m.group(0)))}
 
     @classmethod
     def laden(cls, pfad: str | Path | None) -> Ausschluss:
@@ -81,8 +101,8 @@ class Ausschluss:
             email_ausgeschlossen=tuple(d.get("email_ausgeschlossen", EMAIL_AUSGESCHLOSSEN)),
             telefone=frozenset(n for t in d.get("telefone", []) if (n := normalize_telefon(str(t.get("telefon") if
                                                                                               isinstance(t, dict) else t)))),
-            kammer_stamm=tuple(_stammnummer(n) for k in d.get("kammer_telefon", []) for feld in ("telefon", "fax")
-                               if k.get(feld) and (n := normalize_telefon(str(k[feld])))),
+            kammer_nummern=tuple(_rufziffern(n) for k in d.get("kammer_telefon", []) for feld in ("telefon", "fax")
+                                 if k.get(feld) and (n := normalize_telefon(str(k[feld])))),
         )
 
     def fremd_zeilen(self, zeilen: list[str]) -> set[int]:
@@ -525,7 +545,8 @@ def extract_impressum(
     kontext_nummern: set[str] = set()  # Durchwahlen: direkt bei einer Person oder „Durchwahl"/„direkt"
     kontext_mails: set[str] = set()
     alle_fremden: set[str] = set()  # Nummern aus Fremd-Abschnitten aller Seiten (Kammer …)
-    eigene_nummern: set[str] = set()  # beschriftete Nummern außerhalb der Fremd-Abschnitte
+    eigene_nummern: set[str] = set()  # Nummern außerhalb der Fremd-Abschnitte (beschriftet, Nummernzeile, tel:-Link)
+    kammer: set[str] = set()  # Kammer-Nummern laut kammer_telefon (auch mit Durchwahl-Strich)
     for nr, (txt, lnks) in enumerate([(text, links or []), *(weitere_texte or [])]):
         zeilen = txt.splitlines()
         fremd = ausschluss.fremd_zeilen(zeilen)
@@ -545,9 +566,16 @@ def extract_impressum(
                 erg.strasse, erg.plz, erg.ort, erg.adresszusatz = gewaehlt.strasse, gewaehlt.plz, gewaehlt.ort, gewaehlt.zusatz
         fremde_nummern = {n for n, i in telefone(zeilen) if i in fremd} | {
             n for i in fremd if i < len(zeilen) and _NUMMER_ALLEIN.match(zeilen[i].strip())
-            and (n := normalize_telefon(zeilen[i]))} | set(ausschluss.telefone)
+            and (n := normalize_telefon(zeilen[i]))}
+        fremde_nummern = {n for n in fremde_nummern if not ist_mobil(n)} | set(ausschluss.telefone)
         alle_fremden |= fremde_nummern
         eigene_nummern |= {n for n, i in telefone(zeilen) if i not in fremd}
+        eigene_nummern |= {n for i, z in enumerate(zeilen) if i not in fremd and _NUMMER_ALLEIN.match(z.strip())
+                           and (n := normalize_telefon(z))}
+        eigene_nummern |= {n for h in lnks if h.lower().startswith("tel:") and (n := normalize_telefon(h[4:]))
+                           and n not in fremde_nummern}
+        kammer |= ausschluss.kammer_im_text(txt) | {n for h in lnks if h.lower().startswith("tel:")
+                                                     and ausschluss.ist_kammernummer(h[4:]) and (n := normalize_telefon(h[4:]))}
         bei_person = personen_zeilen(zeilen)
         kontext_nummern |= {n for n, i in telefone(zeilen) if i in bei_person or _DURCHWAHL.search(zeilen[i])}
         kontext_mails |= {m for i in bei_person for m in emails(zeilen[i])}
@@ -572,7 +600,9 @@ def extract_impressum(
     # fremd ist eine Nummer nur, wenn sie nie außerhalb eines Fremd-Abschnitts steht – oder auf der festen Liste
     # (Kammer-Nummern, impressum_ausschluss.yaml); die eigene Nummer steht oft auch neben „Gestaltung" o. Ä.
     # Kammer-Nummern (Stammnummer, kammer_telefon in impressum_ausschluss.yaml) nie – auch außerhalb eines Fremd-Abschnitts
-    alle_fremden = (alle_fremden - eigene_nummern) | set(ausschluss.telefone)
+    # Mobilnummern sind nie die Nummer einer Kammer o. Ä. (steuerberater-krogmann.de: einzige Nummer)
+    alle_fremden = {n for n in alle_fremden - eigene_nummern - set(schema_telefone or []) if not ist_mobil(n)}
+    alle_fremden |= set(ausschluss.telefone) | kammer
     alle_fremden |= {n for n in [*tel_links, *(schema_telefone or []), *text_nummern] if ausschluss.ist_kammernummer(n)}
     tel_links = [n for n in tel_links if n not in alle_fremden]
     text_nummern = [n for n in text_nummern if n not in alle_fremden]

@@ -979,12 +979,42 @@ def test_vorwahl_passt_nicht_andere_kandidatin_der_seite():
 
 
 def test_kammer_stammnummer_auch_durchwahl_und_fax():
-    """Liste kammer_telefon (impressum_ausschluss.yaml): Stammnummer ohne „-0" – Durchwahl und Fax der Kammer zählen."""
+    """Liste kammer_telefon (impressum_ausschluss.yaml): Kammer-Nummer vollständig oder mit Durchwahl-Strich dahinter –
+    Durchwahl und Fax der Kammer zählen, ein bloßer Anfang nie (fixture-eval 03.11.2026, schroeder-steuer.de)."""
     from recherche.extract.rules import Ausschluss, extract_impressum
 
     aus = Ausschluss.laden(Path(__file__).parent.parent / "config" / "impressum_ausschluss.yaml")
-    assert aus.ist_kammernummer("+49 431 570490") and aus.ist_kammernummer("+49 431 57049012")
+    assert aus.ist_kammernummer("+49 431 570490") and aus.ist_kammernummer("0431 570490-12")
+    assert aus.ist_kammernummer("0431 57049-12") and aus.ist_kammernummer("+49 (0) 431 570 49-0")
     assert aus.ist_kammernummer("+49 431 5704910") and not aus.ist_kammernummer("+49 431 990000")
+    # nur Vorwahl + Anfangsziffern: keine Kammer-Nummer
+    assert not aus.ist_kammernummer("0431 94322") and not aus.ist_kammernummer("+49 431 94322")
+    assert not aus.ist_kammernummer("0431 5704911") and not aus.ist_kammernummer("+49 431 57049012")
     erg = extract_impressum("Impressum\nLund Steuerberatung\nTel. 0431 570490-12\nTelefon 0431 990000", aus,
                             links=["tel:+4943157049012"])
     assert erg.telefon == "+49 431 990000"
+
+
+def test_kammer_pruefung_nie_zu_breit():
+    """fixture-eval 03.11.2026: 0431 94322 (Kiel, wie die Kammer SH 0431 570490) ist die Kanzlei-Nummer; 0431 570490-12
+    im Kammer-Block bleibt verworfen."""
+    from recherche.extract.rules import Ausschluss, extract_impressum
+
+    aus = Ausschluss.laden(Path(__file__).parent.parent / "config" / "impressum_ausschluss.yaml")
+    erg = extract_impressum("Impressum\nSchröder Steuerberatung\nHolstenstraße 1\n24103 Kiel\nTel. 0431 94322\n"
+                            "Zuständige Kammer\nSteuerberaterkammer Schleswig-Holstein\nTel. 0431 570490-12", aus)
+    assert erg.telefon == "+49 431 94322" and "+49 431 94322" not in erg.fremde_telefone
+    assert "+49 431 57049012" in erg.fremde_telefone
+
+
+def test_eigene_nummer_im_fremd_fenster_bleibt():
+    """steuerberater-krogmann.de: die einzige Nummer (Mobil) steht im Fenster hinter einem Fremd-Schlüsselwort und als
+    tel:-Link – sie ist trotzdem die Kanzlei-Nummer, Mobilnummern sind nie fremd."""
+    from recherche.extract.rules import Ausschluss, extract_impressum
+
+    aus = Ausschluss.laden(Path(__file__).parent.parent / "config" / "impressum_ausschluss.yaml")
+    text = ("Impressum\nKai Krogmann, Steuerberater\nMitglied der Steuerberaterkammer Schleswig-Holstein\n"
+            "Dorfstraße 3\n24214 Gettorf\nTelefon: 0176 90000001")
+    assert not extract_impressum(text, aus).fremde_telefone  # LLM-Telefon wird damit nicht verworfen
+    erg = extract_impressum(text.replace("Telefon: ", ""), aus, links=["tel:+4917690000001"])
+    assert erg.telefon == "+49 176 90000001"

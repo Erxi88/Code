@@ -93,7 +93,8 @@ def regeln_fuer(seiten, ausschluss: Ausschluss, domain: str | None, website: str
     if erg.telefon is None or ist_mobil(erg.telefon):
         # Festnetz fehlt im bereinigten Text (z. B. Standort-Block der Fußzeile entfernt): rohes HTML
         if (festnetz := festnetz_aus_html([s.html for s in reihenfolge], erg.plz)) and festnetz not in erg.fremde_telefone \
-                and not ausschluss.ist_kammernummer(festnetz):
+                and not ausschluss.ist_kammernummer(festnetz) \
+                and festnetz not in {n for s in reihenfolge for n in ausschluss.kammer_im_text(s.html)}:
             erg.telefon = festnetz
             erg.telefon_kandidaten = [festnetz, *[n for n in erg.telefon_kandidaten if n != festnetz]]
     return erg
