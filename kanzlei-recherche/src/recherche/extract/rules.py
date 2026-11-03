@@ -32,7 +32,7 @@ _STRASSE = re.compile(
 _KEINE_PLZ_DAVOR = re.compile(r"(?:HR\s?[AB]|PR|VR|GnR|Nr\.?|Nummer|Konto|IBAN|BLZ|seit|ab|bis|von|ca\.?)\s*:?\s*$", re.I)
 _STRASSE_NEIN = re.compile(r"^(tel|fon|fax|postfach|ust|hrb|hra|amtsgericht|steuer-?nr|steuernummer|pr \d)", re.I)
 _TEL_LABEL = re.compile(
-    r"(?:(?<![a-zäöü])(?:tel(?:efon)?(?:nummer)?|rufnummer|fon|phone|t|zentrale|büro|sekretariat)|[☎📞✆])"
+    r"(?:(?<![a-zäöü])(?:tel(?:efon)?(?:nummer)?|rufnummer|fon|phone|t|zentrale|büro|sekretariat|mobil(?:nummer|funk|telefon)?|mobile|handy)|[☎📞✆])"
     r"\s*\.?\s*:?\s*(\(?\+?\d[\d\s/()\-–.]{4,}\d)", re.I
 )
 _FAX_DAVOR = re.compile(r"(fax|telefax|\bF)\s*\.?\s*:?\s*$", re.I)
@@ -52,6 +52,11 @@ _ROHNUMMER = re.compile(r"\+?\(?\d[\d \t/()\-–.]{4,}\d")
 
 EMAIL_AUSGESCHLOSSEN = ("datenschutz", "dsb", "bewerbung", "karriere", "noreply", "no-reply", "webmaster",
                         "postmaster", "hostmaster", "abuse")
+
+
+# Mitgliedschaft im Satz statt Abschnittsüberschrift; Überschrift eines eigenen Kontaktblocks
+_MITGLIEDSCHAFT = re.compile(r"^(?:(?:ich\s+bin|wir\s+sind)\s+)?mitglied(?:er)?\s+(?:der|des|im|in\s+der)\b", re.I)
+_EIGENER_BLOCK = re.compile(r"^(?:kontakt|kontaktdaten|anschrift|so\s+erreichen\s+sie\s+(?:mich|uns))\s*:?$", re.I)
 
 
 @dataclass
@@ -109,8 +114,17 @@ class Ausschluss:
         """Indizes der Zeilen in Fremd-Abschnitten (Kammer, Hoster, Webdesign …)."""
         fremd: set[int] = set()
         for i, z in enumerate(zeilen):
-            if any(m.search(z) for m in self.abschnitt_muster):
-                fremd.update(range(i, min(len(zeilen), i + self.abschnitt_zeilen + 1)))
+            if not any(m.search(z) for m in self.abschnitt_muster):
+                continue
+            fremd.add(i)
+            if _MITGLIEDSCHAFT.match(z.strip()):
+                # „Mitglied der Steuerberaterkammer …" nennt die Kammer nur im Satz – kein Abschnitt; darunter steht
+                # oft der eigene Kontaktblock (schroeder-steuer.de, fixture-eval 03.11.2026)
+                continue
+            for j in range(i + 1, min(len(zeilen), i + self.abschnitt_zeilen + 1)):
+                if _EIGENER_BLOCK.match(zeilen[j].strip()):
+                    break  # „Kontakt:" / „Anschrift:" beginnt einen neuen, eigenen Block
+                fremd.add(j)
         return fremd
 
 

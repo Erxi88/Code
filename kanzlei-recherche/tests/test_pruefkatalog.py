@@ -1084,3 +1084,21 @@ def test_zentrale_null_schlaegt_durchwahl_auch_bei_person():
     weitere = [("Kontakt\nTel. 04541 9000-119", []), ("Unser Team\nJana Muster\nEmpfang\nTel. 04541 9000-0", [])]
     erg = extract_impressum(text, weitere_texte=weitere)
     assert erg.telefon == "+49 4541 90000"
+
+
+def test_fremd_abschnitt_nur_der_kammer_absatz():
+    """schroeder-steuer.de / steuerberater-krogmann.de (fixture-eval 03.11.2026): „Mitglied der Steuerberaterkammer …"
+    über dem eigenen Kontaktblock öffnet keinen Fremd-Abschnitt; „Kontakt:" beendet einen; „Mobilnummer" ist ein
+    Telefon-Kennwort. Der echte Kammer-Absatz bleibt fremd."""
+    from recherche.extract.rules import Ausschluss, extract_impressum
+
+    aus = Ausschluss.laden(Path(__file__).parent.parent / "config" / "impressum_ausschluss.yaml")
+    erg = extract_impressum("Impressum\nIna Lund\nDipl. Kauffr., Steuerberaterin\n"
+                            "Mitglied der Steuerberaterkammer Schleswig-Holstein\nKleiststraße 3, 24105 Kiel\n"
+                            "Fon: 0431 9 00 00\nFax: 0431 9 00 01\nAufsichtsbehörde:\nSteuerberaterkammer Schleswig-Holstein\n"
+                            "Hopfenstr. 2d, 24114 Kiel\nFon: 0431 570 49 0", aus)
+    assert (erg.strasse, erg.plz, erg.telefon) == ("Kleiststraße 3", "24105", "+49 431 90000")
+    assert "+49 431 570490" in erg.fremde_telefone and "+49 431 90000" not in erg.fremde_telefone
+    erg = extract_impressum("Impressum\nSteuerberater Kai Muster\nBerufshaftpflichtversicherung:\nHDI Versicherung AG\n"
+                            "Kontakt:\nHamburger Straße 7d, 22946 Großensee; Mobilnummer +49 17690000001", aus)
+    assert erg.telefon == "+49 176 90000001" and erg.plz == "22946"
