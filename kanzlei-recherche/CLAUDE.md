@@ -299,6 +299,9 @@ der nächsten Quelle füllen.**
   `normalize_telefon`), E-Mail aus dem Impressum (Rückfall Kontakt-, Startseite, zuletzt
   Meta-Beschreibungen). Adressen/Telefone in Fremd-Abschnitten (Kammer, Aufsicht,
   Versicherung, Hoster, Webdesign) werden ignoriert: `config/impressum_ausschluss.yaml`.
+  Der Fremd-Abschnitt ist nur der Absatz, der die Institution nennt (Schlüsselzeile + bis zu 6 Zeilen): eine
+  Mitgliedschaftszeile („Mitglied der Steuerberaterkammer …") ist nur selbst fremd, „Kontakt:"/„Anschrift:" beendet
+  den Abschnitt (schroeder-steuer.de, steuerberater-krogmann.de, fixture-eval 03.11.2026).
   - Bekannte Fremdadressen der Ausschlussliste gelten nur dann als fremd, wenn sie im
     Fremd-Abschnitt stehen, der Name der Institution davor steht oder das Impressum eine
     andere Adresse nennt. Steht dort nur diese Adresse (Kanzlei im Haus der Kammer), wird
@@ -308,7 +311,7 @@ der nächsten Quelle füllen.**
     Fremd-Abschnitt zählen nicht). Nennt der sichtbare Text eine andere Nummer derselben Klasse als der
     tel:-Link/Schema.org, gewinnt der Text („Telefon aus dem Text X, tel:-Link nennt Y" in „Abweichung"; Entscheidung
     30.10.2026). Nur laut `phonenumbers` gültige Nummern, Gruppierung immer aus der Bibliothek
-    (INTERNATIONAL); ungültig → leer und „Telefon ungültig: …" in „Abweichung". Fax („Fax", „Telefax", „F:") nie.
+    (INTERNATIONAL); ungültig → leer und „Telefon ungültig: …" in „Abweichung". Fax („Fax", „Telefax", „F:") nie; „Mobil(nummer)", „Handy" sind Telefon-Kennwörter.
     **Vorwahl ↔ PLZ (Q4, `vorwahl.py`)**: BNetzA-Verzeichnis (`pfade.vorwahlen`, neueste CSV) → Ortsnetzname →
     Gemeinde der Ortsliste → Kreis; passt bei gleichem Kreis oder Nachbarkreis (`config/nachbarkreise.yaml`,
     symmetrisch; SH: 040 immer zulässig) – Rücksprache 30.10.2026, weil Ortsnetze nicht an Kreisgrenzen enden.

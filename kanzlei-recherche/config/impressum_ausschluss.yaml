@@ -30,9 +30,9 @@ adressen:
   - {name: Hetzner Online GmbH, strasse: Industriestr. 25, plz: "91710"}
   - {name: ALL-INKL.COM, strasse: Hauptstraße 68, plz: "02742"}
 
-# Steuerberaterkammern (Telefon und Fax, Quelle jeweils Kammer-Impressum/Kontakt; Stand 03.11.2026): Nummern,
-# deren Stammnummer (ohne Durchwahl, ohne „-0") übereinstimmt, sind nie die Kanzlei-Nummer – auch außerhalb eines
-# Fremd-Abschnitts (Stichprobe Seed 2, steuerberater-krogmann.de).
+# Steuerberaterkammern (Telefon und Fax, Quelle jeweils Kammer-Impressum/Kontakt; Stand 03.11.2026): diese Nummern –
+# vollständig oder mit Durchwahl-Suffix nach „-" („0431 570490-12"), nie nur mit gleichem Anfang – sind nie die
+# Kanzlei-Nummer, auch außerhalb eines Fremd-Abschnitts (Stichprobe Seed 2, fixture-eval 03.11.2026).
 kammer_telefon:
   - {kammer: "Steuerberaterkammer Berlin", telefon: "+49 30 8892610", fax: "+49 30 88926110"}
   - {kammer: "Steuerberaterkammer Brandenburg", telefon: "+49 331 888520", fax: "+49 331 8885222"}
