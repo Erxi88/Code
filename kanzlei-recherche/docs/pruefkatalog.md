@@ -20,6 +20,7 @@ Die Zielmenge sind Steuerberaterkanzleien im Sinne der Kammerstatistik: Standort
 | Kammer, Verband, Versorgungswerk | „Steuerberaterkammer“, „Steuerberaterverband“, „Versorgungswerk“, „Bundessteuerberaterkammer“ im Namen oder in der Anbieterzeile des Impressums. Eine Kammer- oder Verbandsadresse allein schließt nicht aus – es gilt Abschnitt 2 (nur Abweichungshinweis) | Keine Kanzlei – „Institution“ |
 | Behörde, Gemeinde, Amt | Domain gemeinde-*, amt-*, stadt-*, kreis-*; „Amtsdirektor(in)“, „Amtsvorsteher“, „Bürgermeister“ als Person – die Rolle nur, wenn das Impressum weder eine Steuerberaterkammer noch eine StB-Berufsbezeichnung nennt (ein Steuerberater, der zugleich Amtsvorsteher ist, bleibt Kanzlei; die Person wird als Ansprechpartner verworfen) | Keine Kanzlei – „Behörde“ |
 | Partei, Verein, Kirche, Schule | spd-*, cdu-*, gruene-*, *-verein, kirche-*, schule-*; „e. V.“, „…verein“, „Partei“ im Namen oder in der Anbieterzeile; Vereinsregister im Impressum nur ohne Positivsignal 1B Rang 1–3 (Mitgliedsverbände im Impressum) | Keine Kanzlei – „Verein/Partei“ |
+| Unternehmernetzwerk, Club | „Business Club“, „Unternehmernetzwerk“, „Wirtschaftsjunioren“, Rotary/Lions u. a. im Namen oder in der Anbieterzeile (ohne Kanzleiwort im Namen); „c/o“ in der Anbieterzeile ohne Kanzleiwort – auch mit einem Steuerberater als Vertreter (Stichprobe Seed 2, 03.11.2026) | Keine Kanzlei – „Verein/Netzwerk“ |
 | Portal, Verzeichnis, Jobbörse, Software | Blocklist (config/domain_blocklist.txt) plus Muster: *linklisten*, *firmenkataloge*, *jobs.*, *karriere.* als Hauptdomain | Keine Kanzlei – „Portal“ |
 | Andere Branche | Osteopathie, IT-Systemhaus, Unternehmensberatung ohne StB, Bank, Versicherung – kein Berufsträger, keine Kammer | Keine Kanzlei – „Branchenfremd“ |
 | Ausland | TLD .at .ch .li .tirol .wien .swiss; PLZ 4-stellig; Ort in AT/CH-Ortsliste; „Wirtschaftstreuhänder“, „Mag.“+„Steuerberater“ ohne deutsche PLZ | Außerhalb – „Ausland“ (ohne LLM) |
@@ -50,6 +51,7 @@ Namensmerkmale aus 1A (Lohnsteuerhilfe, „e. V.“, Kammer/Verband, Rechtsanwal
 ### Kanzleiname
 
 - Quelle in dieser Reihenfolge: Impressum-Anbieter → Rechtsform-Zeile → `<title>`/Logo-Alt → Ableitung aus Berufsträger („Steuerberater Vorname Nachname“).
+- Seitentitel und Domain-Wörter sind keine Firmierung (Seed 2): ein Name aus Domain-Wörtern, der nicht als ganze Wörter im Impressum steht („Schroeder Steuer“), oder ein generischer Titel ohne Rechtsform („Mein Steuerberater in …“, „Kanzlei für …“) wird verworfen; mit Person + Berufsbezeichnung im Impressum gilt „Steuerberater/in Vorname Nachname“.
 - Abgeleitete Namen bekommen Abweichung „Name abgeleitet“ und Konfidenz „mittel“ – außer bei Rang 1/2 (Kammer oder Person mit Berufsbezeichnung): dann „hoch“. Impressum nur mit „Vorname Nachname, Steuerberater/in“ ohne Firmierung → Kanzleiname „Steuerberater/in Vorname Nachname“, die Person ist Ansprechpartner (Stichprobe Seed 1, 02.11.2026). Ohne Kammer und ohne Berufsbezeichnung → nie Hauptblatt.
 - Verboten als Name: Navigationswörter (Start, Kontakt, Impressum, Datenschutz, Leistungen, Aktuelles), Alt-Text-Reste, Ortsnamen allein, „Regionen“, „Homepages“, Rollen („Die Amtsdirektorin“).
 - Mehrstandort-Gesellschaften (SHBB, wetreu, ETL, ECOVIS): Zentrale einmal, je Standort eine Zeile mit Spalte „Zentrale/Standort“; Standortseite schlägt Zentralseite bei Telefon und Ansprechpartner.
@@ -67,7 +69,7 @@ Namensmerkmale aus 1A (Lohnsteuerhilfe, „e. V.“, Kammer/Verband, Rechtsanwal
 ### Telefon
 
 - Parse mit phonenumbers (Region DE), Ausgabe `format_number(…, INTERNATIONAL)` – Gruppierung kommt immer aus der Bibliothek, nie aus Rohtext oder LLM.
-- Nur Nummern mit `is_valid_number`. Ungültig → leer lassen plus Abweichung „Telefon ungültig“ (kein Rätselraten).
+- Nur Nummern mit `is_valid_number`. Ungültig → leer lassen plus Abweichung „Telefon ungültig“ (kein Rätselraten). Teilnehmernummer mit führender 0 ist unplausibel → nächste Kandidatin, sonst leer. Nummern, die nur in Fremd-Abschnitten stehen, und bekannte Kammer-Nummern (impressum_ausschluss.yaml `telefone`) nie. Passt die Vorwahl nicht zur PLZ, aber eine andere Nummer der Seite, gilt diese (Seed 2).
 - Vorwahl-Region muss zur PLZ-Region passen (Vorwahl-zu-Kreis-Tabelle der BNetzA; Hamburg 040 für SH-Umland zulässig). Passt sie nicht → Abweichung „Vorwahl passt nicht zur PLZ“, Konfidenz höchstens „mittel“.
 - Festnetz vor Mobil, Mobil vor 0800/0180. Fax nie als Telefon (Zeilen mit „Fax“, „Telefax“, „F:“ ausschließen).
 - Nummern aus `<script>`, `tel:`-Links und Schema.org (telephone) gelten als Quelle, Rang: tel:-Link → Schema.org → Impressum-Text → Kontaktseite. Nennt der sichtbare Text eine andere Nummer derselben Klasse als tel:-Link/Schema.org, gewinnt der Text; Abweichung „Telefon aus dem Text X, tel:-Link nennt Y“ (Entscheidung 30.10.2026, sievertundpartner.de). Der Rang entscheidet damit unter den sichtbaren Nummern; eine Link-Nummer allein gilt nur, wenn der Text keine nennt.
@@ -83,7 +85,7 @@ Namensmerkmale aus 1A (Lohnsteuerhilfe, „e. V.“, Kammer/Verband, Rechtsanwal
 
 ### Ansprechpartner
 
-- Pflichtform: Vorname + Nachname (mindestens zwei Wörter, erstes Wort kein Titel allein). Nur Nachname („Steuerberaterin Schröder“) → Feld leer, Nachname in Abweichung. Titel und Berufskürzel vor dem Namen (Dr., Prof., Dipl.-Kfm., WP, StB, M.Sc., B.A. …) werden vorher abgeschnitten und wandern in den Titel – „Dr. Dr. Rolf Harrie“ bleibt (Rückmeldung 30.10.2026, 900grad.de).
+- Pflichtform: Vorname + Nachname (mindestens zwei Wörter, erstes Wort kein Titel allein). Nur Nachname („Steuerberaterin Schröder“) → Feld leer, Nachname in Abweichung. Titel und Berufskürzel vor dem Namen (Dr., Prof., Dipl.-Kfm., WP, StB, M.Sc., B.A. …) werden vorher abgeschnitten und wandern in den Titel – „Dr. Dr. Rolf Harrie“ bleibt (Rückmeldung 30.10.2026, 900grad.de). Initialen gehören zum Vornamen („Jörg G. Eick“), nie als Nachname. Organisationseinheiten im Namen (Büro, Buchstelle, Beratungsstelle, Zweigstelle, Niederlassung, Standort …: „Büro Neumünster“) sind keine Person → verworfen, nächste Person (Seed 2).
 - Rang: Vertretungsberechtigter im Impressum → erster Berufsträger auf Teamseite → Inhaber laut Startseite. Rechtsanwälte und Notare nur, wenn kein Steuerberater benannt ist.
 - Präfixe abschneiden: „Porträt von“, „Porträtfoto von“, „Foto von“, „Bild von“, „Portrait“, „Bild:“, „Abbildung“. Suffixe abschneiden: „Steuerberater“, „StB“, „Dipl.-Kfm.“ (gehen in Titel/Funktion).
 - Verwerfen, wenn der Text enthält: „Datenschutz“, „Grundverordnung“, „Fachanwalt … [Ort]“, „Amtsdirektor“, „Amtsvorsteher“, „Bürgermeister“, „Präsident“, „Archiv“, „Regionen“, „Homepages“, „Anträge“, „Browser“, „Verein“, Ortsnamen, Ländernamen, Monatsnamen, Wochentage.

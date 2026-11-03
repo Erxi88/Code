@@ -431,7 +431,8 @@ der nächsten Quelle füllen.**
     Rechtsanwälte/Notare hinter die Steuerberater, wenn einer benannt ist. Hinweis „Ansprechpartner verworfen: …".
     Titel und Berufskürzel vor dem Namen (Dr., Prof., Dipl.-Kfm., WP/StB, M.Sc., B.A., LL.M. …) wandern **vor** der
     Vorname-Prüfung in den Titel („Dr. Dr. Rolf Harrie" bleibt); Berufsbezeichnung/Anrede + Nachname („Steuerberaterin
-    Schröder", „Herr Lund") gilt als ohne Vorname.
+    Schröder", „Herr Lund") gilt als ohne Vorname. Initialen gehören zum Vornamen („Jörg G. Eick"); Organisationseinheiten im Namen
+    (Büro, Buchstelle, Beratungsstelle, Zweigstelle, Niederlassung, Standort: „Büro Neumünster") → verworfen (Seed 2).
   - **Stichprobe Seed 1 (02.11.2026):** Impressum ohne Firmierung, nur „Vorname Nachname, Steuerberater/in" im Kopf
     (Anbieterzeile) → die Person ist Inhaberin/Hauptansprechpartner (1B Rang 2), Kanzleiname „Steuerberaterin Vorname
     Nachname" („Name abgeleitet"), Rechtsform Einzelkanzlei, Konfidenz **hoch** (abgeleiteter Name deckelt nur ohne
@@ -484,6 +485,10 @@ der nächsten Quelle füllen.**
     Paragrafenangaben („gemäß § 18 Abs. 2 MStV", „im Sinne des DDG") stören die
     Überschriften-Erkennung nicht. „Verantwortlich gemäß § 5 TMG/§ 18 MStV" zählt nachrangig (nach den
     Vertretungsberechtigten). Rahmenzeilen zählen nie.
+  - **Seitentitel/Domain statt Firmierung** (Seed 2, `seitentitel_statt_firmierung`): LLM-Name aus Domain-Wörtern, der
+    nicht als ganze Wörter im Impressum steht („Schroeder Steuer"), oder generischer Titel ohne Rechtsform („Mein
+    Steuerberater in Kiel", „Kanzlei für …") → verworfen, vor den Kopfzeilen-Regeln; dann „Steuerberater/in Vorname
+    Nachname" aus der Person mit Berufsbezeichnung.
   - Name: Steht im Impressum-Kopf eine Zeile mit allen Wörtern des LLM-Namens und
     höchstens drei weiteren (Rechtsform, Berufswörter, Namen), hat sie Vorrang vor Logo und
     Startseite („900 GRAD STEUERBERATUNG" → „900 GRAD Steuerberatungsgesellschaft PartmbB");
@@ -507,7 +512,8 @@ der nächsten Quelle füllen.**
     wird abgeschnitten, wenn danach eine Straße mit Hausnummer bleibt (`strasse_ohne_firma`), ebenso Person +
     Berufsbezeichnung („Frank … Steuerberater Röpckes Mühle 2" – Impressum ohne Zeilenumbrüche). Nennt das Impressum
     PLZ/Ort ohne Straße, kommt die Straße von Kontakt-/Startseite mit derselben PLZ. Straße auch ohne Leerzeichen hinter dem
-    Abkürzungspunkt („Dorfstr.36" → „Dorfstr. 36", steuerberater-ploen.de).
+    Abkürzungspunkt („Dorfstr.36" → „Dorfstr. 36", steuerberater-ploen.de). Hausnummer-Spanne mit Gedankenstrich („Sandkamp 9 – 11" →
+    „Sandkamp 9-11") und Straßennummer im Namen („An der B76 Nr. 1a") – Seed 2.
   - Adresszusatz („/ Haus 8 Süd", eigene Zeile mit Haus, Gebäude, Eingang, Etage, OG,
     Hinterhof, c/o; auch in Klammern, mehrteilig oder nach einem Zeilenumbruch hinter
     „/") steht im eigenen Feld; die PLZ-Zeile darf bis zu zwei Zeilen unter der Straße
@@ -547,6 +553,8 @@ der nächsten Quelle füllen.**
   Amtsdirektor/Amtsvorsteher/Bürgermeister nur ohne Kammer und ohne StB-Berufsbezeichnung – ein Steuerberater, der
   auch Amtsvorsteher ist, bleibt), Verein/Partei (spd-/cdu-/gruene-/kirche-/schule-, *-verein*, „e. V."/„…verein"/
   „Partei" in Name oder Anbieterzeile; Vereinsregister im Impressum nur ohne 1B Rang 1–3 – Mitgliedsverbände),
+  Verein/Netzwerk („Business Club", „Unternehmernetzwerk", „Wirtschaftsjunioren", Rotary/Lions im Namen oder in der
+  Anbieterzeile ohne Kanzleiwort im Namen; „c/o" in der Anbieterzeile ohne Kanzleiwort – Seed 2, bce-elmshorn.de),
   Rechtsanwaltskanzlei (Anwalt/Notar ohne Steuerberater in Name, Impressum oder Berufsbezeichnung; gemischte
   bleiben), Buchhaltungsbüro (ohne StB/StBv/WP im Impressum), Branchenfremd (kein Positivsignal; Name aus dem
   Ansprechpartner abgeleitet ohne Kammer und Berufsbezeichnung). Namensmerkmale gelten im Kanzleinamen und in der
