@@ -1073,3 +1073,14 @@ def test_ketten_standort_vorwahl_passend_vor_reihenfolge():
                           telefon_kandidaten=["+49 431 900000"])
     z = zusammenfuehren(k, [], seiten, regel, None, lambda p, o: PlzPruefung(True, SH, ort_kanonisch=o))
     assert z.telefon == "+49 431 900000"
+
+
+def test_zentrale_null_schlaegt_durchwahl_auch_bei_person():
+    """ratzeburg.shbb.de: die Zentrale „-0" steht auf der Teamseite neben einer Person, die Durchwahl „-119" in einem
+    Kontaktblock – Kanzlei-Telefon ist die Zentrale, die Durchwahl gehört dem Ansprechpartner."""
+    from recherche.extract.rules import extract_impressum
+
+    text = "Impressum\nNordbund Beratungsstelle Ratzeburg\nHerrenstraße 1\n23909 Ratzeburg\nE-Mail info@nordbund.example"
+    weitere = [("Kontakt\nTel. 04541 9000-119", []), ("Unser Team\nJana Muster\nEmpfang\nTel. 04541 9000-0", [])]
+    erg = extract_impressum(text, weitere_texte=weitere)
+    assert erg.telefon == "+49 4541 90000"

@@ -345,7 +345,7 @@ der nächsten Quelle füllen.**
     Ansprechpartner (`Ansprechpartner.durchwahl`/`.email`, im JSON der Zeile, kein Schema; Teamseiten, bei Standorten
     auch Start/Kontakt; Personenadresse auch über den Namen „swegener@" ↔ Sven Wegener; gleich dem Kanzlei-Kontakt →
     leer) → Spalten „Durchwahl Ansprechpartner" und „E-Mail Ansprechpartner" (Hauptansprechpartner). Zentrale „-0"
-    schlägt Durchwahlen derselben Stammnummer. fixture-eval-Sollwerte `durchwahl`, `email_ansprechpartner`.
+    schlägt Durchwahlen derselben Stammnummer – auch wenn sie selbst neben einer Person steht (ratzeburg.shbb.de). fixture-eval-Sollwerte `durchwahl`, `email_ansprechpartner`.
 - Stufe 2 LLM über Ollama (`ollama.py`, URL und Modell aus `settings.yaml`) auf allen
   Seiten: Name, Rechtsform, Personen (Name, Titel, Funktion), genannte
   Mitarbeiterzahl/Größenklasse; Adresse/Telefon/E-Mail nur als Rückfall.
@@ -444,7 +444,8 @@ der nächsten Quelle füllen.**
     Abschnitts, Rang hinter den Berufsträgern der Teamseite, vorn nur, wenn sonst niemand genannt ist.
   - **Echte Strukturen (fixture-prompt 02.11.2026):** Kopf-Personen werden ohne Rahmen-Filter gesucht (Name und
     Telefon stehen oft in einer Seitenleiste auf jeder Seite – grunewald-stb), sonst im ganzen Impressum ohne
-    Fremd-Abschnitte; ein LLM-Name, der nur die Domain ist („Stb-Grunewald"), wird verworfen. Der zweizeilige Name
+    Fremd-Abschnitte; ein LLM-Name, der nur die Domain ist („Stb-Grunewald"), wird verworfen – URLs und E-Mail-Adressen im Impressum
+    zählen dabei nicht als Beleg. Der zweizeilige Name
     wird im Kopf ohne Navigation/Fußzeile gesucht (`kopfzeilen`, bis 14 Inhaltszeilen). Menüzeilen vor dem
     Kopf („Copyright", „Datenschutz", „Disclaimer") beenden die Anbieterzeile nicht. Kanzleiname über zwei Kopfzeilen,
     wenn eine nur die Kanzleiform nennt („ETL HOLSTEIN" ⏎ „Steuerberatungsgesellschaft mbH", „Steuerberater-Sozietät" ⏎

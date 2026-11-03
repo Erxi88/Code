@@ -609,6 +609,10 @@ def extract_impressum(
     alle = [n for n in [*tel_links, *(schema_telefone or []), *text_nummern] if n not in alle_fremden]
     ohne_kontext = [n for n in alle if n not in kontext_nummern]
     erg.telefon = beste_telefon(ohne_kontext) or beste_telefon(alle)
+    if erg.telefon and (zentrale := zentrale_nummer(erg.telefon, alle)):
+        # die Zentrale „-0" derselben Stammnummer schlägt eine Durchwahl, auch wenn sie neben einer Person steht
+        # (Teamseite: „Empfang 04541 8789-0") – ratzeburg.shbb.de, Rückschritt gegenüber 72b4204
+        erg.telefon = zentrale
     erg.fremde_telefone = sorted(alle_fremden)
     erg.telefon_kandidaten = rangfolge_telefon(ohne_kontext) + [n for n in rangfolge_telefon(alle) if n not in ohne_kontext]
     if (durchwahl := beste_telefon(alle)) != erg.telefon and durchwahl in kontext_nummern:

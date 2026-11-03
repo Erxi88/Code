@@ -36,3 +36,14 @@ def test_echte_firmierung_aus_domain_woertern_bleibt():
     """„Hansen Steuerberatung" bei hansen-steuerberatung.de steht im Impressum – das ist die Firmierung."""
     impressum = ["Impressum", "Hansen Steuerberatung", "Inhaber: Ole Hansen, Steuerberater", "Markt 1", "24103 Kiel"]
     assert _merge("hansen-steuerberatung.example", impressum, "Hansen Steuerberatung").kanzleiname == "Hansen Steuerberatung"
+
+
+def test_domain_name_zaehlt_nicht_ueber_url_und_email():
+    """grunewald-stb.de (Rückschritt gegenüber 72b4204): „www.stb-grunewald.de" und „info@stb-grunewald.de" im Impressum
+    sind kein Beleg für den LLM-Namen „Stb-Grunewald"."""
+    impressum = ["Impressum", "Malte Grünberg, Steuerberater", "Holstenstraße 5", "24103 Kiel",
+                 "E-Mail: info@stb-gruenberg.example", "Internet: www.stb-gruenberg.example",
+                 "https://stb-gruenberg.example/impressum"]
+    k = _merge("stb-gruenberg.example", impressum, "Stb-Gruenberg")
+    assert k.kanzleiname == "Steuerberater Malte Grünberg" and "Seitentitel" in k.abweichung
+

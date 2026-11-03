@@ -605,9 +605,14 @@ def seitentitel_statt_firmierung(name: str | None, domain: str | None, impressum
     if not name:
         return False
     woerter = re.findall(r"\w+", name)
+    # URLs und E-Mail-Adressen zählen nicht: „www.stb-grunewald.de" ist kein Beleg für „Stb-Grunewald"
+    text = _URL_ODER_MAIL.sub(" ", impressum or "")
     im_impressum = bool(woerter) and bool(re.search(r"\b" + r"\W+".join(map(re.escape, woerter)) + r"\b",
-                                                    impressum or "", re.IGNORECASE))
+                                                    text, re.IGNORECASE))
     return (name_wie_domain(name, domain) and not im_impressum) or (generischer_titel(name) and not rechtsform_aus_text(name))
+
+
+_URL_ODER_MAIL = re.compile(r"\S+@\S+|(?:https?://|www\.)\S+|\b[\w.-]+\.(?:de|com|net|org|info|eu|tax|biz)\b", re.I)
 
 
 def _zentralnummern(kandidat: Kandidat, seiten: dict) -> set[str]:
