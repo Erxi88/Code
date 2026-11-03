@@ -52,6 +52,7 @@ class Ausschluss:
     email_nachrangig: tuple[str, ...] = ()
     # Prüfkatalog 2: nie die Kanzlei-E-Mail (webmaster@stewoda.de bei steuerberater-ploen.de)
     email_ausgeschlossen: tuple[str, ...] = EMAIL_AUSGESCHLOSSEN
+    telefone: frozenset[str] = frozenset()  # bekannte Fremdnummern (Kammern …), normalisiert
 
     @classmethod
     def laden(cls, pfad: str | Path | None) -> Ausschluss:
@@ -65,6 +66,8 @@ class Ausschluss:
                       if (k := adresse_key(a.get("strasse"), str(a.get("plz"))))},
             email_nachrangig=tuple(d.get("email_nachrangig", [])),
             email_ausgeschlossen=tuple(d.get("email_ausgeschlossen", EMAIL_AUSGESCHLOSSEN)),
+            telefone=frozenset(n for t in d.get("telefone", []) if (n := normalize_telefon(str(t.get("telefon") if
+                                                                                              isinstance(t, dict) else t)))),
         )
 
     def fremd_zeilen(self, zeilen: list[str]) -> set[int]:
@@ -366,6 +369,14 @@ def _ziffern(n: str) -> str:
     return re.sub(r"\D", "", n)
 
 
+def rangfolge_telefon(nummern: list[str]) -> list[str]:
+    """Alle Nummern in der Rangfolge von `beste_telefon` (Festnetz vor Mobil vor Service, dann Quellreihenfolge)."""
+    from ..normalize import ist_service
+
+    nummern = list(dict.fromkeys(n for n in nummern if n))
+    return sorted(nummern, key=lambda n: (2 if ist_service(n) else 1 if ist_mobil(n) else 0, nummern.index(n)))
+
+
 def zentrale_nummer(nummer: str, nummern: list[str]) -> str | None:
     """Zentrale („0481 8588-0" = +49 481 85880) zur Durchwahl derselben Stammnummer (+49 481 8588270) – Prüfkatalog 2,
     Rückmeldung SHBB 30.10.2026."""
@@ -491,6 +502,8 @@ def extract_impressum(
     text_nummern: list[str] = []
     kontext_nummern: set[str] = set()  # Durchwahlen: direkt bei einer Person oder „Durchwahl"/„direkt"
     kontext_mails: set[str] = set()
+    alle_fremden: set[str] = set()  # Nummern aus Fremd-Abschnitten aller Seiten (Kammer …)
+    eigene_nummern: set[str] = set()  # beschriftete Nummern außerhalb der Fremd-Abschnitte
     for nr, (txt, lnks) in enumerate([(text, links or []), *(weitere_texte or [])]):
         zeilen = txt.splitlines()
         fremd = ausschluss.fremd_zeilen(zeilen)
@@ -508,7 +521,11 @@ def extract_impressum(
                                         "(Ausschlussliste) – als Kanzleiadresse übernommen, bitte prüfen")
             if gewaehlt is not None:
                 erg.strasse, erg.plz, erg.ort, erg.adresszusatz = gewaehlt.strasse, gewaehlt.plz, gewaehlt.ort, gewaehlt.zusatz
-        fremde_nummern = {n for n, i in telefone(zeilen) if i in fremd}
+        fremde_nummern = {n for n, i in telefone(zeilen) if i in fremd} | {
+            n for i in fremd if i < len(zeilen) and _NUMMER_ALLEIN.match(zeilen[i].strip())
+            and (n := normalize_telefon(zeilen[i]))} | set(ausschluss.telefone)
+        alle_fremden |= fremde_nummern
+        eigene_nummern |= {n for n, i in telefone(zeilen) if i not in fremd}
         bei_person = personen_zeilen(zeilen)
         kontext_nummern |= {n for n, i in telefone(zeilen) if i in bei_person or _DURCHWAHL.search(zeilen[i])}
         kontext_mails |= {m for i in bei_person for m in emails(zeilen[i])}
@@ -530,9 +547,16 @@ def extract_impressum(
             mails = seite_mails
         else:  # spätere Seiten nur, wenn sie eine allgemeine Adresse liefern (info@ statt der Personenadresse)
             weitere_mails += [m for m in seite_mails if allgemeine_email(m, domain) and m not in kontext_mails]
-    alle = [*tel_links, *(schema_telefone or []), *text_nummern]
+    # fremd ist eine Nummer nur, wenn sie nie außerhalb eines Fremd-Abschnitts steht – oder auf der festen Liste
+    # (Kammer-Nummern, impressum_ausschluss.yaml); die eigene Nummer steht oft auch neben „Gestaltung" o. Ä.
+    alle_fremden = (alle_fremden - eigene_nummern) | set(ausschluss.telefone)
+    tel_links = [n for n in tel_links if n not in alle_fremden]
+    text_nummern = [n for n in text_nummern if n not in alle_fremden]
+    alle = [n for n in [*tel_links, *(schema_telefone or []), *text_nummern] if n not in alle_fremden]
     ohne_kontext = [n for n in alle if n not in kontext_nummern]
     erg.telefon = beste_telefon(ohne_kontext) or beste_telefon(alle)
+    erg.fremde_telefone = sorted(alle_fremden)
+    erg.telefon_kandidaten = rangfolge_telefon(ohne_kontext) + [n for n in rangfolge_telefon(alle) if n not in ohne_kontext]
     if (durchwahl := beste_telefon(alle)) != erg.telefon and durchwahl in kontext_nummern:
         erg.hinweise.append(f"Telefon: Durchwahl {durchwahl} bei einer Person übergangen, Kanzlei {erg.telefon}")
     text_nummern = [n for n in text_nummern if n not in kontext_nummern] or text_nummern

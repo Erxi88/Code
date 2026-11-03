@@ -18,6 +18,14 @@ _TRENNER = re.compile(r"[\s/\-–.()]+")
 
 
 def normalize_telefon(roh: str | None) -> str | None:
+    """Wie `_telefon_normalisieren`; eine Teilnehmernummer, die mit 0 beginnt („+49 2357 015251043"), gibt es nicht –
+    unplausibel → None (Stichprobe Seed 2, schroeder-steuer.de)."""
+    if (n := _telefon_normalisieren(roh)) and len(teile := n.split()) >= 3 and teile[2].startswith("0"):
+        return None
+    return n
+
+
+def _telefon_normalisieren(roh: str | None) -> str | None:
     """Deutsche Rufnummer → '+49 <Vorwahl> <Rufnummer>' (Vorwahl ohne führende 0).
 
     Die Vorwahl kommt aus dem Vorwahlverzeichnis von `phonenumbers`, wenn die Nummer dort gültig ist

@@ -117,7 +117,9 @@ def test_fehlendes_aus_weiteren_seiten(ausschluss):
 
 def test_nichts_gefunden_bleibt_null(ausschluss):
     r = extract_impressum("Impressum\nHier entsteht eine neue Website.", ausschluss)
-    assert all(v is None for k, v in r.model_dump().items() if k != "hinweise") and r.hinweise == []
+    listen = ("hinweise", "telefon_kandidaten", "fremde_telefone")
+    assert all(v is None for k, v in r.model_dump().items() if k not in listen)
+    assert r.hinweise == r.telefon_kandidaten == [] and set(r.fremde_telefone) <= set(ausschluss.telefone)
 
 
 @pytest.mark.parametrize(("name", "form"), [

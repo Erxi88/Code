@@ -20,6 +20,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date
 
+from .. import vorwahl
 from ..crawl import html_zu_text
 from ..groesse import aktiv as groessenklassen
 from ..models import (
@@ -1107,7 +1108,11 @@ def zusammenfuehren(
 
     # ---- Telefon: Discovery > Regeln > LLM
     # Prüfkatalog 2: nur laut phonenumbers gültige Nummern – ungültige bleiben leer, mit Hinweis
-    web_tel = regel.telefon or normalize_telefon(llm.telefon if llm else None)
+    llm_tel = normalize_telefon(llm.telefon if llm else None)
+    if llm_tel and llm_tel in regel.fremde_telefone:
+        abweichungen.append(f"Telefon {llm_tel} (LLM) ist eine Fremdnummer (Kammer o. Ä.) – verworfen")
+        llm_tel = None
+    web_tel = regel.telefon or llm_tel
     if not web_tel and llm and llm.telefon:
         abweichungen.append(f"Telefon ungültig: {llm.telefon} (Website)")
     disc_tel = normalize_telefon(disc["telefon"]) if disc["telefon"] else None
@@ -1119,6 +1124,12 @@ def zusammenfuehren(
             abweichungen.append(f"Telefon: {disc['quelle_telefon']} {telefon} / Website {web_tel}")
     else:
         telefon = web_tel
+        # Q4: Vorwahl passt nicht zur PLZ, aber eine andere Nummer der Seite passt (westerland.shbb.de: Kieler
+        # Zentrale 0431 statt Standort 04651) → die passende; ohne passende Alternative bleibt die Nummer (Warnung)
+        if telefon and (vp := vorwahl.pruefer()) and vp.pruefen(telefon, plz):
+            if alt := next((n for n in regel.telefon_kandidaten if n != telefon and not vp.pruefen(n, plz)), None):
+                abweichungen.append(f"Telefon: {telefon} passt nicht zur PLZ {plz}, {alt} genommen")
+                telefon = alt
 
     email = regel.email or ((llm.email or "").strip().lower() or None if llm else None)
     # Rechtsform: Regel aus Name und Impressum vor dem LLM; Einzelkanzlei nur, wenn sonst nichts passt

@@ -26,7 +26,7 @@ P = [LlmPerson(name="Jens Hansen", titel="Dipl.-Kfm.", funktion="Steuerberater, 
      LlmPerson(name="Tim Jensen", funktion="Auszubildender")]
 LLM = LlmErgebnis(kanzleiname="Hansen & Petersen Steuerberater PartG mbB", rechtsform="PartG mbB",
                   verantwortliche_person="Maren Petersen", personen=P, strasse="Falsche Str. 1", plz="24105", ort="Kiel",
-                  telefon="0431 000000", email="llm@hansen.example")
+                  telefon="0431 900000", email="llm@hansen.example")
 DATUM = datetime(2026, 10, 26, 10, 0)
 SEITEN = {
     Seitentyp.START: Seite(url="https://hansen.example/", domain="hansen.example", text="Start",
@@ -59,7 +59,7 @@ def test_ohne_stufe_b_kommt_alles_von_der_website():
 
 def test_llm_fuellt_nur_was_regeln_nicht_finden():
     k = zusammenfuehren(K, [], SEITEN, RegelErgebnis(), LLM)
-    assert (k.strasse, k.plz, k.telefon, k.email) == ("Falsche Str. 1", "24105", "+49 431 000000", "llm@hansen.example")
+    assert (k.strasse, k.plz, k.telefon, k.email) == ("Falsche Str. 1", "24105", "+49 431 900000", "llm@hansen.example")
 
 
 def test_discovery_wird_nie_ueberschrieben_abweichung_vermerkt():

@@ -30,6 +30,11 @@ adressen:
   - {name: Hetzner Online GmbH, strasse: Industriestr. 25, plz: "91710"}
   - {name: ALL-INKL.COM, strasse: Hauptstraße 68, plz: "02742"}
 
+# Bekannte Fremdnummern (Kammern …): nie die Kanzlei-Nummer, auch außerhalb eines Fremd-Abschnitts.
+# Nummern, die nur in Fremd-Abschnitten stehen, schließt die Regel ohnehin aus.
+telefone:
+  - {name: Steuerberaterkammer Hamburg, telefon: "040 4480430"}   # Stichprobe Seed 2, steuerberater-krogmann.de
+
 # E-Mail-Präfixe, die nie die Kanzlei-E-Mail sind (Prüfkatalog 2)
 email_ausgeschlossen: [datenschutz, dsb, bewerbung, karriere, noreply, no-reply, webmaster, postmaster, hostmaster, abuse]
 

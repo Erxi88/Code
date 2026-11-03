@@ -325,6 +325,12 @@ der nächsten Quelle füllen.**
     nicht Attribute/Skripte), bei mehreren Standorten die Nummer nächst der Kanzlei-PLZ.
     Mobil nur als Rückfall. Gültig ist nur eine Rufnummer mit Ortsnetz 2–9, Mobil 15–17 oder
     Service 18 (Zahlenkolonnen und SVG-Pfade sind keine Nummern).
+    **Stichprobe Seed 2 (03.11.2026):** Eine Nummer, die nur in Fremd-Abschnitten steht (Kammer …), oder eine Nummer
+    der festen Liste `telefone` in `impressum_ausschluss.yaml` (Steuerberaterkammer Hamburg) ist nie die
+    Kanzlei-Nummer – auch nicht über tel:-Link, rohes HTML oder LLM. Teilnehmernummer mit führender 0
+    („+49 2357 015251043") ist unplausibel → verworfen, nächste Kandidatin. Passt die Vorwahl nicht zur PLZ und eine
+    andere Nummer der Seite passt (Kandidatenliste `telefon_kandidaten`), wird sie genommen („Telefon: … passt nicht zur
+    PLZ …, … genommen"); ohne passende Alternative bleibt die Nummer mit Q4-Warnung (Q4 ist Warnung, keine Sperre).
   - E-Mail nie mit den Präfixen aus `email_ausgeschlossen` (impressum_ausschluss.yaml; Prüfkatalog 2: datenschutz@,
     dsb@, bewerbung@, karriere@, noreply@, webmaster@, postmaster@ …).
   - E-Mail: Impressum-Text vor Navigation/Fußzeile vor mailto-Links; allgemeine Adressen (info@, kanzlei@, mail@,

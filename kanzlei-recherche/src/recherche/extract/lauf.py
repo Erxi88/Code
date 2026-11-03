@@ -92,8 +92,9 @@ def regeln_fuer(seiten, ausschluss: Ausschluss, domain: str | None, website: str
     erg = extract_impressum(text, ausschluss, lnks, domain, weitere, rahmen=seiten_rahmen(seiten), schema_telefone=schema)
     if erg.telefon is None or ist_mobil(erg.telefon):
         # Festnetz fehlt im bereinigten Text (z. B. Standort-Block der Fußzeile entfernt): rohes HTML
-        if festnetz := festnetz_aus_html([s.html for s in reihenfolge], erg.plz):
+        if (festnetz := festnetz_aus_html([s.html for s in reihenfolge], erg.plz)) and festnetz not in erg.fremde_telefone:
             erg.telefon = festnetz
+            erg.telefon_kandidaten = [festnetz, *[n for n in erg.telefon_kandidaten if n != festnetz]]
     return erg
 
 

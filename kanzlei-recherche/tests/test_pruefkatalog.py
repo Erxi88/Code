@@ -931,3 +931,48 @@ def test_sozietaet_ohne_gesellschaftszusatz():
 
     assert rechtsform_aus_text("Steuerberater-Sozietät Loewe-Hartmann + Loewe") == "Sozietät"
     assert rechtsform_aus_text("Sozietät Lund & Kittel GbR") == "GbR"
+
+
+# ---------------------------------------------------------------------- Stichprobe Seed 2 (03.11.2026): Telefon
+
+
+def test_kammer_nummer_nie_kanzlei_telefon():
+    """steuerberater-krogmann.de: Nummer der Steuerberaterkammer im Telefonfeld."""
+    from recherche.extract.rules import Ausschluss, extract_impressum
+
+    aus = Ausschluss.laden(Path(__file__).parent.parent / "config" / "impressum_ausschluss.yaml")
+    # nur im Kammer-Abschnitt (auch als tel:-Link) → fremd; die eigene Nummer steht im Kontaktblock
+    imp = ("Impressum\nKrause Steuerberatung\nMarkt 1\n22041 Hamburg\nZuständige Kammer:\nSteuerberaterkammer Musterstadt\n"
+           "Musterweg 1, 20000 Hamburg\nTel. 040 1112220")
+    erg = extract_impressum(imp, aus, links=["tel:+49401112220"], weitere_texte=[("Kontakt\nTelefon 040 6543210", [])])
+    assert erg.telefon == "+49 40 6543210" and "+49 40 1112220" in erg.fremde_telefone
+    # feste Liste (impressum_ausschluss.yaml): Kammer Hamburg auch außerhalb eines Fremd-Abschnitts
+    erg = extract_impressum("Impressum\nKrause Steuerberatung\nTelefon 040 4480430\nTel. 040 6543210", aus)
+    assert erg.telefon == "+49 40 6543210"
+
+
+def test_unplausible_nummer_nicht_im_feld_naechste_kandidatin():
+    """schroeder-steuer.de: „+49 2357 015251043" (Teilnehmernummer mit 0) – die Seite nennt 0431 94322."""
+    from recherche.extract.rules import extract_impressum
+    from recherche.normalize import normalize_telefon
+
+    assert normalize_telefon("02357 015251043") is None and normalize_telefon("0431 94322") == "+49 431 94322"
+    erg = extract_impressum("Impressum\nSchröder Steuer\nTelefon 02357 015251043\nTel. 0431 94322")
+    assert erg.telefon == "+49 431 94322"
+
+
+def test_vorwahl_passt_nicht_andere_kandidatin_der_seite():
+    """westerland.shbb.de: Zentrale 0431 (Kiel) statt Standort 04651 (Sylt) – die passende Nummer gewinnt."""
+    from recherche import vorwahl
+    from recherche.extract.base import RegelErgebnis
+
+    class Pruefer:
+        def pruefen(self, telefon, plz):
+            return None if telefon.startswith("+49 4651") else "Vorwahl passt nicht zur PLZ: 0431 (Kiel)"
+
+    vorwahl.setze_pruefer(Pruefer())
+    regel = RegelErgebnis(strasse="Bismarckstraße 12", plz="25980", ort="Sylt", telefon="+49 431 999990",
+                          telefon_kandidaten=["+49 431 999990", "+49 4651 82070"])
+    k = zusammenfuehren(Kandidat(id=1, bundesland="SH", domain="westerland.nordbund.example"), [], {}, regel, None,
+                        lambda p, o: PlzPruefung(True, SH, ort_kanonisch=o))
+    assert k.telefon == "+49 4651 82070" and "passt nicht zur PLZ 25980" in k.abweichung
