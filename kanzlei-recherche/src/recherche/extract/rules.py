@@ -25,7 +25,8 @@ _PLZ_ORT = re.compile(
 )
 _STRASSE = re.compile(
     # „Dorfstr.36" ohne Leerzeichen hinter dem Abkürzungspunkt (steuerberater-ploen.de)
-    r"^([A-ZÄÖÜ][A-Za-zÄÖÜäöüß.\-' ]{1,50}?(?:\.\s*|\s+)\d{1,4}\s*[a-zA-Z]?(?:\s*[-/]\s*\d{1,4}\s*[a-zA-Z]?)?)$"
+    # Hausnummer-Spanne auch mit Gedankenstrich („Sandkamp 9 – 11", kvin-steuerberater.de)
+    r"^([A-ZÄÖÜ][A-Za-zÄÖÜäöüß.\-' ]{1,50}?(?:\.\s*|\s+)\d{1,4}\s*[a-zA-Z]?(?:\s*[-–/]\s*\d{1,4}\s*[a-zA-Z]?)?)$"
 )
 # Zahlen nach diesen Kennzeichen sind keine PLZ (Registernummern, Konten, Jahresangaben …)
 _KEINE_PLZ_DAVOR = re.compile(r"(?:HR\s?[AB]|PR|VR|GnR|Nr\.?|Nummer|Konto|IBAN|BLZ|seit|ab|bis|von|ca\.?)\s*:?\s*$", re.I)
@@ -165,7 +166,8 @@ def adressen(zeilen: list[str]) -> list[Adresse]:
     oder vor der Straße – werden toleriert und als Adresszusatz zurückgegeben.
     """
     gefunden = []
-    zeilen = _offene_zeilen_verbinden(zeilen)
+    # Hausnummer-Spanne „9 – 11" ist kein Segment-Trenner (kvin-steuerberater.de) → „9-11"
+    zeilen = [_SPANNE.sub(r"\1-\2", z) for z in _offene_zeilen_verbinden(zeilen)]
     for i, z in enumerate(zeilen):
         for m in _PLZ_ORT.finditer(z):
             plz, ort = m.group(1), _ort_bereinigen(m.group(2))
@@ -196,9 +198,15 @@ def adressen(zeilen: list[str]) -> list[Adresse]:
     return gefunden
 
 
+_SPANNE = re.compile(r"(?<![\d.])(\d{1,4}\s?[a-zA-Z]?)\s+[–-]\s+(\d{1,4}\s?[a-zA-Z]?)(?=\s*(?:[,·|]|$|\s\d{5}\b))")
+# Straßennummer im Namen („An der B76 Nr. 1a", „Am L123 5") – für die Prüfung durch Buchstaben ersetzt
+_STRASSENNUMMER = re.compile(r"\b([ABKL])\d{1,3}\b")
+
+
 def _ist_strasse(text: str) -> bool:
     text = text.strip()
-    return bool(_STRASSE.match(text)) and not _STRASSE_NEIN.match(text) and len(text) <= 60
+    pruef = _STRASSENNUMMER.sub(r"\1xx", text)
+    return bool(_STRASSE.match(pruef)) and not _STRASSE_NEIN.match(text) and len(text) <= 60
 
 
 _DURCHWAHL = re.compile(r"\b(?:durchwahl|direktwahl|direkt|dw)\b", re.IGNORECASE)
