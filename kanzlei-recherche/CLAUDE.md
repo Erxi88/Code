@@ -147,6 +147,16 @@ der nächsten Quelle füllen.**
       „{Name} {Ort}", eine Seite; erster Treffer mit Kanzlei-Domain, die zum Namen passt, wird Website
       (Kandidat → crawl/extract); sonst bleibt die amtliche Anschrift („Website vorhanden" = nein). Jeder
       Eintrag einmal.
+      **Ganzes Land: `recherche stb-verzeichnis -b SH [--ja] [--ohne-nachsuche] [--nur-verzeichnis] [--out …csv]`**
+      (`stbv_lauf.py`, Entscheidung 04.11.2026): alle PLZ des Landes aus der Ortsliste (je PLZ einmal, ohne
+      Zusatz-Suchorte), Dauer-Schätzung vorab (offene PLZ × Pause), je PLZ eine Abfrage (Lauf-Protokoll Schritt
+      „stb-verzeichnis", Suchbegriff „plz:<PLZ>" – wiederaufnehmbar, Cache), Abgleich über die Dubletten-Logik, **neue
+      Einträge direkt als Kandidaten** (keine Freigabe), Website-Nachsuche über Brave mit Kostenschätzung vorab (eine
+      Anfrage je neuem Eintrag ohne Website), dann crawl und extract. **Lückenliste** = Kandidaten, die das amtliche
+      Verzeichnis neu angelegt hat (Name und Berufsträger amtlich, Adresse, Kreis, Website, Telefon, Stand: ohne Website /
+      nicht gelesen / extrahiert mit Status, Kanzleiname und Konfidenz der Website) – als CSV
+      (`luecken_amtlich_<BL>.csv` neben dem Export) und als Blatt „Lücken (amtlich)" im Export des Landes (auch im
+      Lieferformat, nur wenn es solche Zeilen gibt).
     - `gelbeseiten`, `dasoertliche`, `elf880` (11880.com) **nur Ergänzung** (`nur_ergaenzen`): Treffer werden
       nur bekannten Kandidaten **ohne Website** zugeordnet (leere Felder Telefon, Adresse, Website; Fund
       gespeichert; extract neu, bei neuer Website auch crawl). Unbekannte Einträge werden nicht angelegt,
@@ -668,6 +678,8 @@ der nächsten Quelle füllen.**
 - Blatt „Kanzleien" (bei `--gesamt` je Land): Autofilter, feste Kopfzeile, Dropdown für Status; Spalten u. a.
   „Website vorhanden", „Berufsträger (Anzahl)", „Abweichung". Eine erneute Extraktion
   setzt einen gepflegten Status nicht zurück.
+- Blatt „Lücken (amtlich)" (nur nach `stb-verzeichnis`): im Bestand vorher unbekannte Kanzleien des amtlichen
+  Verzeichnisses, dieselbe Liste wie die CSV.
 - Blatt „Nicht gefunden": Domains ohne lesbares Impressum oder mit Fehler, mit Grund und
   Discovery-Daten.
 - Blatt „Keine Kanzlei" (nur wenn es solche Zeilen gibt): alle Spalten wie „Kanzleien", Grund
@@ -734,7 +746,7 @@ der nächsten Quelle füllen.**
 ### CLI (`cli.py`)
 
 `recherche search | fill | coverage | ketten | crawl | extract | export | run | search-compare | orte |
-blocklist-vorschlag | kanzlei-pruefung | zeile | qualitaet | stichprobe | nachbarkreise | robots-check | suche-auswertung | offen | fixture-add | fixture-eval | fixture-prompt |
+blocklist-vorschlag | kanzlei-pruefung | zeile | stb-verzeichnis | qualitaet | stichprobe | nachbarkreise | robots-check | suche-auswertung | offen | fixture-add | fixture-eval | fixture-prompt |
 fixture-klassen-umstellen`,
 jeweils mit `--bundesland` und `--db`. **Jeder Schritt muss nach Abbruch
 wiederaufnehmbar sein**: Fortschritt steht in SQLite (Status je Domain und

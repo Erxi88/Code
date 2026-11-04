@@ -401,7 +401,13 @@ def _export(ctx: Kontext, out: Path | None, kontrollblaetter: bool = False) -> P
     pfad = out or ctx.settings.ausgabe_pfad(ctx.bundesland)
     with ctx.storage() as st:
         _ortsnamen_setzen(ctx)
-        pfad = export_excel(st, ctx.bundesland, pfad, ctx.bl_cfg.name, kontrollblaetter)
+        from .stbv_lauf import kreise
+
+        try:
+            kreis_je_plz = kreise(ctx.orte(None, mit_zusatz=False))
+        except (OSError, ValueError):
+            kreis_je_plz = {}
+        pfad = export_excel(st, ctx.bundesland, pfad, ctx.bl_cfg.name, kontrollblaetter, kreis_je_plz)
         from .export import _aufbereiten
 
         # genau die Zeilen der Datei: Hauptblatt + „Zu prüfen" (nicht keine Kanzlei, weitere Domains, außerhalb)
@@ -952,6 +958,79 @@ def zeile(
         console.print(z, markup=False, highlight=False)
     if b.kandidat is None and b.kanzlei is None:
         raise typer.Exit(1)
+
+
+@app.command("stb-verzeichnis")
+def stb_verzeichnis(
+    bundesland: BundeslandOpt = None,
+    db: DbOpt = None,
+    config: ConfigOpt = None,
+    ja: Annotated[bool, typer.Option("--ja", "-y", help="ohne Rückfragen (Dauer, Kosten der Nachsuche)")] = False,
+    ohne_nachsuche: Annotated[bool, typer.Option("--ohne-nachsuche", help="keine Website-Nachsuche über Brave")] = False,
+    nur_verzeichnis: Annotated[bool, typer.Option("--nur-verzeichnis", help=(
+        "nach Abgleich und Nachsuche aufhören (kein crawl/extract)"))] = False,
+    out: Annotated[Path | None, typer.Option("--out", "-o", help="Lückenliste als CSV (Standard neben dem Export)")] = None,
+) -> None:
+    """Stufe B für das ganze Land: amtliches Steuerberaterverzeichnis PLZ für PLZ, Abgleich mit dem Bestand, neue
+    Einträge direkt als Kandidaten, Website-Nachsuche (Brave, Kosten vorab), crawl, extract und Lückenliste (CSV und
+    Blatt „Lücken (amtlich)" im Export). Nach Abbruch einfach erneut starten."""
+    from .search.nachsuche import MERKER
+    from .stbv_lauf import (
+        QUELLE,
+        kreise,
+        luecken,
+        luecken_csv,
+        offene_plz,
+        plz_orte,
+        run_verzeichnis,
+    )
+
+    ctx = _kontext(config, bundesland, db)
+    try:
+        alle_orte = ctx.orte(None, mit_zusatz=False)
+    except (OSError, ValueError) as e:
+        _fehler(f"Ortsliste nicht lesbar: {e}")
+    orte = plz_orte(alle_orte)
+    with ctx.storage() as st:
+        adapter = build_adapter(QUELLE, ctx.settings, cache=st)
+        _adapter_pruefen(adapter, explizit=True)
+        adapter.melden = lambda m: console.print(f"  [yellow]{m}[/yellow]")
+        offen = offene_plz(st, ctx.bundesland, orte)
+        cfg = adapter.cfg
+        je = cfg.pause_s + cfg.pause_jitter_s / 2 + 2
+        console.print(f"Amtliches Verzeichnis {ctx.bl_cfg.name}: {len(orte)} PLZ, davon {len(offen)} offen – geschätzt "
+                      f"{_dauer(len(offen) * je)} ({je:.0f} s je PLZ; Antworten aus dem Cache sofort).")
+        if offen and not ja and not typer.confirm("Verzeichnis abfragen?", default=True):
+            console.print("Abgebrochen – nichts abgefragt.")
+            return
+        stat = run_verzeichnis(st, adapter, orte, ctx.bundesland, ctx.blocklist(), _lauf_id(),
+                               fortschritt=lambda m: console.print(f"  {m}"))
+        console.print(f"Verzeichnis: {stat.plz - stat.uebersprungen} PLZ abgefragt ({stat.uebersprungen} schon erledigt), "
+                      f"{stat.treffer} Kanzleien – {stat.neu} neu (direkt im Bestand), {stat.bekannt} bekannt, "
+                      f"{stat.verworfen} schon von dieser Quelle, {stat.fehler} Fehler")
+        if stat.abbruch:
+            console.print(f"[yellow]Verzeichnis vorzeitig beendet:[/yellow] {stat.abbruch} – erneut starten setzt fort.")
+            return
+        if not ohne_nachsuche:
+            ohne_website = [k for k in st.kandidaten(ctx.bundesland) if k.quelle == QUELLE
+                            and not (k.domain or k.website) and k.name and st.cache_get(MERKER, str(k.id)) is None]
+            brave = build_adapter(ctx.settings.discovery.stufe_a.adapter, ctx.settings, cache=st)
+            kosten = brave.kosten(len(ohne_website)) if isinstance(brave, QueryAdapter) else 0.0
+            console.print(f"Website-Nachsuche: {len(ohne_website)} neue Einträge ohne Website, je eine Anfrage – "
+                          f"geschätzt {len(ohne_website)} Anfragen ≈ {kosten:.2f}")
+            if ohne_website and (ja or typer.confirm("Nachsuche starten?", default=True)):
+                _website_nachsuche(ctx, st, QUELLE)
+    if not nur_verzeichnis:
+        _crawl(ctx)
+        _extract(ctx)
+    with ctx.storage() as st:
+        zeilen = luecken(st, ctx.bundesland, kreise(alle_orte))
+    pfad = luecken_csv(zeilen, out or ctx.settings.ausgabe_pfad(ctx.bundesland).with_name(
+        f"luecken_amtlich_{ctx.bundesland}.csv"))
+    mit_website = sum(1 for z in zeilen if z.website)
+    console.print(f"Lückenliste: {len(zeilen)} Kanzleien nur im amtlichen Verzeichnis ({mit_website} mit Website) – "
+                  f"[bold]{pfad}[/bold]; dieselbe Liste im Export (`recherche export -b {ctx.bundesland}`) im Blatt "
+                  "„Lücken (amtlich)“")
 
 
 @app.command("kanzlei-pruefung")

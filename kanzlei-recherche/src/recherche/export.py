@@ -26,6 +26,7 @@ BLATT_AUSSERHALB = "Außerhalb Bundesland"
 BLATT_DUBLETTEN = "Dubletten"
 BLATT_PROTOKOLL = "Lauf-Protokoll"
 BLATT_ZU_PRUEFEN = "Zu prüfen"
+BLATT_LUECKEN = "Lücken (amtlich)"
 BLATT_QUALITAET = "Qualität"
 
 # Status-Dropdown gilt mindestens für so viele Zeilen (Platz für Nachträge)
@@ -242,6 +243,7 @@ def build_workbook(
     protokoll: Sequence[LaufEintrag],
     ziel_land: str | None = None,
     kontrollblaetter: bool = True,
+    luecken: Sequence | None = None,
 ) -> Workbook:
     """Blätter nach Prüfkatalog: Hauptblatt nur ohne Sperre; „Zu prüfen" (Q5, Q6, Q12, 1B Rang 4/5) und „Qualität"
     (alle Befunde Q1–Q13) – nichts wird gelöscht. Ohne `kontrollblaetter` das reine Lieferformat: „Kanzleien" und
@@ -252,6 +254,12 @@ def build_workbook(
     ws.title = BLATT_KANZLEIEN
     _hauptblatt(ws, a, a.haupt)
     _zu_pruefen_blatt(wb, a)
+    if luecken:  # amtliches Verzeichnis: im Bestand vorher unbekannte Kanzleien (stb-verzeichnis, 04.11.2026)
+        from .stbv_lauf import LUECKEN_SPALTEN, luecken_werte
+
+        _blatt(wb.create_sheet(BLATT_LUECKEN),
+               [(t, 40 if "Name" in t or "Berufsträger" in t else 16, lambda z, i=i: luecken_werte(z)[i])
+                for i, t in enumerate(LUECKEN_SPALTEN)], luecken)
     if kontrollblaetter:
         _kontrollblaetter(wb, a, nicht_gefunden, dubletten, protokoll)
     return wb
@@ -315,7 +323,7 @@ def build_gesamt(kanzleien: Sequence[Kanzlei], nicht_gefunden: Sequence[NichtGef
 
 
 def export_excel(storage: Storage, bundesland: str, pfad: str | Path, ziel_land: str | None = None,
-                 kontrollblaetter: bool = True) -> Path:
+                 kontrollblaetter: bool = True, kreis_je_plz: dict[str, str] | None = None) -> Path:
     """Schreibt die Kanzleien eines Bundeslandes in eine Excel-Datei und gibt den Pfad zurück.
 
     Auswahl nach PLZ-Bundesland (`ziel_land`, Standard aus dem Kürzel), aus allen Läufen; Kontrollblätter aus dem
@@ -327,8 +335,11 @@ def export_excel(storage: Storage, bundesland: str, pfad: str | Path, ziel_land:
     if kontrollblaetter:
         drin = {k.id for k in liste}
         liste += [k for k in storage.kanzleien(bundesland) if k.id not in drin and k.status == Status.AUSSERHALB]
+    from .stbv_lauf import luecken
+
     wb = build_workbook(liste, storage.nicht_gefunden(bundesland), storage.dubletten(bundesland),
-                        storage.lauf_protokoll(bundesland), land, kontrollblaetter)
+                        storage.lauf_protokoll(bundesland), land, kontrollblaetter,
+                        luecken(storage, bundesland, kreis_je_plz))
     wb.save(pfad)
     return pfad
 
