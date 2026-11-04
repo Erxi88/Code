@@ -199,5 +199,8 @@ handelskammer.se
 berufsrecht-handbuch.de
 jobs.denkerwulf.de
 
+# Website-Kopien (Drittseiten spiegeln Kanzlei-Websites unter eigener Subdomain; das Original zählt) – Seed 3
+dewebc.com
+
 # Nicht hier: große Prüfungs-/Steuerberatungsgesellschaften (BDO, EY, PwC, KPMG, Deloitte, Baker Tilly …) sind
 # Zielkanzleien (Entscheidung 30.10.2026) – Kanzleityp „Großgesellschaft" über config/ketten.yaml.
