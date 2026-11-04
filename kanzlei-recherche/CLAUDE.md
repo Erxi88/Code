@@ -652,6 +652,10 @@ der nächsten Quelle füllen.**
   bleiben beim Land ihres Laufs. Dieselbe Kanzlei aus zwei Läufen einmal (Domain, sonst Name + PLZ + Straße).
   Standard sind nur „Kanzleien" und „Zu prüfen"; die Kontrollblätter (Außerhalb – Zeilen des Laufs mit PLZ anderswo –,
   Keine Kanzlei, Nicht gefunden, Dubletten, Qualität, Lauf-Protokoll) nur mit `--mit-kontrollblaettern` (auch `run`).
+  `recherche zeile --domain X [-b Land] [--mit-kontrollblaettern]` (`zeile.py`): alles zu einem Kandidaten aus allen
+  Läufen – Lauf, Funde, Seiten, Nicht-gefunden-Grund, Status, Bundesland laut PLZ, Name, Konfidenz, Grund „keine
+  Kanzlei", Abweichungen einzeln, Quell-URLs – und das Blatt im Export des Landes, mit Begründung, wenn in keinem
+  (PLZ in einem anderen Land, Kontrollblatt nur mit `--mit-kontrollblaettern`; 04.11.2026).
   `recherche export --gesamt --out datei.xlsx`: 16 Länderblätter (genau ihre Kanzleien, auch leer), „Deutschland"
   (alle) und „Zu prüfen"; Kontrollblätter aller Läufe mit `--mit-kontrollblaettern`. `stichprobe` und `qualitaet`
   arbeiten auf derselben Liste. Die Meldung nennt genau die Zeilen der Datei („643 Kanzleien im Blatt „Kanzleien“, 72 im
@@ -726,7 +730,7 @@ der nächsten Quelle füllen.**
 ### CLI (`cli.py`)
 
 `recherche search | fill | coverage | ketten | crawl | extract | export | run | search-compare | orte |
-blocklist-vorschlag | kanzlei-pruefung | qualitaet | stichprobe | nachbarkreise | robots-check | suche-auswertung | offen | fixture-add | fixture-eval | fixture-prompt |
+blocklist-vorschlag | kanzlei-pruefung | zeile | qualitaet | stichprobe | nachbarkreise | robots-check | suche-auswertung | offen | fixture-add | fixture-eval | fixture-prompt |
 fixture-klassen-umstellen`,
 jeweils mit `--bundesland` und `--db`. **Jeder Schritt muss nach Abbruch
 wiederaufnehmbar sein**: Fortschritt steht in SQLite (Status je Domain und

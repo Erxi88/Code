@@ -926,6 +926,34 @@ def stichprobe_cmd(
                   f"Je Kernfeld richtig/falsch/leer eintragen, dann: recherche stichprobe --auswerten {pfad}")
 
 
+@app.command("zeile")
+def zeile(
+    domain: Annotated[str, typer.Option("--domain", help="Domain oder URL, z. B. kanzlei-beispiel.de")],
+    bundesland: Annotated[str | None, typer.Option("--bundesland", "-b", help=(
+        "Export-Land für die Blatt-Angabe (Kürzel; Standard: Lauf der Zeile)"))] = None,
+    db: DbOpt = None,
+    config: ConfigOpt = None,
+    mit_kontrollblaettern: Annotated[bool, typer.Option("--mit-kontrollblaettern", help=(
+        "Blatt-Angabe für einen Export mit Kontrollblättern"))] = False,
+) -> None:
+    """Alles zu einem Kandidaten: Lauf, Funde, Seiten, Status, Bundesland, Kanzleiname, Konfidenz, Grund „keine
+    Kanzlei", Abweichungen, Quell-URLs und das Blatt im Export des Landes (mit Grund, wenn in keinem). Aus allen
+    Läufen, ohne Netz."""
+    from .models import BUNDESLAENDER
+    from .zeile import bericht, zeilen
+
+    s = load_settings(config)
+    land = BUNDESLAENDER.get(bundesland.upper()) if bundesland else None
+    if bundesland and not land:
+        _fehler(f"Unbekanntes Bundesland-Kürzel: {bundesland}")
+    with Storage(db or s.db_pfad()) as st:
+        b = bericht(st, domain, land, mit_kontrollblaettern)
+    for z in zeilen(b):
+        console.print(z, markup=False, highlight=False)
+    if b.kandidat is None and b.kanzlei is None:
+        raise typer.Exit(1)
+
+
 @app.command("kanzlei-pruefung")
 def kanzlei_pruefung(
     bundesland: BundeslandOpt = None,
