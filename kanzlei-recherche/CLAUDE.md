@@ -337,6 +337,10 @@ der nächsten Quelle füllen.**
     („+49 2357 015251043") ist unplausibel → verworfen, nächste Kandidatin. Passt die Vorwahl nicht zur PLZ und eine
     andere Nummer der Seite passt (Kandidatenliste `telefon_kandidaten`), wird sie genommen („Telefon: … passt nicht zur
     PLZ …, … genommen"); ohne passende Alternative bleibt die Nummer mit Q4-Warnung (Q4 ist Warnung, keine Sperre).
+    **Seed 3 (04.11.2026):** Bei mehreren Festnetznummern (Kanzlei mit mehreren Büros, ohne Kette) gewinnt die mit der
+    am besten zur Kanzlei-PLZ passenden Vorwahl (`VorwahlPruefer.passung`: Ortsnetz heißt wie eine Gemeinde der PLZ vor
+    gleichem Kreis vor Nachbarkreis/immer zulässig) – auch wenn die erste Nummer Q4 besteht („Telefon: … passt besser zur
+    PLZ … als … – genommen"; vista-steuerberatung.de, steuerberater-luetjenburg.de). Mobil ersetzt nie Festnetz.
   - E-Mail nie mit den Präfixen aus `email_ausgeschlossen` (impressum_ausschluss.yaml; Prüfkatalog 2: datenschutz@,
     dsb@, bewerbung@, karriere@, noreply@, webmaster@, postmaster@ …).
   - E-Mail: Impressum-Text vor Navigation/Fußzeile vor mailto-Links; allgemeine Adressen (info@, kanzlei@, mail@,

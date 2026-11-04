@@ -1102,3 +1102,34 @@ def test_fremd_abschnitt_nur_der_kammer_absatz():
     erg = extract_impressum("Impressum\nSteuerberater Kai Muster\nBerufshaftpflichtversicherung:\nHDI Versicherung AG\n"
                             "Kontakt:\nHamburger Straße 7d, 22946 Großensee; Mobilnummer +49 17690000001", aus)
     assert erg.telefon == "+49 176 90000001" and erg.plz == "22946"
+
+
+def test_vorwahl_passung_abgestuft(vorwahl_pruefer):
+    """Seed 3: gleicher Ort (0) vor gleichem Kreis (1) vor Nachbarkreis/immer zulässig (2) vor passt nicht (3)."""
+    vp = vorwahl_pruefer
+    assert vp.passung("+49 4106 900000", "25451") == 0  # „Quickborn Kr Pinneberg" ↔ Quickborn
+    assert vp.passung("+49 4101 900000", "25451") == 1  # Pinneberg, gleicher Kreis
+    assert vp.passung("+49 40 9000000", "25451") == 2  # 040 immer zulässig
+    assert vp.passung("+49 431 900000", "24119") == 2  # Kronshagen: Nachbarkreis von Kiel
+    assert vp.passung("+49 4841 900000", "24103") == 3  # Husum bei Kiel
+    assert vp.passung("+49 176 90000001", "24103") is None and vp.passung("+49 431 900000", "99999") is None
+
+
+def test_mehrere_nummern_passende_vorwahl_gewinnt(vorwahl_pruefer):
+    """vista-steuerberatung.de / steuerberater-luetjenburg.de: zwei Büros, die Nummer des anderen Büros (Nachbarkreis
+    bzw. gleicher Kreis, Q4 ohne Warnung) stand vorn – die Nummer des Ortes der Kanzlei-PLZ gewinnt."""
+    from recherche import vorwahl
+    from recherche.extract.base import RegelErgebnis
+
+    vorwahl.setze_pruefer(vorwahl_pruefer)
+    regel = RegelErgebnis(strasse="Markt 1", plz="25451", ort="Quickborn", telefon="+49 4101 900000",
+                          telefon_kandidaten=["+49 4101 900000", "+49 176 90000001", "+49 4106 900000"])
+    k = zusammenfuehren(Kandidat(id=1, bundesland="SH", domain="zwei-bueros.example"), [], {}, regel, None,
+                        lambda p, o: PlzPruefung(True, SH, ort_kanonisch=o))
+    assert k.telefon == "+49 4106 900000" and "passt besser zur PLZ 25451" in k.abweichung
+    # nur eine Festnetznummer: bleibt; Mobil ersetzt nie Festnetz
+    regel = RegelErgebnis(strasse="Markt 1", plz="25451", ort="Quickborn", telefon="+49 4101 900000",
+                          telefon_kandidaten=["+49 4101 900000", "+49 176 90000001"])
+    k = zusammenfuehren(Kandidat(id=1, bundesland="SH", domain="zwei-bueros.example"), [], {}, regel, None,
+                        lambda p, o: PlzPruefung(True, SH, ort_kanonisch=o))
+    assert k.telefon == "+49 4101 900000"

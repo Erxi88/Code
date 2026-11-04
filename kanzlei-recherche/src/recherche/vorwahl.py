@@ -43,6 +43,7 @@ class VorwahlPruefer:
     nachbarn: dict[str, set[str]] = field(default_factory=dict)
     ausnahmen: set[str] = field(default_factory=set)  # Vorwahlen, die immer passen (SH: 40)
     zonen: set[str] = field(default_factory=set)  # erste Vorwahlziffern der Ortsnetze im Bundesland
+    gemeinden_je_plz: dict[str, set[str]] = field(default_factory=dict)  # PLZ → normierte Gemeindenamen
 
     @classmethod
     def laden(cls, onb: str | Path, orte: Iterable, nachbarkreise: str | Path | None = None,
@@ -54,6 +55,7 @@ class VorwahlPruefer:
                     ortsnetze[z["Ortsnetzkennzahl"].strip()] = z["Ortsnetzname"].strip()
         kreis_je_gemeinde: dict[str, list[str]] = defaultdict(list)
         kreise_je_plz: dict[str, set[str]] = defaultdict(set)
+        gemeinden_je_plz: dict[str, set[str]] = defaultdict(set)
         for o in orte:
             if getattr(o, "ist_zusatz", False) or not o.kreis:
                 continue
@@ -62,6 +64,7 @@ class VorwahlPruefer:
                     kreis_je_gemeinde[_norm(name)].append(o.kreis)
             for p in o.alle_plz:
                 kreise_je_plz[p].add(o.kreis)
+                gemeinden_je_plz[p].add(_norm(o.name.split(" (")[0]))
         nachbarn: dict[str, set[str]] = defaultdict(set)
         ausnahmen: set[str] = set()
         if nachbarkreise and Path(nachbarkreise).exists():
@@ -72,7 +75,8 @@ class VorwahlPruefer:
                     nachbarn[kreis].add(n)
                     nachbarn[n].add(kreis)
             ausnahmen = {str(v).lstrip("0") for v in land.get("immer_zulaessig") or []}
-        p = cls(ortsnetze, dict(kreis_je_gemeinde), dict(kreise_je_plz), dict(nachbarn), ausnahmen)
+        p = cls(ortsnetze, dict(kreis_je_gemeinde), dict(kreise_je_plz), dict(nachbarn), ausnahmen,
+                gemeinden_je_plz=dict(gemeinden_je_plz))
         # Vorwahlzonen des Bundeslandes: erste Ziffern, unter denen viele Ortsnetze einer Gemeinde des Landes
         # entsprechen (gleichnamige Orte in anderen Ländern – Neuenkirchen – zählen so nicht)
         je_zone: dict[str, int] = defaultdict(int)
@@ -129,6 +133,35 @@ class VorwahlPruefer:
             return (f"{VORWAHL_FALSCH}: 0{vorwahl} ({netz}, {', '.join(netz_kreise)}) – PLZ {plz} "
                     f"({', '.join(sorted(plz_kreise))})")
         return None
+
+
+    def passung(self, telefon: str | None, plz: str | None) -> int | None:
+        """Wie gut passt die Vorwahl zur PLZ? 0 = Ortsnetz heißt wie eine Gemeinde der PLZ, 1 = gleicher Kreis,
+        2 = Nachbarkreis oder immer zulässig, 3 = passt nicht; None = nicht entscheidbar (Mobil, Service, unbekannt).
+        Für die Wahl unter mehreren Nummern (Seed 3: vista-steuerberatung.de, steuerberater-luetjenburg.de)."""
+        if not telefon or not plz or not (m := re.match(r"^\+49 (\d+) ", telefon)):
+            return None
+        vorwahl = m.group(1)
+        if vorwahl.startswith(("15", "16", "17", "18", "19", "700", "800", "900", "137")):
+            return None
+        plz_kreise = self.kreise_je_plz.get(plz)
+        if not plz_kreise:
+            return None
+        name = self.ortsnetze.get(vorwahl)
+        if name and (gemeinden := self.gemeinden_je_plz.get(plz)):
+            name = _ZUSATZ.split(name)[0] if _ZUSATZ.search(name) else name
+            woerter = name.split()
+            if _norm(name) in gemeinden or (len(woerter) > 1 and _norm(woerter[0]) in gemeinden
+                                             and all(_norm(w) in _LANDSCHAFT for w in woerter[1:])):
+                return 0
+        netz_kreise = set(self.kreise_des_ortsnetzes(vorwahl))
+        if netz_kreise & set(plz_kreise):
+            return 1
+        if vorwahl in self.ausnahmen or netz_kreise & set().union(*(self.nachbarn.get(k, set()) for k in plz_kreise)):
+            return 2
+        if not netz_kreise and not (self.zonen and vorwahl[0] not in self.zonen):
+            return None
+        return 3
 
 
 _aktiv: VorwahlPruefer | None = None

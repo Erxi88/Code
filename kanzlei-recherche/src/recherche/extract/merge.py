@@ -61,7 +61,7 @@ from .personen import (
     personen_aus_json_ld,
 )
 from .prompt import seiten_rahmen
-from .rules import Ausschluss, ansprechpartner_kontakte, strasse_zerlegen
+from .rules import Ausschluss, ansprechpartner_kontakte, ist_mobil, strasse_zerlegen
 
 _ANBIETER_FIRMA = re.compile(r"steuerberat|kanzlei|treuhand|revision|wirtschaftspr|beratung", re.IGNORECASE)
 
@@ -1243,6 +1243,17 @@ def zusammenfuehren(
         if telefon and (vp := vorwahl.pruefer()) and vp.pruefen(telefon, plz):
             if alt := next((n for n in regel.telefon_kandidaten if n != telefon and not vp.pruefen(n, plz)), None):
                 abweichungen.append(f"Telefon: {telefon} passt nicht zur PLZ {plz}, {alt} genommen")
+                telefon = alt
+        # mehrere Festnetznummern (Kanzlei mit mehreren Standorten, ohne Kette): die mit der am besten zur Kanzlei-PLZ
+        # passenden Vorwahl – gleicher Ort vor gleichem Kreis vor Nachbarkreis (Seed 3: vista-steuerberatung.de
+        # Schleswig statt Flensburg, steuerberater-luetjenburg.de Lütjenburg statt Bad Segeberg)
+        if telefon and (vp := vorwahl.pruefer()) and hasattr(vp, "passung") \
+                and (jetzt := vp.passung(telefon, plz)) is not None and jetzt > 0:
+            besser = [(g, i, n) for i, n in enumerate(regel.telefon_kandidaten)
+                      if n != telefon and not ist_mobil(n) and (g := vp.passung(n, plz)) is not None and g < jetzt]
+            if besser:
+                alt = min(besser)[2]
+                abweichungen.append(f"Telefon: {alt} passt besser zur PLZ {plz} als {telefon} – genommen")
                 telefon = alt
         # Standort einer Kette: die Zentralnummer (ketten.yaml `telefon`, oder nur im Zentral-Impressum, nicht auf den
         # Standortseiten) ist nur Rückfall – eine Nummer der Standortseiten geht vor, mit passender Vorwahl zuerst
