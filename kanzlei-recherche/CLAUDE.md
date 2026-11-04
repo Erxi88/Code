@@ -460,6 +460,12 @@ der nächsten Quelle füllen.**
     Ebenso mit Titel davor und Kanzleibezeichnung nach Gedankenstrich („Dipl.-Kfm. Jens Eder – Kanzlei für
     Steuerberatung", kanzlei-eder.tax); ein generischer LLM-Titel, der Teil einer solchen Kopfzeile ist, führt zu ihr.
     „Sozietät" ohne Gesellschaftszusatz → Rechtsform „Sozietät" (`config/rechtsformen.yaml`; kein Raten auf GbR).
+  - **Stichprobe Seed 3 (04.11.2026):** Personen im Block der Webagentur/des Hosters („Webdesign", „Realisierung",
+    „Agentur" … – Fremd-Abschnitt, `impressum_ausschluss.yaml`) sind nie Ansprechpartner: „Geschäftsführer: …" dort beginnt
+    keinen eigenen Abschnitt (anders als direkt hinter den Kammer-Adressen), und LLM-Personen, die im Impressum nur in
+    Fremd-Abschnitten stehen, entfallen. „Steuerberater Christian Backmann, Torsten Mitterhuber" → beide (Namensliste
+    hinter der Berufsbezeichnung). Einzelkanzlei ohne Gesellschaftsform mit genau einer genannten Person (auch ohne
+    Berufstitel und Schlüsselwort) → diese Person („einzige genannte Person (Einzelkanzlei)").
   - Ansprechpartner = nur **Berufsträger und Leitung**; Mehrfachnennungen werden
     vereinigt (Funktionen und Titel). Reihenfolge: Vertretungsberechtigte in der
     Reihenfolge des Impressum-Abschnitts „vertretungsberechtigt/vertreten durch", dann alle

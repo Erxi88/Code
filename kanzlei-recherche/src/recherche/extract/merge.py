@@ -405,6 +405,11 @@ def vertretungsberechtigte(
     return v.namen, v.bezeichnung
 
 
+# Block der Webagentur/des Hosters im Impressum: „Geschäftsführer: …" darin ist nie die Kanzlei (Seed 3, jaich-vangerow.de)
+_AGENTUR_WORT = re.compile(r"webdesign|web-design|gestaltung|realisierung|umsetzung|programmierung|konzeption|agentur|"
+                           r"hosting|hoster|gehostet|erstellt\s+(?:von|durch)|design\s+by|powered\s+by", re.IGNORECASE)
+
+
 def vertretung(impressum: str, fremd: set[int] | None = None, rahmen: set[str] | None = None) -> Vertretung:
     """Im Impressum genannte Vertretungsberechtigte (danach „Verantwortlich gemäß § 5 TMG") und –
     falls genau eine im selben Abschnitt (±8 Zeilen, außerhalb von Kammer-/Fremd-Abschnitten) –
@@ -434,7 +439,8 @@ def vertretung(impressum: str, fremd: set[int] | None = None, rahmen: set[str] |
         # Abschnitt – auch direkt hinter den Kammer-Adressen (Fremd-Abschnitt); ein Satz im Fremd-Abschnitt
         # („… Versicherung AG, vertreten durch den Vorstand …") bleibt gesperrt
         im_rahmen = " ".join(z.lower().split()) in rahmen
-        eigener_abschnitt = i in fremd and _nur_rollenwoerter(z[: m.start()]) and not _FREMD_WORT.search(z)
+        eigener_abschnitt = i in fremd and _nur_rollenwoerter(z[: m.start()]) and not _FREMD_WORT.search(z) \
+            and not any(_AGENTUR_WORT.search(zeilen[j]) for j in range(max(0, i - 6), i))
         if im_rahmen or (i in fremd and not eigener_abschnitt):
             protokoll.append(f"Zeile {i + 1} „{z[:70]}“ → übersprungen ({'Navigation/Fußzeile' if im_rahmen else 'Fremd-Abschnitt'})")
             continue
@@ -679,6 +685,7 @@ def ansprechpartner(
     fremd: set[int] | None = None,
     rahmen: set[str] | None = None,
     kanzleiname: str | None = None,
+    rechtsform: str | None = None,
 ) -> list[Ansprechpartner]:
     """Berufsträger und Leitung aus LLM, Regel-Erkennung und Impressum.
 
@@ -728,7 +735,21 @@ def ansprechpartner(
     for name in v.verantwortliche:
         if funktion := v.funktionen.get(name):
             roh.append(LlmPerson(name=name, funktion=f"{funktion} (laut Impressum)"))
-    roh += list(llm.personen) if llm else []
+    llm_personen = list(llm.personen) if llm else []
+    if impressum and fremd:
+        # Personen, die im Impressum nur in Fremd-Abschnitten stehen (GF der Webagentur, Vorstand der Versicherung) und
+        # sonst nirgends erkannt wurden, sind keine Ansprechpartner – auch nicht über das LLM (Seed 3, jaich-vangerow.de)
+        zeilen = (text_normalisieren(impressum) or "").splitlines()
+        drinnen = "\n".join(z for i, z in enumerate(zeilen) if i not in fremd).lower()
+        draussen = "\n".join(z for i, z in enumerate(zeilen) if i in fremd).lower()
+
+        def nur_fremd(p: LlmPerson) -> bool:
+            nach = p.name.split()[-1].lower() if p.name and p.name.split() else ""
+            return bool(nach) and nach in draussen and nach not in drinnen \
+                and not any(gleiche_person(p.name, q.name) for q in roh)
+
+        llm_personen = [p for p in llm_personen if not nur_fremd(p)]
+    roh += llm_personen
     personen = personen_vereinigen(roh)
     if not bezeichnung and vertreter:
         bezeichnung = bezeichnung_aus_partnerschaftsname(kanzleiname)
@@ -739,12 +760,23 @@ def ansprechpartner(
             for p in personen
         ]
     auswahl = [p for p in personen if ist_berufstraeger(p) or ist_leitung(p) or any(gleiche_person(p.name, v) for v in vertreter)]
+    einzige = False
     if not vertreter and not auswahl and v.verantwortliche:
         verantwortlich = verantwortlich or v.verantwortliche[0]  # sonst niemand genannt: der Verantwortliche
+    if not vertreter and not auswahl and not verantwortlich and rechtsform in (None, "Einzelkanzlei") and impressum:
+        # Einzelkanzlei (keine Gesellschaftsform) mit genau einer genannten Person – auch ohne Berufstitel und
+        # Schlüsselwort („Dörte Andruleit" als Kopfzeile): diese Person (Seed 3, andruleit.de)
+        genannt: list[str] = []
+        for n in [p.name for p in personen] + [x for z in kopfzeilen(impressum, rahmen) if (x := _kopf_inhaber(z))]:
+            if n and not any(gleiche_person(n, g) for g in genannt):
+                genannt.append(n)
+        if len(genannt) == 1:
+            verantwortlich, einzige = genannt[0], True
     if verantwortlich and not any(gleiche_person(verantwortlich, p.name) for p in auswahl):
         # im Impressum genannt, aber ohne Funktion in der Personenliste: als Leitung aufnehmen – vorn nur als
         # Vertretungsberechtigter oder wenn sonst niemand genannt ist
-        eintrag = LlmPerson(name=verantwortlich, funktion="laut Impressum verantwortlich")
+        eintrag = LlmPerson(name=verantwortlich, funktion="einzige genannte Person (Einzelkanzlei)" if einzige
+                            else "laut Impressum verantwortlich")
         auswahl.insert(0 if vertreter or not auswahl else len(auswahl), eintrag)
     team_reihenfolge = [p.name for p in erkannte or []]
 
@@ -1235,7 +1267,7 @@ def zusammenfuehren(
     team_typen = (Seitentyp.TEAM, Seitentyp.TEAM2) + ((Seitentyp.START, Seitentyp.KONTAKT) if standort else ())
     team_seiten = [seiten[t] for t in team_typen if t in seiten]
     erkannte = erkannte_personen(team_seiten, rahmen)
-    personen, verworfen = bereinige_ansprechpartner(ansprechpartner(llm, erkannte, impressum_text, fremd, rahmen, name))
+    personen, verworfen = bereinige_ansprechpartner(ansprechpartner(llm, erkannte, impressum_text, fremd, rahmen, name, rechtsform))
     abweichungen += verworfen
     if standort:
         # Standort einer Kette: Standortleitung („Leiter", „Kanzleileitung" …) vor den Vertretungsberechtigten der

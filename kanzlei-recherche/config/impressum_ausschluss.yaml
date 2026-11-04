@@ -13,6 +13,7 @@ abschnitt_woerter:
   - 'vermögensschadenhaftpflicht'
   - 'hosting|hoster|gehostet'
   - 'webdesign|web-design|gestaltung|realisierung|umsetzung|programmierung|konzeption'
+  - 'agentur\b|internetagentur|werbeagentur|webagentur|erstellt (?:von|durch)|design by|powered by'  # Webagentur (Seed 3)
   - 'bildnachweis|bildquellen|fotos?:|fotografie'
   - 'datenschutzbeauftragt'
   - 'streitschlichtung|schlichtungsstelle'

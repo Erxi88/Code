@@ -91,6 +91,7 @@ Namensmerkmale aus 1A (Lohnsteuerhilfe, „e. V.“, Kammer/Verband, Rechtsanwal
 - Verwerfen, wenn der Text enthält: „Datenschutz“, „Grundverordnung“, „Fachanwalt … [Ort]“, „Amtsdirektor“, „Amtsvorsteher“, „Bürgermeister“, „Präsident“, „Archiv“, „Regionen“, „Homepages“, „Anträge“, „Browser“, „Verein“, Ortsnamen, Ländernamen, Monatsnamen, Wochentage.
 - Ein Name darf nicht gleichzeitig Kanzleiname und Ansprechpartner-Rest aus Navigation sein (Scheinnamen aus Menüs, Cookie-Bannern, Kundenstimmen).
 - Mehrstandort: Standortleitung vor Geschäftsführung der Zentrale.
+- Nie Personen aus dem Block der Webagentur/des Hosters (Fremd-Abschnitt wie Kammer/Hoster). Namensliste hinter der Berufsbezeichnung („Steuerberater A, B“) → beide. Einzelkanzlei mit genau einer genannten Person → diese, auch ohne Berufstitel (Seed 3, 04.11.2026).
 
 
 ### Teamgröße und Berufsträger

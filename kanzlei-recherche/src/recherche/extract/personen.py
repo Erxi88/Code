@@ -343,6 +343,13 @@ def erkenne_personen(
             hinzu(nt, m.group(2), i)
             vergeben.add(i)
             continue
+        # Berufsbezeichnung vor einer Namensliste in derselben Zeile: „Steuerberater Christian Backmann, Torsten
+        # Mitterhuber" (Seed 3, steuerkanzlei-mbm.de) – mindestens zwei Namen, sonst die Einzelregel oben
+        if (m := _BERUF_VOR_LISTE.match(z)) and (namen := _namensliste(m.group(2))):
+            for nt in namen:
+                hinzu(nt, _beruf_einzahl(m.group(1)), i)
+            vergeben.add(i)
+            continue
         # Namensliste unter einer Berufs-Überschrift: „Unsere Steuerberater" ⏎ „Max Muster, Eva Lund und Ole Rau"
         if i > 0 and _BERUF_UEBERSCHRIFT.search(zeilen[i - 1] or "") and len(zeilen[i - 1].split()) <= 6 \
                 and (namen := _namensliste(z)):
@@ -356,6 +363,8 @@ def erkenne_personen(
 _BERUFE = (r"steuerberater(?:in)?|steuerbevollmächtigte[r]?|wirtschaftsprüfer(?:in)?|rechtsanwalt|rechtsanwältin|"
            r"vereidigte[r]?\s+buchprüfer(?:in)?|stb|wp")
 _NAME_BERUF = re.compile(rf"^(.+?)\s+((?:{_BERUFE})(?:\s*(?:[,/|&]|und)\s*(?:{_BERUFE}))*)\s*$", re.IGNORECASE)
+_BERUF_VOR_LISTE = re.compile(r"^((?:die\s+)?(?:steuerberater(?:innen|in|n)?|steuerbevollmächtigte[rn]?|"
+                              r"wirtschaftsprüfer(?:innen|in)?|stb))\s*:?\s+(.+)$", re.IGNORECASE)
 _BERUF_UEBERSCHRIFT = re.compile(r"\b(?:steuerberater(?:innen|n)?|berufsträger(?:innen)?|wirtschaftsprüfer(?:innen)?|"
                                  r"partner(?:innen)?)\b", re.IGNORECASE)
 
