@@ -347,3 +347,35 @@ def test_blocklist_domain_keine_zeile():
     k = pruefen(_zeile(domain="www.stbk-koeln.de", kanzleiname="Steuerberaterkammer Köln", berufstraeger_anzahl=3),
                 {}, ziel_land=SH, blocklist={"stbk-koeln.de"})
     assert k.status == Status.KEINE_KANZLEI and "Blocklist" in grund_aus_abweichung(k.abweichung)
+
+
+def test_pruefung_nennt_grund_und_holt_domain_namen_ohne_ersatz_zurueck(storage):
+    """kanzlei-pruefung 04.11.2026: 8 Domains „keine Kanzlei (–)" – die Klammer war der leere Kanzleiname, nicht der
+    Grund. Der Name fehlte, weil der Domain-Name („Hagen Steuerberater") verworfen wurde und es keinen Ersatz gab."""
+    from recherche.extract.kanzlei import GRUND_PRAEFIX
+
+    kid = _speichern(storage, "hagen-steuer.example", None, ["Impressum", "Ole Hagen", "Markt 1", "24103 Kiel"])
+    k = next(k for k in storage.kanzleien("SH") if k.kandidat_id == kid)
+    k.abweichung = "Name „Hagen Steuer“ ist nur Domain/Seitentitel – verworfen"
+    storage.upsert_kanzlei(k)
+    _speichern(storage, "branchenbuch.example", None, ["Impressum", "Branchenbuch GmbH"])
+    meldungen = []
+    run_pruefung(storage, "SH", fortschritt=meldungen.append)
+    nach = {k.domain: k for k in storage.kanzleien("SH")}
+    assert nach["hagen-steuer.example"].kanzleiname == "Hagen Steuer"
+    assert nach["hagen-steuer.example"].status != Status.KEINE_KANZLEI
+    assert "kein Ersatz, bitte prüfen" in nach["hagen-steuer.example"].abweichung
+    assert meldungen == [f"branchenbuch.example: keine Kanzlei – {grund_aus_abweichung(nach['branchenbuch.example'].abweichung)}"
+                         " (Name: –)"]
+    assert nach["branchenbuch.example"].abweichung.startswith(GRUND_PRAEFIX + "Branchenfremd")
+
+
+def test_domain_name_bleibt_ohne_ersatz():
+    """Domain-Name nicht im Impressum belegt, aber keine Person mit Berufsbezeichnung und keine Kopf-Firmierung: der
+    Name bleibt (mit Prüfhinweis), statt die Kanzlei als „Branchenfremd" zu verlieren."""
+    seiten = {Seitentyp.IMPRESSUM: _seite("hagen-steuer.example", Seitentyp.IMPRESSUM,
+                                          ["Impressum", "Angaben gemäß § 5 DDG", "Markt 1", "24103 Kiel"])}
+    k = zusammenfuehren(Kandidat(id=1, bundesland="SH", domain="hagen-steuer.example"), [], seiten, None,
+                        LlmErgebnis(kanzleiname="Hagen Steuer"), lambda p, o: PlzPruefung(True, "Schleswig-Holstein"))
+    assert k.kanzleiname == "Hagen Steuer" and "kein Ersatz, bitte prüfen" in k.abweichung
+    assert "ist nur Domain/Seitentitel" not in k.abweichung

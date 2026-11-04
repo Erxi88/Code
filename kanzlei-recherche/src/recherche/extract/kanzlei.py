@@ -374,6 +374,21 @@ def suchorte_je_stammdomain(storage: Storage, bundesland: str) -> dict[str, int]
     return {d: len(o) for d, o in orte.items()}
 
 
+_VERWORFEN = re.compile(r"Name „(?P<name>[^“]+)“ ist nur Domain/Seitentitel – verworfen(?:; )?")
+
+
+def name_ohne_ersatz_zurueck(k: Kanzlei) -> None:
+    """Gespeicherte Zeile ohne Namen, deren Domain-Name verworfen wurde („Name „Hagen Steuerberater“ ist nur
+    Domain/Seitentitel – verworfen"), ohne Ersatz: der Name kommt zurück, mit Prüfhinweis – wie in merge.py, ohne
+    extract --alle (kanzlei-pruefung 04.11.2026)."""
+    if k.kanzleiname or not k.abweichung or not (m := _VERWORFEN.search(k.abweichung)):
+        return
+    k.kanzleiname = m.group("name")
+    rest = _VERWORFEN.sub("", k.abweichung).strip().rstrip(";").strip()
+    hinweis = f"Name „{k.kanzleiname}“ nur aus Domain-Wörtern, im Impressum nicht belegt – kein Ersatz, bitte prüfen"
+    k.abweichung = "; ".join(x for x in (rest, hinweis) if x)
+
+
 @dataclass
 class PruefStatistik:
     geprueft: int = 0
@@ -404,6 +419,7 @@ def run_pruefung(storage: Storage, bundesland: str, rechtsformen=STANDARD_RECHTS
         k.ansprechpartner, verworfen = bereinige_ansprechpartner(k.ansprechpartner)
         if verworfen:
             k.abweichung = "; ".join(dict.fromkeys(x for x in (k.abweichung, *verworfen) if x))
+        name_ohne_ersatz_zurueck(k)
         if kanzlei_erkennung and k.domain and k.kandidat_id is not None:
             pruefen(k, storage.kandidat_seiten(k.kandidat_id), rechtsformen, storage.funde_kandidat(k.kandidat_id),
                     orte.get(stammdomain(k.domain), 0), ziel_land, blocklist)
@@ -417,7 +433,9 @@ def run_pruefung(storage: Storage, bundesland: str, rechtsformen=STANDARD_RECHTS
         if k.status == Status.KEINE_KANZLEI or grund_aus_abweichung(k.abweichung):
             stat.keine_kanzlei += 1
             if fortschritt and vorher_status != Status.KEINE_KANZLEI:
-                fortschritt(f"{k.domain}: keine Kanzlei ({k.kanzleiname or '–'})")
+                # immer mit Grund (Prüfkatalog 1A) – die Klammer nannte bisher nur den Kanzleinamen (04.11.2026)
+                grund = grund_aus_abweichung(k.abweichung) or "kein Grund in „Abweichung“"
+                fortschritt(f"{k.domain}: keine Kanzlei – {grund} (Name: {k.kanzleiname or '–'})")
         elif vorher_status == Status.KEINE_KANZLEI:
             stat.wieder_kanzlei += 1
         stat.herabgestuft += vorher_konf == Konfidenz.HOCH and k.konfidenz != Konfidenz.HOCH

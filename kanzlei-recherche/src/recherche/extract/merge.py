@@ -1141,7 +1141,9 @@ def zusammenfuehren(
         # Seitentitel/Domain statt Firmierung (Stichprobe Seed 2) – vor den Kopfzeilen-Regeln, die sonst „Lund Steuer"
         # zu „Ina Lund, Steuerberaterin" machen; mit Person + Berufsbezeichnung im Impressum gilt die Ableitung unten
         abweichungen.append(f"Name „{roh_name}“ ist nur Domain/Seitentitel – verworfen")
-        roh_name = None
+        verworfener_name, roh_name = roh_name, None
+    else:
+        verworfener_name = None
     llm_name = name_vervollstaendigen(name_aus_impressum(roh_name, impressum_text, fremd, rahmen), impressum_text)
     name = disc["name"] or llm_name
     if disc["name"] and llm_name and not (name_tokens(disc["name"]) & name_tokens(llm_name)):
@@ -1299,6 +1301,14 @@ def zusammenfuehren(
         if rechtsform is None and berufstraeger == 1 and ist_einzelkanzlei(
                 name, impressum_text, _impressum_vertreter(impressum_text, fremd, rahmen, personen)):
             rechtsform = "Einzelkanzlei"  # „Steuerberaterin Henrike Weidemann" ohne Register
+    if not name and verworfener_name:
+        # kein Ersatz (keine Person mit Berufsbezeichnung, keine Kopf-Firmierung): der Domain-Name bleibt, statt die
+        # Zeile ohne Namen als „Branchenfremd" zu verlieren – mit Hinweis zur Prüfung (kanzlei-pruefung 04.11.2026:
+        # hagen-steuerberater.de, steuerbord-steuerberatung.de …)
+        name = verworfener_name
+        abweichungen = [a for a in abweichungen if not a.startswith(f"Name „{verworfener_name}“ ist nur")]
+        abweichungen.append(f"Name „{verworfener_name}“ nur aus Domain-Wörtern, im Impressum nicht belegt – kein Ersatz, "
+                            "bitte prüfen")
     if zahl is not None and berufstraeger > zahl:
         # danrevision: 2 Personen auf der Teamseite eines Standorts, aber 7 Berufsträger – Zahl unplausibel,
         # Untergrenze als Klasse

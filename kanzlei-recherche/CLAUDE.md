@@ -498,7 +498,10 @@ der nächsten Quelle füllen.**
   - **Seitentitel/Domain statt Firmierung** (Seed 2, `seitentitel_statt_firmierung`): LLM-Name aus Domain-Wörtern, der
     nicht als ganze Wörter im Impressum steht („Schroeder Steuer"), oder generischer Titel ohne Rechtsform („Mein
     Steuerberater in Kiel", „Kanzlei für …") → verworfen, vor den Kopfzeilen-Regeln; dann „Steuerberater/in Vorname
-    Nachname" aus der Person mit Berufsbezeichnung.
+    Nachname" aus der Person mit Berufsbezeichnung. Ohne Ersatz (keine Person mit Berufsbezeichnung, keine Kopf-Firmierung) bleibt
+    der Domain-Name mit „… nur aus Domain-Wörtern, im Impressum nicht belegt – kein Ersatz, bitte prüfen" (sonst wird
+    die Kanzlei ohne Namen „Branchenfremd"; `kanzlei-pruefung` holt den Namen auch bei gespeicherten Zeilen zurück –
+    04.11.2026).
   - Name: Steht im Impressum-Kopf eine Zeile mit allen Wörtern des LLM-Namens und
     höchstens drei weiteren (Rechtsform, Berufswörter, Namen), hat sie Vorrang vor Logo und
     Startseite („900 GRAD STEUERBERATUNG" → „900 GRAD Steuerberatungsgesellschaft PartmbB");
@@ -553,7 +556,8 @@ der nächsten Quelle füllen.**
   wixsite.com je Subdomain) in ≥ 5 Suchorten vorkommt, und nicht ohne echten Kanzleinamen. Sonst Status `keine Kanzlei`, Grund vorn in „Abweichung"
   („Keine Kanzlei: …"), Konfidenz höchstens `mittel`. Nichts wird gelöscht. Nur Kandidaten mit
   Website; ein von Hand gepflegter Status bleibt. `recherche kanzlei-pruefung` wendet die
-  Prüfung ohne LLM auf bereits extrahierte Kanzleien an (auch zurück zu `neu`). **Großgesellschaften** (BDO,
+  Prüfung ohne LLM auf bereits extrahierte Kanzleien an (auch zurück zu `neu`); jede Herabstufung meldet
+  „<domain>: keine Kanzlei – <Grund> (Name: …)". **Großgesellschaften** (BDO,
   EY, PwC, KPMG, Deloitte, Baker Tilly …) sind Zielkanzleien – nicht auf die Blocklist (Entscheidung
   30.10.2026), Kanzleityp „Großgesellschaft" (Prüfkatalog 9).
   **Ausschluss vorab (Prüfkatalog 1A)**, Grund = Kategorie, in dieser Reihenfolge: Portal (Blocklist, *linklisten*,
