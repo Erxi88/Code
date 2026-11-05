@@ -33,6 +33,8 @@ from .kanzlei import (
     suchorte_je_stammdomain,
 )
 from .merge import zusammenfuehren
+
+LLM_RUECKFALL = "LLM ohne gültige Antwort – nur Regeln und Discovery: "
 from .prompt import seiten_rahmen
 from .rules import Ausschluss, extract_impressum, festnetz_aus_html, ist_mobil
 
@@ -48,6 +50,7 @@ class ExtractStatistik:
     llm_laufzeit_s: float = 0.0
     tokens: int = 0
     gekuerzt: int = 0  # Kanzleien, deren Seitentext für den Prompt gekürzt wurde
+    ohne_llm_rueckfall: int = 0  # keine gültige LLM-Antwort (JSON abgebrochen) → nur Regeln und Discovery
     kontext_voll: int = 0  # Prompt + Antwort ≥ 95 % von num_ctx (Ollama hat vermutlich abgeschnitten)
     ohne_llm_ausserhalb: int = 0  # PLZ laut Regel außerhalb des Bundeslandes – LLM übersprungen
     abbruch: str | None = None
@@ -58,6 +61,8 @@ class ExtractStatistik:
             teile.append(f"gekürzt: {self.gekuerzt} Kanzleien")
         if self.kontext_voll:
             teile.append(f"Kontext fast voll: {self.kontext_voll} Kanzleien")
+        if self.ohne_llm_rueckfall:
+            teile.append(f"ohne gültige LLM-Antwort, aus Regeln gefüllt: {self.ohne_llm_rueckfall} Kanzleien")
         return "; ".join(teile) or None
 
     @property
@@ -208,8 +213,19 @@ def _eine(storage: Storage, k: Kandidat, extractor, pruefer, ausschluss, stat: E
             stat.ohne_llm_ausserhalb += 1
             vorab.abweichung = "; ".join(x for x in (vorab.abweichung, f"ohne LLM: {grund}") if x)
             return vorab
+    llm_hinweis, antwort = None, None
     if extractor is not None and seiten:
-        antwort = extractor.extract(seiten)
+        try:
+            antwort = extractor.extract(seiten)
+        except AnbieterNichtErreichbar:
+            raise
+        except ExtraktionFehler as e:
+            # keine gültige LLM-Antwort auch nach den Wiederholungen: Zeile aus Regeln und Discovery statt Fehler
+            antwort = None
+            stat.ohne_llm_rueckfall += 1
+            llm_hinweis = f"{LLM_RUECKFALL}{e}"
+            log.warning("%s: %s", k.domain, llm_hinweis)
+    if extractor is not None and seiten and antwort is not None:
         llm = antwort.ergebnis
         stat.llm_aufrufe += 1
         stat.llm_laufzeit_s += antwort.laufzeit_s
@@ -219,6 +235,8 @@ def _eine(storage: Storage, k: Kandidat, extractor, pruefer, ausschluss, stat: E
         if antwort.kuerzung or antwort.kontext_voll:
             log.info("%s: Prompt gekürzt (%s)%s", k.domain, antwort.kuerzung, ", Kontext fast voll" if antwort.kontext_voll else "")
     kanzlei = zusammenfuehren(k, funde, seiten, regel, llm, pruefer.pruefe if pruefer else None, ausschluss)
+    if llm_hinweis:
+        kanzlei.abweichung = "; ".join(x for x in (kanzlei.abweichung, llm_hinweis) if x)
     if hinweis := _robots_hinweis(storage, seiten):
         kanzlei.abweichung = "; ".join(x for x in (kanzlei.abweichung, hinweis) if x)
     if Seitentyp.IMPRESSUM not in seiten:  # Prüfkatalog 3: ohne Impressum aus Start-/Kontaktseite gelesen

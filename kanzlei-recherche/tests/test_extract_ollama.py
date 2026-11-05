@@ -92,6 +92,19 @@ def test_dauerhaft_ungueltig(cfg):
         OllamaExtractor(cfg, client=client).extract(SEITEN)
 
 
+def test_abgebrochenes_json_zweiter_versuch_mit_halbem_seitentext(cfg):
+    """SH 05.11.2026 (gmh-group.net, segeberg.shbb.de, shbb.eu): lange Personenliste füllt den Kontext, das JSON bricht
+    ab (done_reason „length") – der nächste Versuch schickt den halben Seitentext, damit die Antwort Platz hat."""
+    seiten = {Seitentyp.TEAM: Seite(url="https://a.example/team", domain="a.example", seitentyp=Seitentyp.TEAM,
+                                    text="\n".join(f"Person {i} – Steuerfachangestellte" for i in range(3000)))}
+    client, gesendet = _ollama([(200, {"message": {"content": '{"kanzleiname": "Hansen", "personen": [{"na'},
+                                       "done_reason": "length", "eval_count": 2000}), _ok()])
+    a = OllamaExtractor(cfg, client=client).extract(seiten)
+    assert a.ergebnis.kanzleiname
+    erster, zweiter = (len(g["messages"][1]["content"]) for g in gesendet)
+    assert zweiter <= erster // 2 + 200
+
+
 def test_fallback_modell(cfg):
     client, gesendet = _ollama([(404, '{"error":"model \\"qwen3.5:9b\\" not found, try pulling it first"}'), _ok()])
     e = OllamaExtractor(cfg, client=client)

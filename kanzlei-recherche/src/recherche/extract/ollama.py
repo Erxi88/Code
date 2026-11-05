@@ -94,6 +94,12 @@ class OllamaExtractor(Extractor):
                 ergebnis = LlmErgebnis.model_validate_json(inhalt)
             except ValidationError as e:
                 letzter_fehler = f"ungültige Antwort ({e.error_count()} Fehler): {inhalt[:120]!r}"
+                if daten.get("done_reason") == "length" or (inhalt and not inhalt.rstrip().endswith("}")):
+                    # JSON mittendrin abgebrochen (SH 05.11.2026: gmh-group.net, segeberg.shbb.de, shbb.eu – lange
+                    # Personenlisten): Kontext voll – nächster Versuch mit halbem Seitentext, mehr Platz für die Antwort
+                    letzter_fehler = (f"ungültige Antwort – JSON abgebrochen (Kontext voll, "
+                                      f"{daten.get('eval_count') or '?'} Antwort-Token)")
+                    prompt = baue_prompt(seiten, max(2000, prompt.budget // 2))
                 log.warning("%s: %s (Versuch %d)", self.modell, letzter_fehler, versuch + 1)
                 continue
             ns = daten.get("total_duration")

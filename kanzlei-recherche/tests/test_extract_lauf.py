@@ -120,13 +120,20 @@ def test_ollama_nicht_erreichbar_beendet_lauf(storage, ausschluss):
     assert storage.get_kandidat(a).extract_status == SchrittStatus.OFFEN  # nicht als Fehler markiert
 
 
-def test_fehler_eines_kandidaten(storage, ausschluss):
+def test_ohne_gueltige_llm_antwort_aus_regeln_gefuellt(storage, ausschluss):
+    """SH 05.11.2026 (JSON-Abbruch bei gmh-group.net, segeberg.shbb.de, shbb.eu): bleibt die LLM-Antwort auch nach
+    den Wiederholungen ungültig, entsteht die Zeile aus Regeln und Discovery – mit Hinweis, kein Fehler."""
+    from recherche.extract.lauf import LLM_RUECKFALL
+
     kid = _kandidat_mit_seiten(storage, "steuerbuero-schuett.example")
-    stat = run_extract(storage, "SH", AufzeichnungsExtractor(ExtraktionFehler("ungültige Antwort")), None, ausschluss, "l1")
-    assert stat.fehler == 1
-    assert storage.get_kandidat(kid).extract_status == SchrittStatus.FEHLER
-    assert storage.fehler_zuruecksetzen("SH", "extract") == 1
-    assert run_extract(storage, "SH", AufzeichnungsExtractor(), None, ausschluss, "l2").fertig == 1
+    stat = run_extract(storage, "SH", AufzeichnungsExtractor(ExtraktionFehler("ungültige Antwort – JSON abgebrochen")),
+                       None, ausschluss, "l1")
+    assert (stat.fehler, stat.ohne_llm_rueckfall, stat.fertig) == (0, 1, 1)
+    assert storage.get_kandidat(kid).extract_status == SchrittStatus.FERTIG
+    k = storage.kanzlei_fuer_kandidat(kid)
+    assert (k.kanzleiname, k.strasse, k.telefon) == ("Steuerbüro Thomas Schütt", "Großflecken 3", "+49 4321 559012")
+    assert f"{LLM_RUECKFALL}ungültige Antwort – JSON abgebrochen" in k.abweichung
+    assert "aus Regeln gefüllt: 1" in stat.hinweis()
 
 
 def test_kanzlei_pruefung_laesst_alle_beispielkanzleien_stehen(storage, ausschluss):

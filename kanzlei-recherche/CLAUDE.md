@@ -503,7 +503,10 @@ der nächsten Quelle füllen.**
   Vorschlag, den das Modell vollständig in `personen` übernehmen soll (sonst lässt es die
   Personen als „schon bekannt" weg).
   Budget `llm.max_text_chars: auto` = (num_ctx − 2700 Token) × 3,0 Zeichen/Token, verteilt
-  nach Anteilen je Seite. Wird gekürzt oder ist der Kontext fast voll, steht ein Hinweis im
+  nach Anteilen je Seite. **JSON-Abbruch** (SH 05.11.2026: gmh-group.net, segeberg.shbb.de, shbb.eu – lange
+  Personenlisten füllen den Kontext, `done_reason` „length"): der nächste Versuch schickt den halben Seitentext; bleibt
+  die Antwort ungültig, entsteht die Zeile ohne LLM aus Regeln und Discovery („LLM ohne gültige Antwort – nur Regeln
+  und Discovery: …" in „Abweichung", Zähler in der extract-Ausgabe) statt als Fehler. Wird gekürzt oder ist der Kontext fast voll, steht ein Hinweis im
   Log und im Lauf-Protokoll. `recherche fixture-prompt --domain X [--live] [--namen]` zeigt
   jede Stufe, versteckte Quellen der Teamseiten (noscript, Skripte, JSON-LD, Attribute),
   die gezählten Berufsträger mit Herkunft (LLM, Teamseite, Impressum-Berufsbezeichnung),
