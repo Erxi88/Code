@@ -150,12 +150,12 @@ def test_pilot_bericht_je_plz_abschneiden_cache_und_antwortzeit(storage, tmp_pat
     orte = plz_orte([Ort("Kiel", "24103", "Kreisfreie Stadt Kiel", plz_weitere=("24105",))])
     stat = run_verzeichnis(storage, _stbv_adapter(storage, {"24103": html, "24105": gekuerzt}), orte, "SH", set(), "p1")
     b1, b2 = stat.berichte
-    assert (b1.plz, b1.eintraege, b1.angezeigt, b1.gesamt, b1.kanzleien, b1.ohne_gesellschaft) == ("24103", 9, 9, 9, 5, 3)
+    assert (b1.plz, b1.eintraege, b1.angezeigt, b1.gesamt, b1.kanzleien, b1.ohne_gesellschaft) == ("24103", 9, 9, 9, 4, 1)
     assert b1.sekunden is not None and not b1.cache and not b1.abgeschnitten
     assert b2.abgeschnitten and [b.plz for b in stat.abgeschnitten] == ["24105"]
-    assert (b1.neu, b2.neu) == (5, 0)  # unter 24105 dieselben Kanzleien – schon im Bestand
+    assert (b1.neu, b2.neu) == (4, 0)  # unter 24105 dieselben Kanzleien – schon im Bestand
     text = bericht_csv(stat.berichte, tmp_path / "b.csv").read_text(encoding="utf-8-sig")
-    assert "24105;Kiel;9;9;12;ja;5;3;0;" in text
+    assert "24105;Kiel;9;9;12;ja;4;1;0;" in text
 
     # zweiter Adapter, gleiche Datenbank: Antwort aus dem Cache (neuer Lauf nach Löschen des Protokolls)
     storage.conn.execute("DELETE FROM lauf_protokoll")
@@ -174,31 +174,30 @@ def test_orte_im_kreis():
 
 
 def test_person_ohne_gesellschaft_kennzeichen_und_zusammenfuehrung_ueber_website(storage):
-    """Je Person ein Kandidat; die Nachsuche sucht mit der Firmenzeile und führt Personen derselben Website zusammen."""
+    """Person ohne Firmenzeile: eigener Kandidat mit Kennzeichen; findet die Nachsuche die Website eines Kandidaten des
+    Bestands, geht die Person in ihm auf. Gleiche Firmenzeile + Adresse ist eine Kanzlei (Vorgabe 05.11.2026)."""
     from fakes import FakeQueryAdapter
 
     from recherche.search.nachsuche import website_nachsuche
-    from recherche.search.verzeichnisse import OHNE_GESELLSCHAFT
+    from recherche.search.verzeichnisse import FIRMENZEILE_OHNE_KARTE, OHNE_GESELLSCHAFT
 
+    bestand = storage.add_kandidat(Kandidat(bundesland="SH", domain="thordsen-steuer.example",
+                                            website="https://thordsen-steuer.example/", name="Steuerbüro Thordsen"))
     html = BEISPIEL_STBV.read_text(encoding="utf-8")
     run_verzeichnis(storage, _stbv_adapter(storage, {"24103": html}), plz_orte([Ort("Kiel", "24103", "Kreisfreie Stadt Kiel")]),
                     "SH", set(), "p1")
     zeilen = {z.name: z for z in luecken(storage, "SH")}
-    ole, lars = zeilen["Steuerberater Ole Ketelsen"], zeilen["Steuerberater Lars Ketelsen"]
-    assert ole.ohne_gesellschaft and ole.firma == "Nordlicht Treuhand- und Revisionsgesellschaft mbH"
-    assert not zeilen["Förde Steuerberater PartG mbB"].ohne_gesellschaft
-    assert luecken_werte_kennzeichen(ole) == OHNE_GESELLSCHAFT
+    imke = zeilen["Steuerberaterin Imke Thordsen"]
+    assert imke.ohne_gesellschaft and luecken_werte_kennzeichen(imke) == OHNE_GESELLSCHAFT
+    nordlicht = zeilen["Nordlicht Treuhand- und Revisionsgesellschaft mbH"]
+    assert not nordlicht.ohne_gesellschaft and "Ole Ketelsen" in nordlicht.berufstraeger
+    assert FIRMENZEILE_OHNE_KARTE in next(f.snippet for f in storage.funde_kandidat(nordlicht.kandidat_id))
 
-    # Nachsuche: beide Ketelsen mit der Firmenzeile → dieselbe Website → ein Kandidat mit beiden Funden
-    firma = "Nordlicht Treuhand- und Revisionsgesellschaft mbH Kiel"
-    brave = FakeQueryAdapter("brave", {firma: ["https://www.nordlicht-treuhand.example/"]})
+    brave = FakeQueryAdapter("brave", {"Steuerberaterin Imke Thordsen Kiel": ["https://thordsen-steuer.example/"]})
     meldungen = []
     stat = website_nachsuche(storage, brave, "SH", QUELLE, set(), fortschritt=meldungen.append)
-    assert brave.aufrufe.count(firma) == 2 and stat.gefunden == 1 and stat.schon_vergeben == 1
-    k = storage.kandidat_nach_domain("nordlicht-treuhand.example")
-    assert storage.get_kandidat(ole.kandidat_id if ole.kandidat_id != k.id else lars.kandidat_id) is None
-    namen = [f.name for f in storage.funde_kandidat(k.id) if f.quelle == QUELLE]
-    assert sorted(namen) == ["Steuerberater Lars Ketelsen", "Steuerberater Ole Ketelsen"]
+    assert stat.schon_vergeben == 1 and storage.get_kandidat(imke.kandidat_id) is None
+    assert [f.name for f in storage.funde_kandidat(bestand) if f.quelle == QUELLE] == ["Steuerberaterin Imke Thordsen"]
     assert any("zusammengeführt" in m for m in meldungen)
 
 
@@ -227,3 +226,40 @@ def test_cli_pilot_kreis(monkeypatch, db_pfad, tmp_path):
     assert (tmp_path / "stb_verzeichnis_plz_SH_Kreisfreie_Stadt_Kiel.csv").exists()
     assert "Eva Ott" in (tmp_path / "luecken_amtlich_SH_Kreisfreie_Stadt_Kiel.csv").read_text(encoding="utf-8-sig")
     assert "Ole Rau" not in (tmp_path / "luecken_amtlich_SH_Kreisfreie_Stadt_Kiel.csv").read_text(encoding="utf-8-sig")
+
+
+def test_analyse_aus_dem_cache_schreibgeschuetzt(storage, db_pfad):
+    """Analyse liest den Cache nur lesend: je PLZ Einträge, Gesellschaften, Personen, Kanzleien, Orte."""
+    from recherche.stbv_analyse import analysiere, gecachte_seiten
+
+    html = BEISPIEL_STBV.read_text(encoding="utf-8")
+    run_verzeichnis(storage, _stbv_adapter(storage, {"24103": html}),
+                    plz_orte([Ort("Kiel", "24103", "Kreisfreie Stadt Kiel")]), "SH", set(), "p1")
+    storage.close()
+    seiten = gecachte_seiten(db_pfad)
+    assert list(seiten) == ["24103"]
+    a = analysiere(seiten["24103"][1], "24103")
+    assert (a.eintraege, a.gesellschaften, a.personen, a.kanzleien) == (9, 2, 7, 4)
+    assert (a.aus_gesellschaft, a.aus_firmenzeile, a.person_einzeln, a.fremde_plz) == (2, 1, 1, 0)
+    assert a.orte == {"24103 Kiel": 9}
+
+
+def test_neu_gruppieren_aus_dem_cache_ohne_abfragen(storage):
+    """Bestand neu gruppieren: amtliche Kandidaten weg, Fremdkandidaten nur bereinigt; der zweite Lauf liest den Cache."""
+    from recherche.stbv_lauf import neu_gruppieren_vorbereiten
+
+    bestand = storage.add_kandidat(Kandidat(bundesland="SH", domain="hansen.example", name="Hansen & Petersen",
+                                            strasse="Holstenstraße 42", plz="24103", ort="Kiel"))
+    html = BEISPIEL_STBV.read_text(encoding="utf-8")
+    orte = plz_orte([Ort("Kiel", "24103", "Kreisfreie Stadt Kiel")])
+    run_verzeichnis(storage, _stbv_adapter(storage, {"24103": html}), orte, "SH", set(), "p1")
+    vorher = {k.name for k in storage.kandidaten("SH")}
+    assert any(f.quelle == QUELLE for f in storage.funde_kandidat(bestand))
+    entfernt, bereinigt = neu_gruppieren_vorbereiten(storage, "SH")
+    assert (entfernt, bereinigt) == (3, 1)
+    assert [k.id for k in storage.kandidaten("SH")] == [bestand]
+    assert not any(f.quelle == QUELLE for f in storage.funde_kandidat(bestand))
+    adapter = _stbv_adapter(storage, {})  # kein HTML: jede echte Abfrage schlüge fehl
+    stat = run_verzeichnis(storage, adapter, orte, "SH", set(), "p2")
+    assert adapter.anfragen == 0 and stat.berichte[0].cache and stat.neu == 3
+    assert {k.name for k in storage.kandidaten("SH")} == vorher

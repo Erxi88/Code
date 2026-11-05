@@ -29,6 +29,7 @@ import random
 import re
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from urllib.parse import quote, urlencode, urljoin, urlsplit
 
@@ -325,18 +326,27 @@ OHNE_GESELLSCHAFT = "Person ohne Gesellschaft an dieser Adresse"
 FIRMA_LAUT_VERZEICHNIS = "Firma laut Verzeichnis: "
 
 
-def stbv_kanzleien(html: str, basis_url: str, quelle: str = "stb_verzeichnis") -> tuple[list[SearchHit], tuple[int, int] | None]:
-    """Karten des amtlichen Verzeichnisses → ein Treffer je Kanzlei; dazu (angezeigt, gesamt) aus „Treffer: X von Y".
+@dataclass
+class StbvKarte:
+    """Eine Karte der Ergebnisliste des amtlichen Verzeichnisses (Berufsträger oder Gesellschaft)."""
+    name: str  # Personenname bzw. Firmenname (Zeilen verbunden)
+    beruf: str | None  # None = Gesellschaft
+    titel: str | None
+    firma: str | None  # Firmenzeile(n) vor der Straße (Person) bzw. Firma (Gesellschaft); c/o aufgelöst
+    strasse: str | None
+    plz: str | None
+    ort: str | None
+    url: str
 
-    Gesellschaften (Karte ohne Beruf) sind Kanzleien. Ein Berufsträger gehört nur zu einer Gesellschaft an derselben
-    Adresse, deren Name zur Firmenzeile vor seiner Straße passt (gleich, Namensanfang oder eindeutig gleiches erstes
-    Wort: „RBB v.Reden … mbB" → „RBB Büchl & Partner mbB"; „c/o X" → X). Sonst ist jede Person ein eigener Kandidat
-    („Steuerberaterin Imke Thordsen", Kennzeichen „Person ohne Gesellschaft an dieser Adresse", Firmenzeile im Snippet)
-    – zusammengeführt wird erst über die gleiche Website (Nachsuche). Die Berufsträger stehen im Snippet.
-    """
+    @property
+    def gesellschaft(self) -> bool:
+        return self.beruf is None
+
+
+def stbv_karten(html: str, basis_url: str) -> tuple[list[StbvKarte], tuple[int, int] | None]:
+    """Alle Karten der Ergebnisseite – ohne Gruppierung; dazu (angezeigt, gesamt) aus „Treffer: X von Y"."""
     soup = BeautifulSoup(html or "", "lxml")
-    gruppen: dict[tuple, dict] = {}
-    personen: list[tuple[str, str, str | None, str | None, str | None, str]] = []
+    karten = []
     for karte in soup.select("a.link-to-detail"):
         name_zeilen = _zeilen(karte.select_one("p.name"))
         adresse = _zeilen(karte.select_one("p.address-display"))
@@ -348,48 +358,128 @@ def stbv_kanzleien(html: str, basis_url: str, quelle: str = "stb_verzeichnis") -
             adresse = adresse[:-1]
         if adresse:
             strasse, adresse = adresse[-1], adresse[:-1]
-        url = urljoin(basis_url, karte["href"])
         beruf = _knoten_text(karte.select_one("p.beruf"))
-        if beruf is None:  # Gesellschaft
-            firma = _firma(name_zeilen + adresse)
-            key = (adresse_key(strasse, plz) or f"{strasse}|{plz}", _schluessel_name(firma))
-            gruppen.setdefault(key, dict(name=firma, strasse=strasse, plz=plz, ort=ort, url=url, personen=[],
-                                         gesellschaft=True))
+        if beruf is None:
+            name = firma = _firma(name_zeilen + adresse)
         else:
-            titel = _knoten_text(karte.select_one("p.akademische-grade"))
-            person = " ".join(x for x in (beruf, titel, zeilen_verbinden(name_zeilen)) if x)
-            personen.append((person, f"{beruf} {zeilen_verbinden(name_zeilen)}", _firma(adresse), strasse, plz, ort, url))
-    for person, einzelname, firma, strasse, plz, ort, url in personen:
-        adr = adresse_key(strasse, plz) or f"{strasse}|{plz}"
+            name, firma = zeilen_verbinden(name_zeilen), _firma(adresse)
+        karten.append(StbvKarte(name or "", beruf, _knoten_text(karte.select_one("p.akademische-grade")), firma,
+                                strasse, plz, ort, urljoin(basis_url, karte["href"])))
+    zahl = _TREFFER.search(" ".join(soup.get_text(" ").split()))
+    return karten, (int(zahl.group(1)), int(zahl.group(2))) if zahl else None
+
+
+# Steuerberatungsbezug einer Firmenzeile – sonst Syndikus/Unternehmen („Siemens AG", „Sparkasse Holstein")
+_STEUERBEZUG = re.compile(
+    r"steuer|\bstb|kanzlei|treuhand|revision|wirtschaftspr|buchpr|buchf(?:ü|ue)hr|buchstelle|beratung|berater|consult|"
+    r"audit|\btax|partner|partg|\bmbb\b|sozietät|sozietaet|collegen|kollegen|rechtsanw|\bwpg\b|\bstbg\b|\bwp\b|"
+    r"\bpwc\b|pricewaterhouse|\bkpmg\b|deloitte|\bbdo\b|ecovis|\betl\b|ernst\s*&\s*young|\bey\b", re.IGNORECASE)
+_RECHTSFORM_ENDE = re.compile(
+    r"gmbh\s*&\s*co\.?\s*kg|partg\s*mbb|partnerschaft(?:sgesellschaft)?\s*mbb|partnerschaft|gmbh|mbh|mbb|\bag\b|"
+    r"\bkg\b|\bgbr\b|\bohg\b|e\.\s?v\.", re.IGNORECASE)
+SYNDIKUS = "Syndikus/Unternehmen"
+FIRMENZEILE_OHNE_KARTE = "Kanzlei aus Firmenzeile (ohne Gesellschaftskarte)"
+
+
+def hat_steuerbezug(firma: str | None) -> bool:
+    return bool(firma and _STEUERBEZUG.search(firma))
+
+
+def firmen_schluessel(firma: str) -> str:
+    """Vergleichsschlüssel einer Firmenzeile: bis zur ersten Rechtsform, ohne Umlaut-/Satzzeichen-Unterschiede –
+    „rt Revision + Treuhand GmbH & Co. KG Wirtschaftsprüfungsgesellschaft …" = „rt Revision & Treuhand GmbH & Co. KG",
+    „Oelerking Bröcker Hamann Partnerschaft mbB …" = „Oelerking Broecker Hamann Partnerschaft MbB"."""
+    f = firma.casefold().replace("ä", "ae").replace("ö", "oe").replace("ü", "ue").replace("ß", "ss")
+    if m := _RECHTSFORM_ENDE.search(f):
+        f = f[: m.end()]
+    return re.sub(r"[^0-9a-z]", "", f)
+
+
+def _kanzlei_schluessel(karten: list[StbvKarte]) -> set[str]:
+    """Firmenschlüssel aller Gesellschaften und Firmenzeilen mit Steuerberatungsbezug der Seite."""
+    return {firmen_schluessel(k.firma or k.name) for k in karten
+            if k.gesellschaft or hat_steuerbezug(k.firma)}
+
+
+def ist_syndikus(k: StbvKarte, kanzleien: set[str]) -> bool:
+    """Firmenzeile ohne Steuerberatungsbezug, die auch keiner Kanzlei der Seite entspricht („Treurat GmbH" =
+    „Treurat GmbH Wirtschaftsprüfungsgesellschaft …" ist eine Kanzlei; „Siemens AG" nicht)."""
+    if k.gesellschaft or not k.firma or hat_steuerbezug(k.firma):
+        return False
+    fs = firmen_schluessel(k.firma)
+    return not any(fs == x or x.startswith(fs) or fs.startswith(x) for x in kanzleien if len(x) >= 4)
+
+
+def stbv_syndikus(karten: list[StbvKarte]) -> list[StbvKarte]:
+    """Berufsträger, deren Firmenzeile keinen Steuerberatungsbezug hat (Syndikus-Steuerberater eines Unternehmens) –
+    nie als Kanzlei, aber in der Lückenliste (Vorgabe 05.11.2026)."""
+    kanzleien = _kanzlei_schluessel(karten)
+    return [k for k in karten if ist_syndikus(k, kanzleien)]
+
+
+def stbv_gruppieren(karten: list[StbvKarte], quelle: str = "stb_verzeichnis") -> list[SearchHit]:
+    """Karten → ein Treffer je Kanzlei (Vorgabe 05.11.2026). Aus dem Cache neu berechenbar (`stbv_karten` + diese
+    Funktion), ohne das Verzeichnis erneut abzufragen.
+
+    - Gesellschaften (Karte ohne Beruf) sind Kanzleien.
+    - Ein Berufsträger mit Firmenzeile gehört zur Gesellschaft an derselben Adresse, deren Name passt (Firmenschlüssel
+      bis zur Rechtsform gleich, Namensanfang oder eindeutig gleiches erstes Wort: „RBB v.Reden … mbB" → „RBB Büchl &
+      Partner mbB"; „c/o X" → X).
+    - Sonst bilden Berufsträger mit gleicher Firmenzeile (Firmenschlüssel) an derselben Adresse eine Kanzlei – auch ohne
+      Gesellschaftskarte („Sozietät Sierck & Remuß Steuerberater"); verschiedene Firmenzeilen an einer Adresse bleiben
+      getrennte Kanzleien (Bürogemeinschaft).
+    - Ohne Firmenzeile ist jede Person ein eigener Kandidat („Steuerberaterin Imke Thordsen", Kennzeichen „Person ohne
+      Gesellschaft an dieser Adresse") – zusammengeführt wird erst über die gleiche Website (Nachsuche).
+    - Firmenzeile ohne Steuerberatungsbezug („Siemens AG") → Syndikus/Unternehmen, kein Kandidat (`stbv_syndikus`).
+    """
+    gruppen: dict[tuple, dict] = {}
+    for k in karten:
+        if k.gesellschaft:
+            key = (adresse_key(k.strasse, k.plz) or f"{k.strasse}|{k.plz}", _schluessel_name(k.firma or k.name))
+            gruppen.setdefault(key, dict(name=k.firma or k.name, strasse=k.strasse, plz=k.plz, ort=k.ort, url=k.url,
+                                         personen=[], art="gesellschaft"))
+    kanzleien = _kanzlei_schluessel(karten)
+    for k in karten:
+        if k.gesellschaft or ist_syndikus(k, kanzleien):
+            continue
+        person = " ".join(x for x in (k.beruf, k.titel, k.name) if x)
+        einzelname = f"{k.beruf} {k.name}"
+        adr = adresse_key(k.strasse, k.plz) or f"{k.strasse}|{k.plz}"
         ziel = None
-        if firma:
-            # nur zu einer Gesellschaft (eigene Karte) an derselben Adresse (Pilot-Vorgabe 05.11.2026)
-            vor_ort = [(k, g) for (a, k), g in gruppen.items() if a == adr and g["gesellschaft"]]
-            fk, fw = _schluessel_name(firma), _erstes_wort(firma)
-            gleich = [g for k, g in vor_ort if k == fk]
-            praefix = [g for k, g in vor_ort if k.startswith(fk) or fk.startswith(k)]  # „rt Revision + Treuhand GmbH"
+        if k.firma:
+            vor_ort = [(key, g) for (a, key), g in gruppen.items() if a == adr and g["art"] == "gesellschaft"]
+            fk, fw, fs = _schluessel_name(k.firma), _erstes_wort(k.firma), firmen_schluessel(k.firma)
+            gleich = [g for key, g in vor_ort if key == fk or firmen_schluessel(g["name"]) == fs]
+            praefix = [g for key, g in vor_ort if key.startswith(fk) or fk.startswith(key)]
             wort = [g for _, g in vor_ort if _erstes_wort(g["name"]) == fw]
             ziel = gleich[0] if gleich else praefix[0] if len(praefix) == 1 else wort[0] if len(wort) == 1 else None
+            if ziel is None:  # gleiche Firmenzeile an derselben Adresse = eine Kanzlei (ohne Gesellschaftskarte)
+                ziel = gruppen.setdefault((adr, "firma:" + fs), dict(
+                    name=k.firma, strasse=k.strasse, plz=k.plz, ort=k.ort, url=k.url, personen=[], art="firmenzeile"))
         if ziel is None:
-            # keine Gesellschaft an dieser Adresse: je Person ein Kandidat („Steuerberater Ole Ketelsen"); die Firmenzeile
-            # bleibt im Snippet (Website-Nachsuche), zusammengeführt wird erst über die gleiche Website
             ziel = gruppen.setdefault((adr, _schluessel_name(einzelname)), dict(
-                name=einzelname, strasse=strasse, plz=plz, ort=ort, url=url, personen=[], gesellschaft=False,
-                firma=firma))
+                name=einzelname, strasse=k.strasse, plz=k.plz, ort=k.ort, url=k.url, personen=[], art="person"))
         ziel["personen"].append(person)
     hits = []
     for (adr, key), g in gruppen.items():
-        if g["gesellschaft"]:
-            snippet = (f"Amtliches Steuerberaterverzeichnis: {len(g['personen'])} Berufsträger ({'; '.join(g['personen'])})"
-                       if g["personen"] else "Amtliches Steuerberaterverzeichnis: Berufsausübungsgesellschaft")
+        n = len(g["personen"])
+        if g["art"] == "gesellschaft":
+            snippet = (f"Amtliches Steuerberaterverzeichnis: {n} Berufsträger ({'; '.join(g['personen'])})"
+                       if n else "Amtliches Steuerberaterverzeichnis: Berufsausübungsgesellschaft")
+        elif g["art"] == "firmenzeile":
+            snippet = (f"Amtliches Steuerberaterverzeichnis: {n} Berufsträger ({'; '.join(g['personen'])}); "
+                       f"{FIRMENZEILE_OHNE_KARTE}")
         else:
             snippet = f"Amtliches Steuerberaterverzeichnis: 1 Berufsträger ({'; '.join(g['personen'])}); {OHNE_GESELLSCHAFT}"
-            if g.get("firma"):
-                snippet += f"; {FIRMA_LAUT_VERZEICHNIS}{g['firma']}"
         hits.append(SearchHit(quelle=quelle, quell_id=f"{g['plz']}|{adr}|{key}", name=g["name"], strasse=g["strasse"],
                               plz=g["plz"], ort=g["ort"], snippet=snippet, roh_url=g["url"]))
-    zahl = _TREFFER.search(" ".join(soup.get_text(" ").split()))
-    return hits, (int(zahl.group(1)), int(zahl.group(2))) if zahl else None
+    return hits
+
+
+def stbv_kanzleien(html: str, basis_url: str, quelle: str = "stb_verzeichnis") -> tuple[list[SearchHit], tuple[int, int] | None]:
+    """Karten der Ergebnisseite → ein Treffer je Kanzlei (`stbv_gruppieren`); dazu (angezeigt, gesamt)."""
+    karten, zahl = stbv_karten(html, basis_url)
+    return stbv_gruppieren(karten, quelle), zahl
 
 
 class GelbeSeitenAdapter(_Verzeichnis):

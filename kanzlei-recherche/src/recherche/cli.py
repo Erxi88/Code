@@ -989,6 +989,59 @@ def _verzeichnis_bericht(stat) -> None:
         console.print("Keine Abfrage abgeschnitten (überall „Treffer: X von X“).")
 
 
+@app.command("stb-verzeichnis-analyse")
+def stb_verzeichnis_analyse(
+    db: DbOpt = None,
+    config: ConfigOpt = None,
+    plz: Annotated[str | None, typer.Option("--plz", help="kommagetrennte PLZ (Standard: alle im Cache)")] = None,
+    liste: Annotated[str | None, typer.Option("--liste", help=(
+        "kommagetrennte PLZ, für die die gebildeten Kanzleien mit Adresse ausgegeben werden"))] = None,
+    out: Annotated[Path | None, typer.Option("--out", "-o", help="Ergebnis je PLZ als CSV")] = None,
+) -> None:
+    """Amtliches Verzeichnis aus dem Cache auswerten – ohne Abfragen, schreibgeschützt (läuft neben stb-verzeichnis):
+    je PLZ Einträge, Gesellschaften, Personen, daraus Kanzleien (aktuelle Gruppierung), Orte der Einträge."""
+    from .search.verzeichnisse import FIRMENZEILE_OHNE_KARTE as FIRMENZEILE_TEXT
+    from .search.verzeichnisse import OHNE_GESELLSCHAFT as OHNE_GESELLSCHAFT_TEXT
+    from .stbv_analyse import analyse_csv, analysiere, gecachte_seiten
+
+    s = load_settings(config)
+    seiten = gecachte_seiten(db or s.db_pfad())
+    if plz:
+        seiten = {p: seiten[p] for p in (x.strip() for x in plz.split(",")) if p in seiten}
+    if not seiten:
+        _fehler("Keine gecachten Seiten des amtlichen Verzeichnisses (für diese PLZ)")
+    analysen = [analysiere(html, p, url) for p, (url, html) in sorted(seiten.items())]
+    t = Table(title=f"Amtliches Verzeichnis aus dem Cache ({len(analysen)} PLZ)")
+    for spalte in ("PLZ", "Einträge", "Ges.", "Personen", "o. Firmenz.", "Syndikus", "Kanzleien", "aus Ges.",
+                   "aus Firmenz.", "einzeln", "andere PLZ", "Orte"):
+        t.add_column(spalte, justify="left" if spalte == "Orte" else "right")
+    for a in analysen:
+        t.add_row(a.plz, str(a.eintraege), str(a.gesellschaften), str(a.personen), str(a.personen_ohne_firmenzeile),
+                  str(a.syndikus), str(a.kanzleien), str(a.aus_gesellschaft), str(a.aus_firmenzeile),
+                  str(a.person_einzeln), str(a.fremde_plz),
+                  ", ".join(f"{o} ({n})" for o, n in a.orte.most_common(4)))
+    console.print(t)
+    summe = {f: sum(getattr(a, f) for a in analysen) for f in ("eintraege", "gesellschaften", "personen", "kanzleien",
+                                                                "syndikus", "fremde_plz")}
+    console.print(f"Summe: {summe['eintraege']} Einträge ({summe['gesellschaften']} Gesellschaften, {summe['personen']} "
+                  f"Personen) → {summe['kanzleien']} Kanzleien, {summe['syndikus']} Syndikus; {summe['fremde_plz']} "
+                  "Einträge mit einer anderen PLZ als der abgefragten")
+    for p in (x.strip() for x in (liste or "").split(",") if x.strip()):
+        a = next((a for a in analysen if a.plz == p), None)
+        if a is None:
+            console.print(f"[yellow]{p}: nicht im Cache[/yellow]")
+            continue
+        console.print(f"\n[bold]{p}[/bold]: {a.kanzleien} Kanzleien")
+        for h in sorted(a.liste, key=lambda h: (h.ort or "", h.name or "")):
+            art = "einzeln" if OHNE_GESELLSCHAFT_TEXT in (h.snippet or "") else (
+                "Firmenzeile" if FIRMENZEILE_TEXT in (h.snippet or "") else "Gesellschaft")
+            bt = (h.snippet or "").split(": ", 1)[-1].split(" (")[0]
+            console.print(f"  {h.name} | {h.strasse or '–'}, {h.plz} {h.ort} | {art} | {bt}", markup=False,
+                          highlight=False)
+    if out:
+        console.print(f"CSV: {analyse_csv(analysen, out)}")
+
+
 @app.command("stb-verzeichnis")
 def stb_verzeichnis(
     bundesland: BundeslandOpt = None,
@@ -1001,6 +1054,9 @@ def stb_verzeichnis(
     out: Annotated[Path | None, typer.Option("--out", "-o", help="Lückenliste als CSV (Standard neben dem Export)")] = None,
     kreis: Annotated[str | None, typer.Option("--kreis", help=(
         "nur die PLZ eines Kreises (Pilot), z. B. „Kreisfreie Stadt Kiel“"))] = None,
+    neu_gruppieren: Annotated[bool, typer.Option("--neu-gruppieren", help=(
+        "Kandidaten des amtlichen Verzeichnisses entfernen und aus dem Cache neu gruppieren (keine neuen Abfragen; "
+        "nicht neben einem laufenden stb-verzeichnis)"))] = False,
 ) -> None:
     """Stufe B für das ganze Land: amtliches Steuerberaterverzeichnis PLZ für PLZ, Abgleich mit dem Bestand, neue
     Einträge direkt als Kandidaten, Website-Nachsuche (Brave, Kosten vorab), crawl, extract und Lückenliste (CSV und
@@ -1031,6 +1087,18 @@ def stb_verzeichnis(
         console.print(f"Pilot: nur {auswahl[0].kreis} ({len(auswahl)} Gemeinden)")
     orte = plz_orte(auswahl)
     endung = f"_{re.sub(r'[^0-9a-zA-ZäöüÄÖÜß]+', '_', auswahl[0].kreis or kreis).strip('_')}" if kreis else ""
+    if neu_gruppieren:
+        from .stbv_lauf import neu_gruppieren_vorbereiten
+
+        if not ja and not typer.confirm("Kandidaten des amtlichen Verzeichnisses entfernen und aus dem Cache neu "
+                                        "gruppieren? (Läuft gerade ein anderes stb-verzeichnis, vorher beenden.)",
+                                        default=False):
+            console.print("Abgebrochen – nichts geändert.")
+            return
+        with ctx.storage() as st:
+            entfernt, bereinigt = neu_gruppieren_vorbereiten(st, ctx.bundesland)
+        console.print(f"Neu gruppieren: {entfernt} Kandidaten entfernt, {bereinigt} um amtliche Funde bereinigt – "
+                      "Verzeichnis-Seiten, Nachsuche und Crawl kommen aus dem Cache.")
     with ctx.storage() as st:
         adapter = build_adapter(QUELLE, ctx.settings, cache=st)
         _adapter_pruefen(adapter, explizit=True)

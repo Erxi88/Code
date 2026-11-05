@@ -248,3 +248,35 @@ def luecken_csv(zeilen: list[Luecke], pfad: str | Path) -> Path:
 
 def kreise(orte: list[Ort]) -> dict[str, str]:
     return {p: o.kreis for o in orte if not o.ist_zusatz and o.kreis for p in o.alle_plz}
+
+
+def neu_gruppieren_vorbereiten(storage: Storage, bundesland: str) -> tuple[int, int]:
+    """Gruppierung aus dem Cache neu berechnen (ohne neue Abfragen): Kandidaten, die nur das amtliche Verzeichnis (und
+    dessen Website-Nachsuche) angelegt hat, werden entfernt; anderen Kandidaten werden nur die amtlichen Funde
+    abgenommen; das Lauf-Protokoll „stb-verzeichnis" wird geleert. Ein erneuter `stb-verzeichnis`-Lauf liest dann alle
+    PLZ aus dem Cache und legt die Kandidaten nach den aktuellen Regeln an; Nachsuche, Crawl und Seiten kommen
+    ebenfalls aus dem Cache, nur die Extraktion läuft neu. Gibt (entfernte Kandidaten, bereinigte Kandidaten) zurück."""
+    from .search.nachsuche import MERKER
+
+    entfernt = bereinigt = 0
+    for k in storage.kandidaten(bundesland):
+        funde = storage.funde_kandidat(k.id)
+        amtlich = [f for f in funde if f.quelle == QUELLE]
+        if not amtlich:
+            continue
+        andere = [f for f in funde if f.quelle != QUELLE and not (f.suchbegriff and storage.cache_get(MERKER, str(k.id)))]
+        with storage.conn:
+            if k.quelle == QUELLE and not andere:
+                storage.conn.execute("DELETE FROM kanzleien WHERE kandidat_id = ?", (k.id,))
+                storage.conn.execute("DELETE FROM kandidaten WHERE id = ?", (k.id,))
+                entfernt += 1
+            else:
+                storage.conn.execute("DELETE FROM funde WHERE kandidat_id = ? AND quelle = ?", (k.id, QUELLE))
+                bereinigt += 1
+        if k.quelle != QUELLE or andere:
+            storage.set_extract_status(k.id, SchrittStatus.OFFEN)
+    with storage.conn:
+        storage.conn.execute("DELETE FROM lauf_protokoll WHERE bundesland = ? AND schritt = ?", (bundesland, SCHRITT))
+        storage.conn.execute("DELETE FROM api_cache WHERE adapter = ?", (MERKER,))
+    return entfernt, bereinigt
+

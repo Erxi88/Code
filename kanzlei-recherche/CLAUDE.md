@@ -137,14 +137,19 @@ der nächsten Quelle füllen.**
     - `stb_verzeichnis` (amtlich, BStBK, **Grundliste**, `nur_luecken: false` → auch `fill --alle`; gleiche PLZ
     mehrerer Gemeinden kommen aus dem Cache): POST je PLZ des Ortes (`je_plz`), alle Treffer auf
       einer Seite; „Treffer: X von Y" mit X < Y wird gemeldet. Karten je Berufsträger und je Gesellschaft werden
-      zu Kanzleien gruppiert (`stbv_kanzleien`, Pilot-Vorgabe 05.11.2026): Gesellschaften (Karte ohne Beruf) sind
-      Kanzleien; ein Berufsträger gehört **nur zu einer Gesellschaft an derselben Adresse**, deren Name zu seiner
-      Firmenzeile passt (gleicher Name, Namensanfang oder eindeutig gleiches erstes Wort; Zeilen „Beratungsstelle/
-      Zweigniederlassung …" entfallen, „c/o X" → X). Sonst **je Person ein Kandidat** „Steuerberaterin Vorname Nachname"
-      mit Kennzeichen „Person ohne Gesellschaft an dieser Adresse" und „Firma laut Verzeichnis: …" im Snippet; solche
-      Personen werden untereinander nie über Name/Adresse zusammengeführt (`Zuordnung`), sondern erst über die gleiche
-      Website: Die Nachsuche sucht mit der Firmenzeile, und gehört die gefundene Domain schon einem Kandidaten, geht die
-      Person in ihm auf (`Storage.kandidat_zusammenfuehren`, Funde wandern mit). Die Ergebnisliste nennt je Eintrag
+      zu Kanzleien gruppiert (`stbv_karten` → `stbv_gruppieren`, Vorgabe 05.11.2026; aus dem Cache neu berechenbar):
+      Gesellschaften (Karte ohne Beruf) sind Kanzleien; ein Berufsträger mit Firmenzeile gehört zur Gesellschaft an
+      derselben Adresse, deren Name passt (Firmenschlüssel bis zur Rechtsform gleich – „rt Revision + Treuhand GmbH & Co.
+      KG Wirtschaftsprüfungsgesellschaft" = „rt Revision & Treuhand GmbH & Co. KG", Umlaute gleich –, Namensanfang oder
+      eindeutig gleiches erstes Wort; Zeilen „Beratungsstelle/Zweigniederlassung …" entfallen, „c/o X" → X); sonst bilden
+      **Berufsträger mit gleicher Firmenzeile an derselben Adresse eine Kanzlei** (auch ohne Gesellschaftskarte,
+      Kennzeichen „Kanzlei aus Firmenzeile"; verschiedene Firmenzeilen an einer Adresse bleiben getrennt –
+      Bürogemeinschaft). Nur **ohne Firmenzeile je Person ein Kandidat** („Person ohne Gesellschaft an dieser Adresse");
+      solche Personen werden untereinander nie über Name/Adresse zusammengeführt (`Zuordnung`), sondern erst über die
+      gleiche Website (Nachsuche; gehört die Domain schon einem Kandidaten, geht die Person in ihm auf –
+      `Storage.kandidat_zusammenfuehren`). Firmenzeile ohne Steuerberatungsbezug, die keiner Kanzlei der Seite entspricht
+      („Siemens AG") → „Syndikus/Unternehmen", kein Kandidat (`stbv_syndikus`). 24103 Kiel: 209 Karten (37 Gesellschaften,
+      172 Personen) → 67 Kanzleien (37 Gesellschaft, 16 aus Firmenzeile, 14 einzeln). Die Ergebnisliste nennt je Eintrag
       nur Beruf, akademische Grade, Name, Firmen-/Zusatzzeilen, Straße, PLZ/Ort – kein Telefon, keine E-Mail, keine
       Website (Detailseiten werden nicht gelesen). Umbrochene Namen
       („Steuerberatungs-" / „gesellschaft") werden zusammengesetzt, Ergänzungsstriche („Treuhand- und")
@@ -167,6 +172,12 @@ der nächsten Quelle füllen.**
       Einträge (Karten), „Treffer X von Y", Kandidaten nach Gruppierung (davon Person ohne Gesellschaft), neu/bekannt und
       Antwortzeit ohne Pause (bzw. „Cache"); Zusammenfassung mit Abschneide-Warnungen, Mittel/Median/längster Antwort und
       größter Trefferzahl; Bericht je PLZ als `stb_verzeichnis_plz_<BL>_<Kreis>.csv`, Lückenliste nur des Kreises.
+      `recherche stb-verzeichnis-analyse [--plz …] [--liste 21493,22926] [--out …csv]` (`stbv_analyse.py`): wertet die
+      gecachten Ergebnisseiten **schreibgeschützt** aus (läuft neben einem laufenden Lauf) – je PLZ Einträge,
+      Gesellschaften, Personen (ohne Firmenzeile), Syndikus, Kanzleien nach aktueller Gruppierung, Einträge mit anderer
+      PLZ und die Orte der Einträge; `--liste` gibt die gebildeten Kanzleien mit Adresse aus.
+      `stb-verzeichnis --neu-gruppieren`: amtliche Kandidaten entfernen (andere nur um amtliche Funde bereinigen),
+      Lauf-Protokoll leeren, dann aus dem Cache neu anlegen – keine neuen Abfragen.
     - `gelbeseiten`, `dasoertliche`, `elf880` (11880.com) **nur Ergänzung** (`nur_ergaenzen`): Treffer werden
       nur bekannten Kandidaten **ohne Website** zugeordnet (leere Felder Telefon, Adresse, Website; Fund
       gespeichert; extract neu, bei neuer Website auch crawl). Unbekannte Einträge werden nicht angelegt,
