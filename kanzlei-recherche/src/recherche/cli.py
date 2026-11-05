@@ -1018,7 +1018,7 @@ def stb_verzeichnis_analyse(
     """Amtliches Verzeichnis aus dem Cache auswerten – ohne Abfragen, schreibgeschützt (läuft neben stb-verzeichnis):
     je PLZ Einträge, Gesellschaften, Personen, daraus Kanzleien (aktuelle Gruppierung), Orte der Einträge."""
     from .search.verzeichnisse import FIRMENZEILE_OHNE_KARTE as FIRMENZEILE_TEXT
-    from .search.verzeichnisse import OHNE_GESELLSCHAFT as OHNE_GESELLSCHAFT_TEXT
+    from .search.verzeichnisse import NICHT_ZUGEORDNET, ist_einzeln
     from .stbv_analyse import analyse_csv, analysiere, gecachte_seiten
 
     s = load_settings(config)
@@ -1060,7 +1060,8 @@ def stb_verzeichnis_analyse(
             continue
         console.print(f"\n[bold]{p}[/bold]: {a.kanzleien} Kanzleien")
         for h in sorted(a.liste, key=lambda h: (h.ort or "", h.name or "")):
-            art = "einzeln" if OHNE_GESELLSCHAFT_TEXT in (h.snippet or "") else (
+            art = ("einzeln (mehrere Kanzleien an der Adresse)" if NICHT_ZUGEORDNET in (h.snippet or "")
+                   else "einzeln") if ist_einzeln(h.snippet) else (
                 "Firmenzeile" if FIRMENZEILE_TEXT in (h.snippet or "") else "Gesellschaft")
             bt = (h.snippet or "").split(": ", 1)[-1].split(" (")[0]
             console.print(f"  {h.name} | {h.strasse or '–'}, {h.plz} {h.ort} | {art} | {bt}", markup=False,
@@ -1103,6 +1104,7 @@ def _stbv_netz_gesperrt(ctx: Kontext, orte: list[Ort], auswahl: list[Ort], kreis
         QUELLE,
         ROBOTS_GESPERRT,
         bericht_csv,
+        gruppierung_veraltet,
         neu_gruppieren_vorbereiten,
         offene_details,
         offene_plz,
@@ -1121,8 +1123,7 @@ def _stbv_netz_gesperrt(ctx: Kontext, orte: list[Ort], auswahl: list[Ort], kreis
         console.print(meldung, markup=False, highlight=False)
 
     with ctx.storage() as st:
-        stand = (st.cache_get("stbv_gruppierung", bl) or {}).get("version")
-        alt = stand != GRUPPIERUNG_VERSION and bool(st.funde(bl, QUELLE))
+        alt = gruppierung_veraltet(st, bl)
     if neu_gruppieren or alt:
         if neu_gruppieren and not ja and not typer.confirm(
                 "Kandidaten des amtlichen Verzeichnisses entfernen und aus dem Cache neu gruppieren? (Läuft gerade ein "
@@ -1202,7 +1203,7 @@ def _alle_laender(config: Path | None, db: Path | None, parallel: int, ohne_nach
     Export des Landes; am Ende export --gesamt. Erledigte Schritte stehen je Land im api_cache."""
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
-    from .stbv_lauf import plz_orte
+    from .stbv_lauf import gruppierung_veraltet, plz_orte
 
     s = load_settings(config)
     db_pfad = db or s.db_pfad()
@@ -1220,13 +1221,17 @@ def _alle_laender(config: Path | None, db: Path | None, parallel: int, ohne_nach
         with Storage(db_pfad) as st:
             return not ohne_details and bool((st.cache_get(DETAIL_MERKER, bl) or {}).get("gesperrt"))
 
+    def veraltet(bl: str) -> bool:
+        with Storage(db_pfad) as st:
+            return gruppierung_veraltet(st, bl)
+
     def netz(bl: str) -> bool:
         ctx = _kontext(config, bl, db)
         orte = plz_orte(ctx.orte(None, mit_zusatz=False))
-        vorher = details_gesperrt(bl)
+        vorher = details_gesperrt(bl) or veraltet(bl)
         if _stbv_netz(ctx, orte, orte, None, "", True, ohne_details, False):
             merken(bl, "netz")
-            if vorher and not details_gesperrt(bl):  # Detailseiten nachgeholt → Nachsuche, crawl, extract, Export neu
+            if vorher and not details_gesperrt(bl):  # neu gruppiert bzw. Detailseiten nachgeholt → Rest neu
                 with Storage(db_pfad) as st:
                     alt = st.cache_get(LAND_MERKER, bl) or {}
                     st.cache_put(LAND_MERKER, bl, {k: v for k, v in alt.items() if k not in ("nach", "export")})
@@ -1249,14 +1254,14 @@ def _alle_laender(config: Path | None, db: Path | None, parallel: int, ohne_nach
         f"{', Detailseiten per robots.txt gesperrt' if details_gesperrt(bl) else ''})" for bl, st in erledigt.items()) + f" – {parallel} Land/Länder gleichzeitig im Verzeichnis")
     fehler: list[str] = []
     for bl in laender:  # Netz schon erledigt, Rest offen (Abbruch nach dem Verzeichnis): zuerst nachholen
-        if erledigt[bl].get("netz"):
+        if erledigt[bl].get("netz") and not veraltet(bl):  # ältere Gruppierung: erst neu gruppieren (Netz-Teil)
             try:
                 nach(bl)
             except (typer.Exit, Exception) as e:  # noqa: BLE001 – ein Land darf die Warteschlange nicht beenden
                 fehler.append(f"{bl}: {e!r}")
     # offen: Netz-Teil nicht erledigt, oder Detailseiten bisher per robots.txt gesperrt (erneut prüfen; Suchseiten
     # kommen dann aus dem Cache)
-    offen = [bl for bl in laender if not erledigt[bl].get("netz") or details_gesperrt(bl)]
+    offen = [bl for bl in laender if not erledigt[bl].get("netz") or details_gesperrt(bl) or veraltet(bl)]
     with ThreadPoolExecutor(max_workers=max(1, parallel)) as pool:
         laeufe = {pool.submit(netz, bl): bl for bl in offen}
         for f in as_completed(laeufe):
@@ -1312,7 +1317,15 @@ def stb_verzeichnis(
     Einträge direkt als Kandidaten, Website-Nachsuche (Brave, Kosten vorab), crawl, extract und Lückenliste (CSV und
     Blatt „Lücken (amtlich)" im Export). Nach Abbruch einfach erneut starten."""
     from .search.nachsuche import MERKER
-    from .stbv_lauf import QUELLE, kreise, luecken, luecken_csv, orte_im_kreis, plz_orte
+    from .stbv_lauf import (
+        QUELLE,
+        gruppierung_veraltet,
+        kreise,
+        luecken,
+        luecken_csv,
+        orte_im_kreis,
+        plz_orte,
+    )
 
     if alle_laender:
         _alle_laender(config, db, parallel, ohne_nachsuche, ohne_details, nur_verzeichnis, mit_export=False)
@@ -1338,6 +1351,12 @@ def stb_verzeichnis(
             raise typer.Exit(1) from None
     if schritte == "netz":
         return
+    with ctx.storage() as st:
+        if gruppierung_veraltet(st, ctx.bundesland):  # Nachsuche erst nach der Neu-Gruppierung (Vorgabe 05.11.2026)
+            console.print(f"[yellow]{ctx.bundesland}: amtliche Einträge noch nach älterer Gruppierung – Nachsuche, crawl "
+                          f"und extract erst nach `recherche stb-verzeichnis -b {ctx.bundesland}` (gruppiert neu aus dem "
+                          "Cache)[/yellow]")
+            return
     if not ohne_nachsuche:
         with ctx.storage() as st:
             # nur Einträge ohne „Internet" (Website) – die übrigen haben sie aus der Detailseite

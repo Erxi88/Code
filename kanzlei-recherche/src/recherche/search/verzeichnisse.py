@@ -342,6 +342,12 @@ def _firma(zeilen: list[str]) -> str | None:
 
 
 OHNE_GESELLSCHAFT = "Person ohne Gesellschaft an dieser Adresse"
+NICHT_ZUGEORDNET = "Person ohne Firmenzeile, mehrere Kanzleien an dieser Adresse – nicht zugeordnet"
+
+
+def ist_einzeln(snippet: str | None) -> bool:
+    """Treffer ist eine einzelne Person (keine Gesellschaft, keine Firmenzeile)."""
+    return bool(snippet) and (OHNE_GESELLSCHAFT in snippet or NICHT_ZUGEORDNET in snippet)
 FIRMA_LAUT_VERZEICHNIS = "Firma laut Verzeichnis: "
 
 
@@ -436,6 +442,51 @@ def stbv_syndikus(karten: list[StbvKarte]) -> list[StbvKarte]:
     return [k for k in karten if ist_syndikus(k, kanzleien)]
 
 
+def _falten(text: str) -> str:
+    return text.casefold().replace("ä", "ae").replace("ö", "oe").replace("ü", "ue").replace("ß", "ss")
+
+
+def _namenswoerter(name: str) -> list[str]:
+    """„SIGMA - Kühne + Partner" → [sigma, kuehne, partner] (Satzzeichen und „+"/„&" zählen nicht)."""
+    return re.findall(r"[a-z0-9]+", _falten(name))
+
+
+# Zusätze am Ende einer Firmenzeile, die im Namen der Gesellschaft anders geschrieben sein können
+_ZUSATZ_ENDE = re.compile(
+    r"(?:\s|[,.&+-])*(?:wpg|stbg|rag|gmbh|mbh|mbb|partg|partgmbb|ag|kg|co|se|steuerberatungsgesellschaft|"
+    r"wirtschaftspruefungsgesellschaft|rechtsanwaltsgesellschaft|partnerschaft(?:sgesellschaft)?|steuerberater|"
+    r"rechtsanwaelte|wirtschaftspruefer)\.?$")
+
+
+def _firmenkern(firma: str) -> str:
+    """„Cordes + Partner WPG" → „cordespartner": ohne Rechtsform- und Berufszusätze am Ende, nur Buchstaben/Ziffern."""
+    f = _falten(firma).strip()
+    while (kurz := _ZUSATZ_ENDE.sub("", f).strip()) != f and kurz:
+        f = kurz
+    return re.sub(r"[^0-9a-z]", "", f)
+
+
+def _gesellschaft_zur_firmenzeile(firma: str, vor_ort: list[dict]) -> dict | None:
+    """Regel 2 (HH 05.11.2026): Gesellschaft an derselben Adresse, deren Name mit denselben ersten zwei Namenswörtern
+    beginnt („PKF Fasselt" → „PKF Fasselt Partnerschaft mbB …") oder die Firmenzeile ohne Zusätze enthält („Cordes +
+    Partner WPG" → „CFH Cordes + Partner …"). Mehrere passende → die mit dem kürzesten Namen (Hauptgesellschaft)."""
+    woerter, kern = _namenswoerter(firma)[:2], _firmenkern(firma)
+    passend = [g for g in vor_ort
+               if (len(woerter) == 2 and _namenswoerter(g["name"])[:2] == woerter)
+               or (len(kern) >= 6 and kern in re.sub(r"[^0-9a-z]", "", _falten(g["name"])))]
+    return min(passend, key=lambda g: len(g["name"])) if passend else None
+
+
+def _kanzlei_zur_person(name: str, vor_ort: list[dict]) -> dict | None:
+    """Regel 1 (HH 05.11.2026, freigegeben): Person ohne Firmenzeile – genau eine Kanzlei an der Adresse → diese;
+    mehrere → die eine, deren Name den Nachnamen enthält (Bartsch → „ETL Bartsch & Kollegen"); sonst keine."""
+    if len(vor_ort) == 1:
+        return vor_ort[0]
+    teile = {t for t in _namenswoerter(name.split()[-1]) if len(t) >= 3} if name.split() else set()
+    treffer = [g for g in vor_ort if teile & set(_namenswoerter(g["name"]))]
+    return treffer[0] if len(treffer) == 1 else None
+
+
 def stbv_gruppieren(karten: list[StbvKarte], quelle: str = "stb_verzeichnis") -> list[SearchHit]:
     """Karten → ein Treffer je Kanzlei (Vorgabe 05.11.2026). Aus dem Cache neu berechenbar (`stbv_karten` + diese
     Funktion), ohne das Verzeichnis erneut abzufragen.
@@ -447,8 +498,12 @@ def stbv_gruppieren(karten: list[StbvKarte], quelle: str = "stb_verzeichnis") ->
     - Sonst bilden Berufsträger mit gleicher Firmenzeile (Firmenschlüssel) an derselben Adresse eine Kanzlei – auch ohne
       Gesellschaftskarte („Sozietät Sierck & Remuß Steuerberater"); verschiedene Firmenzeilen an einer Adresse bleiben
       getrennte Kanzleien (Bürogemeinschaft).
-    - Ohne Firmenzeile ist jede Person ein eigener Kandidat („Steuerberaterin Imke Thordsen", Kennzeichen „Person ohne
-      Gesellschaft an dieser Adresse") – zusammengeführt wird erst über die gleiche Website (Nachsuche).
+      Ausnahme (Regel 2, HH 05.11.2026): beginnt eine Gesellschaft an derselben Adresse mit denselben ersten zwei
+      Namenswörtern oder enthält sie die Firmenzeile ohne Zusätze, gehört die Person zu ihr (`_gesellschaft_zur_firmenzeile`).
+    - Ohne Firmenzeile (Regel 1, HH 05.11.2026): genau eine Kanzlei (Gesellschaft oder Firmenzeile) an der Adresse →
+      dieser zugeordnet; mehrere → die, deren Name den Nachnamen enthält; sonst eigener Kandidat („Steuerberaterin Imke
+      Thordsen", Kennzeichen „Person ohne Gesellschaft an dieser Adresse" bzw. bei mehreren Kanzleien „… nicht
+      zugeordnet") – zusammengeführt wird dann erst über die gleiche Website (Nachsuche).
     - Firmenzeile ohne Steuerberatungsbezug („Siemens AG") → Syndikus/Unternehmen, kein Kandidat (`stbv_syndikus`).
     """
     gruppen: dict[tuple, dict] = {}
@@ -458,7 +513,8 @@ def stbv_gruppieren(karten: list[StbvKarte], quelle: str = "stb_verzeichnis") ->
             gruppen.setdefault(key, dict(name=k.firma or k.name, strasse=k.strasse, plz=k.plz, ort=k.ort, url=k.url,
                                          personen=[], art="gesellschaft"))
     kanzleien = _kanzlei_schluessel(karten)
-    for k in karten:
+    # erst Personen mit Firmenzeile (bilden ggf. Kanzleien aus Firmenzeile), dann ohne – Regel 1 sieht alle Kanzleien
+    for k in sorted(karten, key=lambda k: not k.firma):
         if k.gesellschaft or ist_syndikus(k, kanzleien):
             continue
         person = " ".join(x for x in (k.beruf, k.titel, k.name) if x)
@@ -472,12 +528,17 @@ def stbv_gruppieren(karten: list[StbvKarte], quelle: str = "stb_verzeichnis") ->
             praefix = [g for key, g in vor_ort if key.startswith(fk) or fk.startswith(key)]
             wort = [g for _, g in vor_ort if _erstes_wort(g["name"]) == fw]
             ziel = gleich[0] if gleich else praefix[0] if len(praefix) == 1 else wort[0] if len(wort) == 1 else None
+            ziel = ziel or _gesellschaft_zur_firmenzeile(k.firma, [g for _, g in vor_ort])
             if ziel is None:  # gleiche Firmenzeile an derselben Adresse = eine Kanzlei (ohne Gesellschaftskarte)
                 ziel = gruppen.setdefault((adr, "firma:" + fs), dict(
                     name=k.firma, strasse=k.strasse, plz=k.plz, ort=k.ort, url=k.url, personen=[], art="firmenzeile"))
-        if ziel is None:
-            ziel = gruppen.setdefault((adr, _schluessel_name(einzelname)), dict(
-                name=einzelname, strasse=k.strasse, plz=k.plz, ort=k.ort, url=k.url, personen=[], art="person"))
+        else:
+            vor_ort = [g for (a, _), g in gruppen.items() if a == adr and g["art"] != "person"]
+            ziel = _kanzlei_zur_person(k.name, vor_ort)
+            if ziel is None:
+                ziel = gruppen.setdefault((adr, _schluessel_name(einzelname)), dict(
+                    name=einzelname, strasse=k.strasse, plz=k.plz, ort=k.ort, url=k.url, personen=[], art="person",
+                    mehrere=len(vor_ort) > 1))
         ziel["personen"].append(person)
     hits = []
     for (adr, key), g in gruppen.items():
@@ -489,7 +550,8 @@ def stbv_gruppieren(karten: list[StbvKarte], quelle: str = "stb_verzeichnis") ->
             snippet = (f"Amtliches Steuerberaterverzeichnis: {n} Berufsträger ({'; '.join(g['personen'])}); "
                        f"{FIRMENZEILE_OHNE_KARTE}")
         else:
-            snippet = f"Amtliches Steuerberaterverzeichnis: 1 Berufsträger ({'; '.join(g['personen'])}); {OHNE_GESELLSCHAFT}"
+            snippet = (f"Amtliches Steuerberaterverzeichnis: 1 Berufsträger ({'; '.join(g['personen'])}); "
+                       f"{NICHT_ZUGEORDNET if g.get('mehrere') else OHNE_GESELLSCHAFT}")
         hits.append(SearchHit(quelle=quelle, quell_id=f"{g['plz']}|{adr}|{key}", name=g["name"], strasse=g["strasse"],
                               plz=g["plz"], ort=g["ort"], snippet=snippet, roh_url=g["url"]))
     return hits

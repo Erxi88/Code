@@ -303,9 +303,9 @@ def bezeichnung(k: Kandidat | SearchHit, domain: str | None = None) -> str:
 
 
 def _ist_person_ohne_gesellschaft(eintrag) -> bool:
-    from .verzeichnisse import OHNE_GESELLSCHAFT
+    from .verzeichnisse import ist_einzeln
 
-    return OHNE_GESELLSCHAFT in (getattr(eintrag, "snippet", None) or "")
+    return ist_einzeln(getattr(eintrag, "snippet", None))
 
 
 class Zuordnung:

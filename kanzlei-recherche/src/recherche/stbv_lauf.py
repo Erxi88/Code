@@ -22,12 +22,17 @@ from pathlib import Path
 from .models import Kanzlei, LaufEintrag, SchrittStatus
 from .search.base import LimitErreicht, OrtsAdapter, SearchError
 from .search.pipeline import Ort, Zuordnung
-from .search.verzeichnisse import FIRMA_LAUT_VERZEICHNIS, OHNE_GESELLSCHAFT
+from .search.verzeichnisse import (
+    FIRMA_LAUT_VERZEICHNIS,
+    NICHT_ZUGEORDNET,
+    OHNE_GESELLSCHAFT,
+    ist_einzeln,
+)
 from .storage import Storage
 
 QUELLE = "stb_verzeichnis"
 # Stand der Gruppierungsregeln (stbv_gruppieren): ein Land mit älterem Stand wird automatisch neu gruppiert
-GRUPPIERUNG_VERSION = "2026-11-05-firmenzeile"
+GRUPPIERUNG_VERSION = "2026-11-05-adresse"  # Regeln 1 und 2 (HH): Personen/Firmenzeilen an Kanzlei-Adressen
 SCHRITT = "stb-verzeichnis"
 
 
@@ -159,7 +164,7 @@ def run_verzeichnis(storage: Storage, adapter: OrtsAdapter, orte: list[Ort], bun
         neu = sum(e is True for e in ergebnisse)
         bekannt = sum(e is False for e in ergebnisse)
         bericht.kanzleien, bericht.neu, bericht.bekannt = len(hits), neu, bekannt
-        bericht.ohne_gesellschaft = sum(OHNE_GESELLSCHAFT in (h.snippet or "") for h in hits)
+        bericht.ohne_gesellschaft = sum(ist_einzeln(h.snippet) for h in hits)
         stat.treffer += len(hits)
         stat.neu += neu
         stat.bekannt += bekannt
@@ -198,6 +203,7 @@ class Luecke:
     konfidenz: str | None = None
     ohne_gesellschaft: bool = False  # „Person ohne Gesellschaft an dieser Adresse"
     firma: str | None = None  # Firmenzeile der Person laut Verzeichnis
+    nicht_zugeordnet: bool = False  # Person ohne Firmenzeile, mehrere Kanzleien an der Adresse
 
 
 LUECKEN_SPALTEN = ["Kandidat", "Name (amtlich)", "Berufsträger (amtlich)", "Kennzeichen", "Firma laut Verzeichnis",
@@ -229,7 +235,8 @@ def luecken(storage: Storage, bundesland: str, kreis_je_plz: dict[str, str] | No
         zeilen.append(Luecke(k.id, k.name, berufstraeger, (z.strasse if z else None) or k.strasse,
                              plz, (z.ort if z else None) or k.ort, kreis_je_plz.get(plz or ""), k.website,
                              (z.telefon if z else None) or k.telefon, stand, z.kanzleiname if z else None,
-                             z.konfidenz.value if z else None, OHNE_GESELLSCHAFT in snippet, firma))
+                             z.konfidenz.value if z else None, ist_einzeln(snippet), firma,
+                             NICHT_ZUGEORDNET in snippet))
     zeilen += syndikus_luecken(storage, bundesland, kreis_je_plz)
     return sorted(zeilen, key=lambda z: (z.plz or "", z.name or ""))
 
@@ -273,7 +280,7 @@ def syndikus_luecken(storage: Storage, bundesland: str, kreis_je_plz: dict[str, 
 
 def luecken_werte(z: Luecke) -> list:
     kennzeichen = (SYNDIKUS_KENNZEICHEN if z.kandidat_id is None
-                   else OHNE_GESELLSCHAFT if z.ohne_gesellschaft else None)
+                   else NICHT_ZUGEORDNET if z.nicht_zugeordnet else OHNE_GESELLSCHAFT if z.ohne_gesellschaft else None)
     return [z.kandidat_id, z.name, z.berufstraeger, kennzeichen, z.firma,
             z.strasse, z.plz, z.ort, z.kreis, z.website, z.telefon, z.stand, z.kanzleiname, z.konfidenz]
 
@@ -292,6 +299,12 @@ def kreise(orte: list[Ort]) -> dict[str, str]:
     return {p: o.kreis for o in orte if not o.ist_zusatz and o.kreis for p in o.alle_plz}
 
 
+def gruppierung_veraltet(storage: Storage, bundesland: str) -> bool:
+    """Das Land hat amtliche Funde einer älteren Gruppierung – vor Nachsuche/crawl/extract neu gruppieren."""
+    stand = (storage.cache_get("stbv_gruppierung", bundesland) or {}).get("version")
+    return stand != GRUPPIERUNG_VERSION and bool(storage.funde(bundesland, QUELLE))
+
+
 def neu_gruppieren_vorbereiten(storage: Storage, bundesland: str) -> tuple[int, int]:
     """Gruppierung aus dem Cache neu berechnen (ohne neue Abfragen): Kandidaten, die nur das amtliche Verzeichnis (und
     dessen Website-Nachsuche) angelegt hat, werden entfernt; anderen Kandidaten werden nur die amtlichen Funde
@@ -301,11 +314,13 @@ def neu_gruppieren_vorbereiten(storage: Storage, bundesland: str) -> tuple[int, 
     from .search.nachsuche import MERKER
 
     entfernt = bereinigt = 0
+    ids = []
     for k in storage.kandidaten(bundesland):
         funde = storage.funde_kandidat(k.id)
         amtlich = [f for f in funde if f.quelle == QUELLE]
         if not amtlich:
             continue
+        ids.append(str(k.id))
         andere = [f for f in funde if f.quelle != QUELLE and not (f.suchbegriff and storage.cache_get(MERKER, str(k.id)))]
         with storage.conn:
             if k.quelle == QUELLE and not andere:
@@ -319,7 +334,9 @@ def neu_gruppieren_vorbereiten(storage: Storage, bundesland: str) -> tuple[int, 
             storage.set_extract_status(k.id, SchrittStatus.OFFEN)
     with storage.conn:
         storage.conn.execute("DELETE FROM lauf_protokoll WHERE bundesland = ? AND schritt = ?", (bundesland, SCHRITT))
-        storage.conn.execute("DELETE FROM api_cache WHERE adapter = ?", (MERKER,))
+        # Nachsuche-Merker nur dieses Landes (die Brave-Antworten bleiben im Cache – nichts wird doppelt bezahlt)
+        storage.conn.executemany("DELETE FROM api_cache WHERE adapter = ? AND schluessel = ?",
+                                 [(MERKER, i) for i in ids])
     return entfernt, bereinigt
 
 

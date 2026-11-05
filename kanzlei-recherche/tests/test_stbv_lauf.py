@@ -279,7 +279,8 @@ def test_analyse_diagnose_der_einzelpersonen():
         karte("Ole Rau", "Rau Steuerberatung", "Markt 1"), karte("Eva Ott", None, "Markt 1"),
         karte("Kai Lund", None, "Wall 9"), karte("Ina Behn", "Muster AG Steuerabteilung", "Hafen 2")]) + "</body></html>"
     a = analysiere(html, "20095")
-    assert (a.person_einzeln, a.einzeln_an_kanzlei_adresse, a.einzeln_adresse_geteilt) == (2, 1, 0)
+    # Eva Ott sitzt an der Adresse genau einer Kanzlei → zugeordnet (Regel 1); einzeln bleibt Kai Lund
+    assert (a.person_einzeln, a.einzeln_an_kanzlei_adresse, a.einzeln_adresse_geteilt) == (1, 1, 0)
     assert a.syndikus_verdacht == ["Muster AG Steuerabteilung"]
 
 

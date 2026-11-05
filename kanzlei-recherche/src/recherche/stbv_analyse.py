@@ -19,7 +19,7 @@ from pathlib import Path
 
 from .search.verzeichnisse import (
     FIRMENZEILE_OHNE_KARTE,
-    OHNE_GESELLSCHAFT,
+    ist_einzeln,
     stbv_gruppieren,
     stbv_karten,
     stbv_syndikus,
@@ -77,7 +77,7 @@ def analysiere(html: str, plz: str, url: str = "") -> PlzAnalyse:
                    sum(1 for k in karten if not k.gesellschaft and not k.firma), len(stbv_syndikus(karten)), len(hits),
                    angezeigt=zahl[0] if zahl else None, gesamt=zahl[1] if zahl else None, liste=hits)
     a.aus_firmenzeile = sum(FIRMENZEILE_OHNE_KARTE in (h.snippet or "") for h in hits)
-    a.person_einzeln = sum(OHNE_GESELLSCHAFT in (h.snippet or "") for h in hits)
+    a.person_einzeln = sum(ist_einzeln(h.snippet) for h in hits)
     a.aus_gesellschaft = a.kanzleien - a.aus_firmenzeile - a.person_einzeln
     a.orte = Counter(f"{k.plz or '?'} {k.ort or '?'}" for k in karten)
     adr = lambda k: (k.strasse or "", k.plz or "")  # noqa: E731

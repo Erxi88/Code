@@ -152,8 +152,8 @@ def test_stbv_karten_zu_kanzleien():
     hits, zahl = stbv_kanzleien((BEISPIELE / "stbv_24103.html").read_text(encoding="utf-8"), STBV_URL)
     assert zahl == (9, 9)
     k = {h.name: h for h in hits}
-    assert list(k) == ["Hansen & Petersen Steuerberatungsgesellschaft mbH", "Förde Steuerberater PartG mbB",
-                       "Steuerberaterin Imke Thordsen", "Nordlicht Treuhand- und Revisionsgesellschaft mbH"]
+    assert sorted(k) == ["Förde Steuerberater PartG mbB", "Hansen & Petersen Steuerberatungsgesellschaft mbH",
+                         "Nordlicht Treuhand- und Revisionsgesellschaft mbH", "Steuerberaterin Imke Thordsen"]
     hp = k["Hansen & Petersen Steuerberatungsgesellschaft mbH"]
     assert (hp.strasse, hp.plz, hp.ort) == ("Holstenstraße 42", "24103", "Kiel")
     assert "2 Berufsträger (Steuerberater Dipl.-Kaufmann Jan Hansen; Steuerberaterin Maren Petersen)" in hp.snippet
@@ -288,3 +288,60 @@ def test_echte_verzeichnisseiten():
                          ("11880_kiel.html", "https://www.11880.com/suche/steuerberater/kiel")):
         hits = schema_org_eintraege((ECHT / datei).read_text(encoding="utf-8"), basis, "x")
         assert len(hits) >= 20 and all(h.plz and h.telefon for h in hits) and not any(h.website for h in hits)
+
+
+def test_hamburger_regeln_person_und_firmenzeile_an_kanzlei_adresse():
+    """HH-Analyse 05.11.2026 (977 Einträge → 386 Kanzleien, Soll ~200), fiktiv nachgebaut:
+    Regel 1 – Person ohne Firmenzeile: genau eine Kanzlei an der Adresse → zuordnen; mehrere → die mit dem Nachnamen
+    im Namen; sonst einzeln mit Kennzeichen. Regel 2 – Firmenzeile an der Adresse einer Gesellschaft mit denselben
+    ersten zwei Namenswörtern oder die Firmenzeile (ohne Zusätze) enthaltend → zur Gesellschaft."""
+    from recherche.search.verzeichnisse import (
+        NICHT_ZUGEORDNET,
+        OHNE_GESELLSCHAFT,
+        StbvKarte,
+        stbv_gruppieren,
+    )
+
+    def ges(name, strasse):
+        return StbvKarte(name, None, None, None, strasse, "20095", "Hamburg", f"https://x/{name}")
+
+    def person(name, firma, strasse):
+        return StbvKarte(name, "Steuerberater", None, firma, strasse, "20095", "Hamburg", f"https://x/{name}")
+
+    karten = [
+        # Regel 2
+        ges("CFH Cordes + Partner GmbH Wirtschaftsprüfungsgesellschaft", "Alsterufer 1"),
+        person("Ole Rau", "Cordes + Partner WPG", "Alsterufer 1"),
+        ges("PKF Fasselt Partnerschaft mbB Wirtschaftsprüfungsgesellschaft", "Ballindamm 2"),
+        person("Eva Ott", "PKF Fasselt", "Ballindamm 2"),
+        ges("SIGMA - Kühne + Partner Steuerberatungsgesellschaft mbH", "Domstraße 3"),
+        person("Kai Lund", "SIGMA-Kühne+Partner StBG", "Domstraße 3"),
+        ges("Heuking Kühn Lüer Wojtek PartGmbB", "Neuer Wall 4"),
+        ges("Heuking Kühn Lüer Wojtek Steuerberatungsgesellschaft mbH", "Neuer Wall 4"),
+        person("Ina Behn", "Heuking Kühn Lüer Wojtek Partner", "Neuer Wall 4"),
+        # Regel 1: genau eine Kanzlei
+        person("Jan Kock", None, "Alsterufer 1"),
+        # Regel 1: mehrere Kanzleien, Nachname im Namen
+        ges("ETL Bartsch & Kollegen GmbH Steuerberatungsgesellschaft", "Mönckebergstraße 5"),
+        ges("RVP Ruge Vowinckel Partnerschaft mbB", "Mönckebergstraße 5"),
+        person("Ute Bartsch", None, "Mönckebergstraße 5"), person("Tom Ruge", None, "Mönckebergstraße 5"),
+        person("Lea Voss", None, "Mönckebergstraße 5"),  # kein Treffer → einzeln, Kennzeichen
+        person("Lars Lücke", "Luecke und Partner", "Rathausmarkt 6"), person("Pia Luecke", None, "Rathausmarkt 6"),
+        person("Imke Thordsen", None, "Ring 7"),  # keine Kanzlei an der Adresse
+    ]
+    k = {h.name: h for h in stbv_gruppieren(karten)}
+    assert sorted(k) == sorted([
+        "CFH Cordes + Partner GmbH Wirtschaftsprüfungsgesellschaft",
+        "PKF Fasselt Partnerschaft mbB Wirtschaftsprüfungsgesellschaft",
+        "SIGMA - Kühne + Partner Steuerberatungsgesellschaft mbH", "Heuking Kühn Lüer Wojtek PartGmbB",
+        "Heuking Kühn Lüer Wojtek Steuerberatungsgesellschaft mbH", "ETL Bartsch & Kollegen GmbH Steuerberatungsgesellschaft",
+        "RVP Ruge Vowinckel Partnerschaft mbB", "Steuerberater Lea Voss", "Luecke und Partner",
+        "Steuerberater Imke Thordsen"])
+    assert "2 Berufsträger (Steuerberater Ole Rau; Steuerberater Jan Kock)" in \
+        k["CFH Cordes + Partner GmbH Wirtschaftsprüfungsgesellschaft"].snippet
+    assert "Ina Behn" in k["Heuking Kühn Lüer Wojtek PartGmbB"].snippet  # Hauptgesellschaft (kürzester Name)
+    assert "Ute Bartsch" in k["ETL Bartsch & Kollegen GmbH Steuerberatungsgesellschaft"].snippet
+    assert "Tom Ruge" in k["RVP Ruge Vowinckel Partnerschaft mbB"].snippet
+    assert "2 Berufsträger" in k["Luecke und Partner"].snippet  # Kanzlei aus Firmenzeile zählt für Regel 1
+    assert NICHT_ZUGEORDNET in k["Steuerberater Lea Voss"].snippet
+    assert OHNE_GESELLSCHAFT in k["Steuerberater Imke Thordsen"].snippet

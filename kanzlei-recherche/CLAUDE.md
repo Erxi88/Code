@@ -206,8 +206,18 @@ der nächsten Quelle füllen.**
       („läuft bereits in einem anderen Lauf – übersprungen") und beim nächsten Aufruf aus dessen Cache fortgesetzt;
       ohne Lebenszeichen seit 10 min gilt die Sperre als verwaist (kein PID-Test – unter Windows beendet `os.kill`
       den Prozess). Der Einzellauf endet dann mit Code 1.
+      **Gruppierung an Kanzlei-Adressen** (HH-Analyse 05.11.2026: 977 Einträge → 386 Kanzleien, Soll ~200;
+      `GRUPPIERUNG_VERSION` „2026-11-05-adresse"): (1) Person ohne Firmenzeile – genau eine Kanzlei (Gesellschaft oder
+      Kanzlei aus Firmenzeile) an der Adresse → zugeordnet; mehrere → die, deren Name den Nachnamen enthält (Bartsch →
+      „ETL Bartsch & Kollegen", Umlaute gefaltet); sonst einzeln mit Kennzeichen „Person ohne Firmenzeile, mehrere
+      Kanzleien an dieser Adresse – nicht zugeordnet". (2) Firmenzeile an der Adresse einer Gesellschaft, deren Name mit
+      denselben ersten zwei Namenswörtern beginnt („PKF Fasselt") oder die Firmenzeile ohne Rechtsform-/Berufszusätze
+      enthält („Cordes + Partner WPG" → „CFH Cordes + Partner …") → zur Gesellschaft; mehrere passende → kürzester
+      Name (Hauptgesellschaft). Ein Land mit älterer Gruppierung wird vor Nachsuche, crawl und extract neu gruppiert;
+      der Schritt „nach" verweigert bis dahin, die Warteschlange schickt das Land zuerst wieder durch den Netz-Teil.
       `stb-verzeichnis --neu-gruppieren`: amtliche Kandidaten entfernen (andere nur um amtliche Funde bereinigen),
-      Lauf-Protokoll leeren, dann aus dem Cache neu anlegen – keine neuen Abfragen.
+      Lauf-Protokoll leeren, dann aus dem Cache neu anlegen – keine neuen Abfragen; Nachsuche-Merker nur der
+      entfernten Kandidaten dieses Landes (Brave-Antworten bleiben gecacht).
       Automatisch: Hat ein Land amtliche Funde einer älteren Gruppierung (`GRUPPIERUNG_VERSION` im api_cache
       „stbv_gruppierung"), wird es vor dem Verzeichnis-Schritt neu gruppiert.
       **Alle Länder** (Vorgabe 05.11.2026): `recherche stb-verzeichnis --alle-laender [--parallel 3]` arbeitet die 16

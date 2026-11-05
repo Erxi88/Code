@@ -148,3 +148,33 @@ def test_detailseiten_per_robots_gesperrt_werden_spaeter_nachgeholt(monkeypatch,
     gelesen.clear()
     lauf()  # jetzt erledigt – kein weiterer Netz-Teil
     assert gelesen == []
+
+
+def test_aeltere_gruppierung_erst_neu_gruppieren_dann_nachsuche(monkeypatch, db_pfad):
+    """Vorgabe 05.11.2026: nach neuen Gruppierungsregeln erst aus dem Cache neu gruppieren, Nachsuche danach. Ein Land
+    mit amtlichen Funden einer älteren Gruppierung läuft in der Warteschlange wieder durch den Netz-Teil (der neu
+    gruppiert), Nachsuche/crawl/extract/Export werden neu angestoßen; der Einzelschritt „nach" verweigert vorher."""
+    FakeVerzeichnis.abgefragt = []
+    monkeypatch.setattr(cli, "build_adapter", lambda name, s, cache=None: FakeVerzeichnis())
+    monkeypatch.setattr(cli.Kontext, "orte", lambda self, auswahl, mit_zusatz=True: ORTE[self.bundesland])
+    meldungen = []
+    monkeypatch.setattr(cli.console, "print", lambda *a, **k: meldungen.append(" ".join(map(str, a))))
+    lauf = lambda: cli._alle_laender(None, db_pfad, 1, ohne_nachsuche=True, ohne_details=True,  # noqa: E731
+                                     nur_verzeichnis=True, mit_export=False, laender=["SH"])
+    lauf()
+    with Storage(db_pfad) as st:
+        st.cache_put("stbv_gruppierung", "SH", {"version": "alt"})
+        st.cache_put(cli.LAND_MERKER, "SH", {"netz": True, "nach": True, "export": True})
+
+    meldungen.clear()
+    cli.stb_verzeichnis(bundesland="SH", db=db_pfad, config=None, ja=True, ohne_nachsuche=False, nur_verzeichnis=True,
+                        out=None, kreis=None, ohne_details=True, neu_gruppieren=False, alle_laender=False, parallel=1,
+                        schritte="nach")
+    assert any("älterer Gruppierung" in m for m in meldungen) and not any("Website-Nachsuche" in m for m in meldungen)
+
+    lauf()
+    assert any("Neu gruppieren SH" in m for m in meldungen)
+    with Storage(db_pfad) as st:
+        assert st.cache_get(cli.LAND_MERKER, "SH") == {"netz": True}
+        assert {k.name for k in st.kandidaten("SH")} == {"Steuerkanzlei Kiel"}
+    assert FakeVerzeichnis.abgefragt == ["24103", "24103"]  # Fake ohne Cache; echt käme die Seite aus dem Cache
