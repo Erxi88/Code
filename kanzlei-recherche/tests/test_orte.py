@@ -291,3 +291,22 @@ def test_gleiche_namen_im_selben_kreis_mit_namenszusatz():
             for ags, name in (("01054036", "Garding, Stadt"), ("01054035", "Garding, Kirchspiel"))]
     erg = orte_erzeugen(gemeinden_aus_localities(locs), None)
     assert sorted(o.name for o in erg.gemeinden) == ["Garding (Kirchspiel)", "Garding (Stadt)"]
+
+
+def test_ags_abweichend_ueber_namen_zugeordnet():
+    """Hanau (Rückmeldung 05.11.2026): OpenPLZ führt 06435014 (Main-Kinzig-Kreis), das GV-ISys 06415000 (kreisfrei) –
+    gleicher Name im selben Land → Kreis, Einwohner und AGS aus dem GV-ISys, mit Hinweis; keine Doppelwarnung."""
+    from recherche.orte import GvDaten
+
+    loc = [{"postalCode": "63450", "name": "Hanau", "municipality": {"key": "06435014", "name": "Hanau, Brüder-Grimm-Stadt"},
+            "district": {"name": "Main-Kinzig-Kreis", "type": "Landkreis"}},
+           {"postalCode": "63452", "name": "Hanau", "municipality": {"key": "06435014", "name": "Hanau, Brüder-Grimm-Stadt"},
+            "district": {"name": "Main-Kinzig-Kreis", "type": "Landkreis"}}]
+    gv = GvDaten(einwohner={"06415000": 102000}, namen={"06415000": "Hanau"},
+                 kreise={"06415": "Kreisfreie Stadt Hanau"}, kreisfrei={"06415"})
+    erg = orte_erzeugen(gemeinden_aus_localities(loc), gv, StadtteilConfig(aktiv=False))
+    (hanau,) = erg.gemeinden
+    assert (hanau.name, hanau.ags, hanau.kreis, hanau.einwohner, hanau.plz_weitere) == (
+        "Hanau", "06415000", "Kreisfreie Stadt Hanau", 102000, ("63452",))
+    assert any("AGS abweichend – OpenPLZ 06435014, GV-ISys 06415000" in w for w in erg.warnungen)
+    assert not any("nicht im GV-ISys" in w or "nicht in OpenPLZ" in w for w in erg.warnungen)

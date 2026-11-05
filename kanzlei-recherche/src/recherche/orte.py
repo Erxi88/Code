@@ -353,12 +353,33 @@ def _kreis_kurz(kreis: str | None) -> str:
     return re.sub(r"^(Kreisfreie Stadt|Stadtkreis|Landkreis|Kreis|Regionalverband)\s+", "", kreis or "")
 
 
+def _ags_ueber_namen(gemeinden: dict[str, Gemeinde], gv: GvDaten) -> dict[str, str]:
+    """OpenPLZ-AGS → GV-ISys-AGS für Gemeinden, deren Schlüssel nur in einer der beiden Quellen steht (Kreisreform,
+    Hanau 2026: OpenPLZ 06435014 im Main-Kinzig-Kreis, GV-ISys 06415000 kreisfrei): gleicher Name im selben Land, auf
+    beiden Seiten eindeutig unter den nicht zugeordneten Schlüsseln."""
+    ohne_gv = [a for a in gemeinden if a not in gv.einwohner and a not in gv.namen]
+    frei = [a for a in set(gv.einwohner) | set(gv.namen) if a not in gemeinden]
+    zuordnung = {}
+    for a in ohne_gv:
+        name = _norm(gemeinden[a].name)
+        treffer = [b for b in frei if b[:2] == a[:2] and _norm(gv.namen.get(b, "")) == name]
+        gegenprobe = [x for x in ohne_gv if x[:2] == a[:2] and _norm(gemeinden[x].name) == name]
+        if len(treffer) == 1 and len(gegenprobe) == 1:
+            zuordnung[a] = treffer[0]
+    return zuordnung
+
+
 def orte_erzeugen(
     gemeinden: dict[str, Gemeinde], gv: GvDaten | None, stadtteile: StadtteilConfig | None = None
 ) -> OrteErgebnis:
     erg = OrteErgebnis([])
     zeilen: list[tuple[Ort, Gemeinde, bool]] = []
-    for ags, g in gemeinden.items():
+    umgeschluesselt = _ags_ueber_namen(gemeinden, gv) if gv is not None else {}
+    for ags_openplz, g in gemeinden.items():
+        ags = umgeschluesselt.get(ags_openplz, ags_openplz)
+        if ags != ags_openplz:
+            erg.warnungen.append(f"{g.name}: AGS abweichend – OpenPLZ {ags_openplz}, GV-ISys {ags} – über Namen und "
+                                 "Land zugeordnet (Kreis, Einwohner aus dem GV-ISys)")
         kreis_schl = ags[:5]
         if gv is not None:
             kreis = gv.kreise.get(kreis_schl) or gv.kreis_je_ags.get(ags) or g.kreis_openplz
@@ -374,7 +395,7 @@ def orte_erzeugen(
                   plz_weitere=tuple(g.plz[1:]))  # fmt: skip
         zeilen.append((ort, g, kreisfrei))
     if gv is not None:
-        for ags in sorted(set(gv.einwohner) - set(gemeinden)):
+        for ags in sorted(set(gv.einwohner) - set(gemeinden) - set(umgeschluesselt.values())):
             erg.warnungen.append(f"{gv.namen.get(ags, ags)} ({ags}): im GV-ISys, aber nicht in OpenPLZ – nicht übernommen")
 
     # gleiche Namen eindeutig machen: in verschiedenen Kreisen mit dem Kreis, im selben Kreis mit dem
