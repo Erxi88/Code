@@ -194,7 +194,10 @@ der nächsten Quelle füllen.**
       Verzeichnis neu angelegt hat (Name und Berufsträger amtlich, Adresse, Kreis, Website, Telefon, Stand: ohne Website /
       nicht gelesen / extrahiert mit Status, Kanzleiname und Konfidenz der Website) – als CSV
       (`luecken_amtlich_<BL>.csv` neben dem Export) und als Blatt „Lücken (amtlich)" im Export des Landes (auch im
-      Lieferformat, nur wenn es solche Zeilen gibt); Spalten „Kennzeichen" und „Firma laut Verzeichnis". Dazu die
+      Lieferformat, nur wenn es solche Zeilen gibt); Spalten „Kennzeichen" und „Firma laut Verzeichnis". „Lücke" heißt
+      „vorher im Bestand unbekannt", nicht „ohne Website": auch Einträge, deren Website Detailseite, Nachsuche oder
+      Telefonbuch gefunden haben, bleiben in der Liste (Stand „extrahiert …"); Spalte „Website-Herkunft" nennt die
+      Quelle bzw. das Ergebnis der Nachsuche (auch „verworfen: …" mit Grund). Dazu die
       Syndikus-Berufsträger (Firmenzeile ohne Steuerberatungsbezug, `stbv_syndikus`) aus den gecachten Ergebnisseiten
       der im Land abgefragten PLZ: ohne Kandidat-Nr., Kennzeichen „Syndikus/Unternehmen – kein Kandidat", Stand
       „Syndikus – nicht angelegt".

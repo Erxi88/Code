@@ -110,6 +110,9 @@ def test_telefonbuch_das_oertliche_rueckfall_gelbe_seiten_cache_und_luecken_spal
     assert werte["Steuerberater Ole Ketelsen"][spalte] == "Das Örtliche"
     assert werte["Steuerberaterin Imke Thordsen"][spalte] == "Gelbe Seiten"
     assert werte["Steuerberaterin Ina Namenlos"][spalte] is None
+    herkunft = LUECKEN_SPALTEN.index("Website-Herkunft")
+    assert werte["Steuerberaterin Imke Thordsen"][herkunft] == "Telefonbuch (Gelbe Seiten)"
+    assert werte["Steuerberater Kai Web"][herkunft] == "Website aus anderer Quelle"
 
     # fortsetzbar: alles erledigt – keine neuen Abrufe
     vorher = len(abrufe_o) + len(abrufe_g)

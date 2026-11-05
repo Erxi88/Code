@@ -417,6 +417,11 @@ def test_nachsuche_filtert_portale_und_fuehrt_nur_mit_bezug_zusammen(storage):
         assert (stat.gefunden, stat.schon_vergeben, stat.verworfen) == (1, 0, 1)
         assert any("hansen-stb.example verworfen" in m and "ohne Namens- oder Adressbezug" in m for m in meldungen)
         assert any("Standorte nur über ketten.yaml" in m for m in meldungen)
+        from recherche.stbv_lauf import LUECKEN_SPALTEN, luecken_werte
+
+        herkunft = {z.name: luecken_werte(z)[LUECKEN_SPALTEN.index("Website-Herkunft")] for z in luecken(storage, "SH")}
+        assert "Website steuerberater-beine.example" in herkunft["Steuerberater Siegfried Beine"]
+        assert "hansen-stb.example verworfen" in herkunft["Lorenzen & Partner Steuerberater"]
     finally:
         ketten.setze_config(ketten.KettenConfig())
 
