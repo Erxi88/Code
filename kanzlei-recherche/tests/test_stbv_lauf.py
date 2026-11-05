@@ -281,3 +281,28 @@ def test_analyse_diagnose_der_einzelpersonen():
     a = analysiere(html, "20095")
     assert (a.person_einzeln, a.einzeln_an_kanzlei_adresse, a.einzeln_adresse_geteilt) == (2, 1, 0)
     assert a.syndikus_verdacht == ["Muster AG Steuerabteilung"]
+
+
+def test_syndikus_in_der_lueckenliste_ohne_kandidat(storage, tmp_path):
+    """Vorgabe 05.11.2026: Syndikus/Unternehmen nicht als Kandidat, aber in der Lückenliste – aus den gecachten
+    Ergebnisseiten der im Land abgefragten PLZ (eine Karte nur einmal, Nachbar-PLZ anderer Länder nicht)."""
+    from recherche.models import LaufEintrag
+    from recherche.stbv_lauf import SCHRITT, SYNDIKUS_KENNZEICHEN, luecken_werte
+
+    def karte(nr, name, firma, strasse, plz, ort):
+        return (f'<a class="link-to-detail" href="https://stbv.example/details/{nr}/"><div><p class="beruf text-wrap">'
+                f'Steuerberater</p><p class="akademische-grade text-wrap">Dr.</p><p class="name text-wrap">{name}</p>'
+                f'<p class="address-display text-wrap">{firma}<br>{strasse}<br>{plz} {ort}</p></div></a>')
+
+    seite = ("<html><body>Treffer: 2 von 2" + karte("S1", "Kai Lund", "Muster Werke AG", "Fabrikweg 2", "24103", "Kiel")
+             + karte("S2", "Eva Rau", "Hanse Reederei GmbH", "Kai 1", "20095", "Hamburg") + "</body></html>")
+    for plz in ("24103", "24105"):  # beide Abfragen liefern dieselbe Karte
+        storage.cache_put(QUELLE, f"https://stbv.example/ POST plzFilter={plz}", {"html": seite})
+        storage.log_lauf(LaufEintrag(lauf_id="l", schritt=SCHRITT, bundesland="SH", suchbegriff=f"plz:{plz}",
+                                     adapter=QUELLE, ort="Kiel"))
+    zeilen = luecken(storage, "SH", kreise(ORTE))
+    assert [(z.kandidat_id, z.name, z.firma, z.kreis, z.stand) for z in zeilen] == [
+        (None, "Kai Lund", "Muster Werke AG", "Kreisfreie Stadt Kiel", "Syndikus – nicht angelegt")]
+    assert luecken_werte(zeilen[0])[2:4] == ["Dr. Kai Lund, Steuerberater", SYNDIKUS_KENNZEICHEN]
+    assert storage.kandidaten("SH") == []
+    assert luecken(storage, "HH") == []  # HH hat diese PLZ nicht abgefragt

@@ -1361,8 +1361,10 @@ def stb_verzeichnis(
         f"luecken_amtlich_{ctx.bundesland}{endung}.csv"))
     mit_website = sum(1 for z in zeilen if z.website)
     ohne_ges = sum(1 for z in zeilen if z.ohne_gesellschaft)
-    console.print(f"Lückenliste: {len(zeilen)} Kanzleien nur im amtlichen Verzeichnis ({mit_website} mit Website, "
-                  f"{ohne_ges} „Person ohne Gesellschaft an dieser Adresse“) – "
+    syndikus = sum(1 for z in zeilen if z.kandidat_id is None)
+    console.print(f"Lückenliste: {len(zeilen) - syndikus} Kanzleien nur im amtlichen Verzeichnis ({mit_website} mit "
+                  f"Website, {ohne_ges} „Person ohne Gesellschaft an dieser Adresse“) und {syndikus} Syndikus/"
+                  "Unternehmen (kein Kandidat) – "
                   f"[bold]{pfad}[/bold]; dieselbe Liste im Export (`recherche export -b {ctx.bundesland}`) im Blatt "
                   "„Lücken (amtlich)“")
 

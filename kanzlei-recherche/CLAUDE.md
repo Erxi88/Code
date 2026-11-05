@@ -180,7 +180,10 @@ der nächsten Quelle füllen.**
       Verzeichnis neu angelegt hat (Name und Berufsträger amtlich, Adresse, Kreis, Website, Telefon, Stand: ohne Website /
       nicht gelesen / extrahiert mit Status, Kanzleiname und Konfidenz der Website) – als CSV
       (`luecken_amtlich_<BL>.csv` neben dem Export) und als Blatt „Lücken (amtlich)" im Export des Landes (auch im
-      Lieferformat, nur wenn es solche Zeilen gibt); Spalten „Kennzeichen" und „Firma laut Verzeichnis".
+      Lieferformat, nur wenn es solche Zeilen gibt); Spalten „Kennzeichen" und „Firma laut Verzeichnis". Dazu die
+      Syndikus-Berufsträger (Firmenzeile ohne Steuerberatungsbezug, `stbv_syndikus`) aus den gecachten Ergebnisseiten
+      der im Land abgefragten PLZ: ohne Kandidat-Nr., Kennzeichen „Syndikus/Unternehmen – kein Kandidat", Stand
+      „Syndikus – nicht angelegt".
       **Pilot** `--kreis "Kreisfreie Stadt Kiel"` (eindeutiger Teilname genügt): nur die PLZ dieses Kreises; je PLZ
       Einträge (Karten), „Treffer X von Y", Kandidaten nach Gruppierung (davon Person ohne Gesellschaft), neu/bekannt und
       Antwortzeit ohne Pause (bzw. „Cache"); Zusammenfassung mit Abschneide-Warnungen, Mittel/Median/längster Antwort und

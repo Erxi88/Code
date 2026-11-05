@@ -184,7 +184,7 @@ def run_verzeichnis(storage: Storage, adapter: OrtsAdapter, orte: list[Ort], bun
 
 @dataclass
 class Luecke:
-    kandidat_id: int
+    kandidat_id: int | None  # None = Syndikus/Unternehmen (kein Kandidat)
     name: str | None
     berufstraeger: str | None
     strasse: str | None
@@ -230,11 +230,51 @@ def luecken(storage: Storage, bundesland: str, kreis_je_plz: dict[str, str] | No
                              plz, (z.ort if z else None) or k.ort, kreis_je_plz.get(plz or ""), k.website,
                              (z.telefon if z else None) or k.telefon, stand, z.kanzleiname if z else None,
                              z.konfidenz.value if z else None, OHNE_GESELLSCHAFT in snippet, firma))
+    zeilen += syndikus_luecken(storage, bundesland, kreis_je_plz)
     return sorted(zeilen, key=lambda z: (z.plz or "", z.name or ""))
 
 
+SYNDIKUS_KENNZEICHEN = "Syndikus/Unternehmen – kein Kandidat"
+
+
+def syndikus_luecken(storage: Storage, bundesland: str, kreis_je_plz: dict[str, str] | None = None) -> list[Luecke]:
+    """Berufsträger mit Firmenzeile ohne Steuerberatungsbezug (Syndikus eines Unternehmens) aus den gecachten
+    Ergebnisseiten der im Land abgefragten PLZ – nie Kandidat, aber in der Lückenliste (Vorgabe 05.11.2026)."""
+    import json
+
+    from .search.verzeichnisse import stbv_karten, stbv_syndikus
+
+    kreis_je_plz = kreis_je_plz or {}
+    abgefragt = {r[0].removeprefix("plz:") for r in storage.conn.execute(
+        "SELECT DISTINCT suchbegriff FROM lauf_protokoll WHERE bundesland = ? AND schritt = ? AND adapter = ? "
+        "AND fehler IS NULL", (bundesland, SCHRITT, QUELLE))}
+    if not abgefragt:
+        return []
+    gesehen, zeilen = set(), []
+    for schluessel, antwort in storage.conn.execute(
+            "SELECT schluessel, antwort FROM api_cache WHERE adapter = ?", (QUELLE,)):
+        m = re.search(r"plzFilter=(\d{5})", schluessel)
+        if not m or m.group(1) not in abgefragt:
+            continue
+        try:
+            html = json.loads(antwort).get("html") or ""
+        except (ValueError, AttributeError):
+            continue
+        karten, _ = stbv_karten(html, schluessel.split(" POST ")[0])
+        for k in stbv_syndikus(karten):
+            if k.url in gesehen or (k.plz and k.plz not in abgefragt):
+                continue  # Nachbar-PLZ eines anderen Landes bzw. schon von einer anderen Abfrage
+            gesehen.add(k.url)
+            person = ", ".join(t for t in (" ".join(t for t in (k.titel, k.name) if t), k.beruf) if t)
+            zeilen.append(Luecke(None, k.name, person, k.strasse, k.plz, k.ort, kreis_je_plz.get(k.plz or ""), None,
+                                 None, "Syndikus – nicht angelegt", firma=k.firma))
+    return zeilen
+
+
 def luecken_werte(z: Luecke) -> list:
-    return [z.kandidat_id, z.name, z.berufstraeger, OHNE_GESELLSCHAFT if z.ohne_gesellschaft else None, z.firma,
+    kennzeichen = (SYNDIKUS_KENNZEICHEN if z.kandidat_id is None
+                   else OHNE_GESELLSCHAFT if z.ohne_gesellschaft else None)
+    return [z.kandidat_id, z.name, z.berufstraeger, kennzeichen, z.firma,
             z.strasse, z.plz, z.ort, z.kreis, z.website, z.telefon, z.stand, z.kanzleiname, z.konfidenz]
 
 
