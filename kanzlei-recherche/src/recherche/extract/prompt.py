@@ -172,6 +172,49 @@ def _kuerzen(text: str, budget: int) -> str:
     return stueck[: stueck.rfind("\n")] if "\n" in stueck else stueck
 
 
+# Zeilen mit Kernfeldern (Adresse, Telefon, E-Mail, Firmierung): beim Kürzen vor dem Seitenanfang behalten
+# (kuerzung 05.11.2026: fehmarn.wetreu.de – Name, Straße, PLZ des Standorts nur im abgeschnittenen Teil)
+_PLZ_ZEILE = re.compile(r"\b\d{5}\s+[A-ZÄÖÜ]")
+_KONTAKTZEILE = re.compile(r"\b(?:tel|telefon|fon|fax|mobil)\b|@|\bwww\.|(?:\+49|\b0\d{2,4})[\s/()0-9-]{6,}|"
+                           r"\b(?:gmbh|mbb|partg|partnerschaft|kg|gbr|steuerberatungsgesellschaft)\b", re.IGNORECASE)
+
+
+def _kuerzen_mit_vorrang(text: str, budget: int) -> str:
+    """Wie `_kuerzen`, aber kurze Zeilen mit Kernfeldern gehen vor: zuerst PLZ-Zeilen mit den zwei Zeilen davor
+    (Name, Straße) und der danach, dann Telefon/E-Mail/Firmierung (±1); der Rest wird von vorn aufgefüllt. Die
+    Reihenfolge der Seite bleibt, Lücken als „…"."""
+    if len(text) <= budget:
+        return text
+    zeilen = text.split("\n")
+    kurz = [len(z) <= 160 for z in zeilen]
+    rang: list[int] = []
+    for i, z in enumerate(zeilen):
+        if kurz[i] and _PLZ_ZEILE.search(z):
+            rang += [j for j in range(max(0, i - 2), min(len(zeilen), i + 2)) if kurz[j]]
+    for i, z in enumerate(zeilen):
+        if kurz[i] and _KONTAKTZEILE.search(z):
+            rang += [j for j in range(max(0, i - 1), min(len(zeilen), i + 2)) if kurz[j]]
+    vorrang = list(dict.fromkeys(rang))
+    behalten: set[int] = set()
+    laenge = 0
+    for i in [*vorrang, *(i for i in range(len(zeilen)) if i not in behalten and i not in set(vorrang))]:
+        if i in behalten:
+            continue
+        if laenge + len(zeilen[i]) + 2 > budget:
+            if i in vorrang:
+                continue
+            break
+        behalten.add(i)
+        laenge += len(zeilen[i]) + 2  # Zeilenumbruch und ggf. „…"
+    teile, vorher = [], None
+    for i in sorted(behalten):
+        if vorher is not None and i != vorher + 1:
+            teile.append("…")
+        teile.append(zeilen[i])
+        vorher = i
+    return _kuerzen("\n".join(teile), budget)
+
+
 def baue_prompt(seiten: dict[Seitentyp, Seite], budget: int, funktionen: Funktionen | None = None) -> Prompt:
     funktionen = funktionen or lade_funktionen()
     # ---- je URL einmal, in fester Reihenfolge
@@ -249,7 +292,7 @@ def baue_prompt(seiten: dict[Seitentyp, Seite], budget: int, funktionen: Funktio
         rest -= mehr
     teile = []
     for (ueberschrift, t, _), n in zip(abschnitte, zuteilung, strict=True):
-        stueck = _kuerzen(t, n)
+        stueck = _kuerzen(t, n) if ueberschrift.startswith(("IMPRESSUM – ", "PERSONEN")) else _kuerzen_mit_vorrang(t, n)
         if stueck.strip():
             teile.append(f"### {ueberschrift}\n{stueck}")
         for p in protokolle:

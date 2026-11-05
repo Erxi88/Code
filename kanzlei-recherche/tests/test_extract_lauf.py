@@ -268,3 +268,20 @@ def test_ohne_impressum_gelesen_steht_in_abweichung(storage, ausschluss):
             storage.setze_kandidat_seite(kid, typ, s.url)
     run_extract(storage, "SH", None, _pruefer(), ausschluss, "lauf")
     assert "Kein Impressum: Daten aus Start-/Kontaktseite" in storage.kanzleien("SH")[0].abweichung
+
+
+def test_kuerzung_zeigt_abschnitte_und_kernfelder(storage, ausschluss, tmp_path):
+    """recherche kuerzung (SH 05.11.2026: 137 gekürzt): je gekürzter Kanzlei die abgeschnittenen Abschnitte und ob ein
+    Kernfeld nur im abgeschnittenen Teil steht – ohne LLM aus den gecachten Seiten."""
+    from recherche.extract.kuerzung import IM_PROMPT, NUR_GEKUERZT, als_csv, pruefen
+
+    kid = _kandidat_mit_seiten(storage, "steuerbuero-schuett.example")
+    run_extract(storage, "SH", None, None, ausschluss, "l1")
+    k = storage.kanzlei_fuer_kandidat(kid)
+    assert pruefen(storage, "SH", 10**7).zeilen == []  # großes Budget: nichts gekürzt
+    b = pruefen(storage, "SH", 400)
+    assert b.geprueft == 1 and len(b.zeilen) == 1 and b.abschnitte
+    z = b.zeilen[0]
+    assert set(z.felder) == {"kanzleiname", "strasse", "plz", "telefon", "email", "ansprechpartner"}
+    assert z.felder["kanzleiname"] in (IM_PROMPT, NUR_GEKUERZT) and k.kanzleiname
+    assert "Domain" in als_csv(b, tmp_path / "k.csv").read_text(encoding="utf-8-sig")

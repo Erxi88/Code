@@ -1014,6 +1014,48 @@ def _verzeichnis_bericht(stat) -> None:
         console.print("Keine Abfrage abgeschnitten (überall „Treffer: X von X“).")
 
 
+@app.command("kuerzung")
+def kuerzung(
+    bundesland: BundeslandOpt = None,
+    db: DbOpt = None,
+    config: ConfigOpt = None,
+    out: Annotated[Path | None, typer.Option("--out", "-o", help="je gekürzter Kanzlei eine Zeile als CSV")] = None,
+) -> None:
+    """Was der Prompt-Aufbau abschneidet und ob Kernfelder betroffen sind – ohne LLM, aus den gecachten Seiten."""
+    from .extract.kuerzung import (
+        _NUR_LLM,
+        IM_PROMPT,
+        KERNFELDER,
+        NICHT_IM_TEXT,
+        NUR_GEKUERZT,
+        als_csv,
+        pruefen,
+    )
+    from .extract.prompt import text_budget
+
+    ctx = _kontext(config, bundesland, db)
+    budget = text_budget(ctx.settings.llm)
+    with ctx.storage() as st:
+        b = pruefen(st, ctx.bundesland, budget)
+    console.print(f"Prompt-Budget {budget} Zeichen (num_ctx {ctx.settings.llm.num_ctx}): {len(b.zeilen)} von "
+                  f"{b.geprueft} Kanzleien gekürzt – gekürzte Abschnitte: "
+                  + (", ".join(f"{t} {n}" for t, n in b.abschnitte.most_common()) or "keine"))
+    t = Table(title="Kernfelder der gekürzten Kanzleien")
+    for col in ("Feld", "kommt von", IM_PROMPT, NUR_GEKUERZT, NICHT_IM_TEXT, "leer"):
+        t.add_column(col, justify="left" if col in ("Feld", "kommt von") else "right")
+    zaehler = {s: b.je_feld(s) for s in (IM_PROMPT, NUR_GEKUERZT, NICHT_IM_TEXT, "leer")}
+    for f in KERNFELDER:
+        t.add_row(f, "LLM (und Regeln)" if f in _NUR_LLM else "Regeln (voller Text), LLM nur Rückfall",
+                  *(str(zaehler[s][f]) for s in (IM_PROMPT, NUR_GEKUERZT, NICHT_IM_TEXT, "leer")))
+    console.print(t)
+    betroffen = [z for z in b.zeilen if any(f in _NUR_LLM for f in z.betroffen)]
+    console.print(f"Kanzleiname oder Hauptansprechpartner nur im abgeschnittenen Teil: {len(betroffen)}"
+                  + (" – " + ", ".join(f"{z.domain} ({', '.join(z.betroffen)})" for z in betroffen[:10]) if betroffen
+                     else ""))
+    if out:
+        console.print(f"CSV: [bold]{als_csv(b, out)}[/bold]")
+
+
 @app.command("telefonbuch")
 def telefonbuch(
     bundesland: BundeslandOpt = None,

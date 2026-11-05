@@ -506,7 +506,14 @@ der nächsten Quelle füllen.**
   nach Anteilen je Seite. **JSON-Abbruch** (SH 05.11.2026: gmh-group.net, segeberg.shbb.de, shbb.eu – lange
   Personenlisten füllen den Kontext, `done_reason` „length"): der nächste Versuch schickt den halben Seitentext; bleibt
   die Antwort ungültig, entsteht die Zeile ohne LLM aus Regeln und Discovery („LLM ohne gültige Antwort – nur Regeln
-  und Discovery: …" in „Abweichung", Zähler in der extract-Ausgabe) statt als Fehler. Wird gekürzt oder ist der Kontext fast voll, steht ein Hinweis im
+  und Discovery: …" in „Abweichung", Zähler in der extract-Ausgabe) statt als Fehler. **Kürzen mit Vorrang**
+  (`recherche kuerzung -b SH [--out …csv]`, 05.11.2026: 137 gekürzt): reicht das Budget nicht, behält jeder Abschnitt
+  (außer Schlüsselstellen und PERSONEN) zuerst kurze Zeilen mit PLZ (mit den zwei Zeilen davor), Telefon/Rufnummer,
+  E-Mail, www. und Firmierung (±1), den Rest von vorn – vorher fehlten bei Standortseiten (fehmarn.wetreu.de: Kernfelder
+  auf der Startseite, Impressum der Zentrale) Name, Straße, PLZ und Telefon im Prompt. `kuerzung` zeigt ohne LLM aus
+  den gecachten Seiten je Land, welche Abschnitte gekürzt werden und ob Kanzleiname, Straße, PLZ, Telefon, E-Mail oder
+  Hauptansprechpartner nur im abgeschnittenen Teil stehen (Straße/PLZ/Telefon/E-Mail lesen die Regeln ohnehin aus dem
+  vollen Text). Wird gekürzt oder ist der Kontext fast voll, steht ein Hinweis im
   Log und im Lauf-Protokoll. `recherche fixture-prompt --domain X [--live] [--namen]` zeigt
   jede Stufe, versteckte Quellen der Teamseiten (noscript, Skripte, JSON-LD, Attribute),
   die gezählten Berufsträger mit Herkunft (LLM, Teamseite, Impressum-Berufsbezeichnung),
@@ -885,7 +892,7 @@ der nächsten Quelle füllen.**
 ### CLI (`cli.py`)
 
 `recherche search | fill | coverage | ketten | crawl | extract | export | run | search-compare | orte |
-blocklist-vorschlag | kanzlei-pruefung | zeile | stb-verzeichnis | telefonbuch | qualitaet | stichprobe | nachbarkreise | robots-check | suche-auswertung | offen | fixture-add | fixture-eval | fixture-prompt |
+blocklist-vorschlag | kanzlei-pruefung | zeile | stb-verzeichnis | telefonbuch | kuerzung | qualitaet | stichprobe | nachbarkreise | robots-check | suche-auswertung | offen | fixture-add | fixture-eval | fixture-prompt |
 fixture-klassen-umstellen`,
 jeweils mit `--bundesland` und `--db`. **Jeder Schritt muss nach Abbruch
 wiederaufnehmbar sein**: Fortschritt steht in SQLite (Status je Domain und

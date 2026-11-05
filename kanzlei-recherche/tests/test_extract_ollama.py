@@ -143,3 +143,18 @@ def test_abbruchgrund_und_belegte_felder(cfg):
     a = OllamaExtractor(cfg, client=client).extract(SEITEN)
     assert a.abbruchgrund == "stop" and a.antwort_tokens == 52
     assert a.belegte_felder == (1, 12)
+
+
+def test_kuerzen_behaelt_kontaktzeilen_statt_seitenanfang():
+    """kuerzung 05.11.2026 (fehmarn.wetreu.de, fiktiv nachgebaut): Standortseite mit langem Werbetext – Name, Straße,
+    PLZ und Telefon des Standorts (Rufnummer ohne „Tel", hinter einem Icon) stehen am Ende und bleiben beim Kürzen."""
+    from recherche.extract.prompt import _kuerzen_mit_vorrang
+
+    text = "\n".join(["Steuerberatung mit Rückenwind – " + "Werbetext " * 12] * 40
+                     + ["Standort der Muster Holstein KG Steuerberatungsgesellschaft", "Muster Fehmarn",
+                        "Hafenstraße 2", "23769 Burg auf Fehmarn", " +49 (0) 4371 555 720", "Routenplaner"])
+    kurz = _kuerzen_mit_vorrang(text, 600)
+    assert len(kurz) <= 600
+    for teil in ("Muster Holstein KG", "Hafenstraße 2", "23769 Burg auf Fehmarn", "4371 555 720"):
+        assert teil in kurz
+    assert kurz.startswith("Steuerberatung mit Rückenwind")  # Rest von vorn aufgefüllt, Reihenfolge bleibt
