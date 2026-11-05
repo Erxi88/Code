@@ -18,7 +18,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .search.verzeichnisse import (
+    ANGESTELLT_PRAEFIX,
+    BERUFSTRAEGER_SNIPPET,
     FIRMENZEILE_OHNE_KARTE,
+    NICHT_ZUGEORDNET,
     SOZIETAET,
     ist_einzeln,
     stbv_gruppieren,
@@ -61,9 +64,11 @@ class PlzAnalyse:
     gesamt: int | None = None
     orte: Counter = field(default_factory=Counter)  # „PLZ Ort" der Einträge
     liste: list = field(default_factory=list)  # gebildete Kanzleien (SearchHit)
-    # Diagnose der Einzelpersonen (Rückmeldung HH 05.11.2026: 1.562 von 2.286 „Kanzleien" sind Einzelpersonen)
-    einzeln_an_kanzlei_adresse: int = 0  # Person ohne Firmenzeile an einer Adresse mit Gesellschaft/Firmenzeile
-    einzeln_adresse_geteilt: int = 0  # Person ohne Firmenzeile, Adresse mit weiteren solchen Personen geteilt
+    # Aufschlüsselung der Personen ohne Firmenzeile nach der Gruppierung (Regeln 1–4)
+    einzeln_allein: int = 0  # allein an ihrer Adresse (Person ohne Gesellschaft) – eigene Kanzlei
+    einzeln_mehrkanzlei: int = 0  # an einer Adresse mit mehreren Kanzleien, keine passt – „zuordnen" (Zu prüfen)
+    angestellt: int = 0  # einer Kanzlei an der Adresse zugeordnet (Regel 1/4, „angestellt (vermutet)")
+    sozietaet_personen: int = 0  # in einer Sozietät/Bürogemeinschaft (Regel 3)
     syndikus_verdacht: list = field(default_factory=list)  # Firmenzeilen mit Konzern-Steuerabteilung o. Ä.
     anderes_land: int = 0  # Kanzleien laut PLZ und Ort in einem anderen Land (nur mit -b gezählt)
 
@@ -90,12 +95,12 @@ def analysiere(html: str, plz: str, url: str = "", land: str | None = None, land
     a.sozietaet = sum(SOZIETAET in (h.snippet or "") for h in hits)
     a.aus_gesellschaft = a.kanzleien - a.aus_firmenzeile - a.person_einzeln - a.sozietaet
     a.orte = Counter(f"{k.plz or '?'} {k.ort or '?'}" for k in karten)
-    adr = lambda k: (k.strasse or "", k.plz or "")  # noqa: E731
-    kanzlei_adressen = {adr(k) for k in karten if k.gesellschaft or k.firma}
-    ohne = [k for k in karten if not k.gesellschaft and not k.firma]
-    je_adresse = Counter(adr(k) for k in ohne)
-    a.einzeln_an_kanzlei_adresse = sum(1 for k in ohne if adr(k) in kanzlei_adressen)
-    a.einzeln_adresse_geteilt = sum(1 for k in ohne if je_adresse[adr(k)] > 1)
+    a.einzeln_mehrkanzlei = sum(NICHT_ZUGEORDNET in (h.snippet or "") for h in hits)
+    a.einzeln_allein = a.person_einzeln - a.einzeln_mehrkanzlei
+    a.angestellt = sum(len(m.group(1).split(" | ")) for h in hits
+                       if (m := re.search(rf"{re.escape(ANGESTELLT_PRAEFIX)}(.+?)(?:;|$)", h.snippet or "")))
+    a.sozietaet_personen = sum(int(m.group(1)) for h in hits if SOZIETAET in (h.snippet or "")
+                               and (m := BERUFSTRAEGER_SNIPPET.search(h.snippet or "")))
     a.syndikus_verdacht = sorted({k.firma for k in karten if not k.gesellschaft and k.firma
                                   and _KONZERN_STEUER.search(k.firma)})
     return a
@@ -108,7 +113,8 @@ _KONZERN_STEUER = re.compile(r"steuerabteilung|abteilung\s+steuern|konzernsteuer
 
 ANALYSE_SPALTEN = ["PLZ", "Einträge", "Gesellschaften", "Personen", "davon ohne Firmenzeile", "Syndikus",
                    "Kanzleien", "aus Gesellschaft", "aus Firmenzeile", "Person einzeln", "Sozietät/Bürogemeinschaft",
-                   "einzeln an Kanzlei-Adresse", "einzeln, Adresse geteilt", "Syndikus-Verdacht", "Treffer angezeigt",
+                   "einzeln allein an der Adresse", "einzeln an Mehrkanzlei-Adresse", "angestellt (vermutet)",
+                   "Personen in Sozietät", "Syndikus-Verdacht", "Treffer angezeigt",
                    "Treffer gesamt", "Einträge mit anderer PLZ", "Orte der Einträge"]
 
 
@@ -121,7 +127,8 @@ def analyse_csv(analysen: list[PlzAnalyse], pfad: str | Path) -> Path:
         for a in analysen:
             w.writerow([a.plz, a.eintraege, a.gesellschaften, a.personen, a.personen_ohne_firmenzeile, a.syndikus,
                         a.kanzleien, a.aus_gesellschaft, a.aus_firmenzeile, a.person_einzeln, a.sozietaet,
-                        a.einzeln_an_kanzlei_adresse, a.einzeln_adresse_geteilt, "; ".join(a.syndikus_verdacht),
+                        a.einzeln_allein, a.einzeln_mehrkanzlei, a.angestellt, a.sozietaet_personen,
+                        "; ".join(a.syndikus_verdacht),
                         a.angezeigt, a.gesamt,
                         a.fremde_plz, ", ".join(f"{o} ({n})" for o, n in a.orte.most_common())])
     return pfad

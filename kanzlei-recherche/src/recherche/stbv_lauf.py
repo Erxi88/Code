@@ -24,6 +24,9 @@ from .models import Kanzlei, LaufEintrag, SchrittStatus
 from .search.base import LimitErreicht, OrtsAdapter, SearchError
 from .search.pipeline import Ort, Zuordnung
 from .search.verzeichnisse import (
+    ANGESTELLT,
+    ANGESTELLT_PRAEFIX,
+    BERUFSTRAEGER_SNIPPET,
     FIRMA_LAUT_VERZEICHNIS,
     NICHT_ZUGEORDNET,
     OHNE_GESELLSCHAFT,
@@ -34,7 +37,7 @@ from .storage import Storage
 
 QUELLE = "stb_verzeichnis"
 # Stand der Gruppierungsregeln (stbv_gruppieren): ein Land mit älterem Stand wird automatisch neu gruppiert
-GRUPPIERUNG_VERSION = "2026-11-05-land"  # Regeln 1–3, Kurzformen, Land über PLZ+Ort
+GRUPPIERUNG_VERSION = "2026-11-05-regel4"  # Regeln 1–4, Kurzformen, Land über PLZ+Ort
 SCHRITT = "stb-verzeichnis"
 
 
@@ -267,10 +270,12 @@ class Luecke:
     firma: str | None = None  # Firmenzeile der Person laut Verzeichnis
     nicht_zugeordnet: bool = False  # Person ohne Firmenzeile, mehrere Kanzleien an der Adresse
     sozietaet: bool = False  # Regel 3: mehrere Personen ohne Firmenzeile an einer Adresse ohne Kanzlei
+    angestellt: str | None = None  # Regel 4: zugeordnete Personen ohne Firmenzeile („A | B"), „angestellt (vermutet)"
 
 
 LUECKEN_SPALTEN = ["Kandidat", "Name (amtlich)", "Berufsträger (amtlich)", "Kennzeichen", "Firma laut Verzeichnis",
-                   "Straße", "PLZ", "Ort", "Kreis", "Website", "Telefon", "Stand", "Kanzleiname (Website)", "Konfidenz"]
+                   "Straße", "PLZ", "Ort", "Kreis", "Website", "Telefon", "Stand", "Kanzleiname (Website)", "Konfidenz",
+                   f"Berufsträger {ANGESTELLT}"]
 
 
 def luecken(storage: Storage, bundesland: str, kreis_je_plz: dict[str, str] | None = None) -> list[Luecke]:
@@ -294,12 +299,14 @@ def luecken(storage: Storage, bundesland: str, kreis_je_plz: dict[str, str] | No
         snippet = fund.snippet if fund else ""
         firma = (m.group(1).strip() if (m := re.search(rf"{re.escape(FIRMA_LAUT_VERZEICHNIS)}(.+?)(?:;|$)", snippet))
                  else None)
-        berufstraeger = (m.group(1) if (m := re.search(r"Berufsträger \((.*?)\)", snippet)) else snippet) or None
+        berufstraeger = (m.group(2) if (m := BERUFSTRAEGER_SNIPPET.search(snippet)) else snippet) or None
+        angestellt = (m.group(1).strip() if (m := re.search(rf"{re.escape(ANGESTELLT_PRAEFIX)}(.+?)(?:;|$)", snippet))
+                      else None)
         zeilen.append(Luecke(k.id, k.name, berufstraeger, (z.strasse if z else None) or k.strasse,
                              plz, (z.ort if z else None) or k.ort, kreis_je_plz.get(plz or ""), k.website,
                              (z.telefon if z else None) or k.telefon, stand, z.kanzleiname if z else None,
                              z.konfidenz.value if z else None, ist_einzeln(snippet), firma,
-                             NICHT_ZUGEORDNET in snippet, SOZIETAET in snippet))
+                             NICHT_ZUGEORDNET in snippet, SOZIETAET in snippet, angestellt))
     zeilen += syndikus_luecken(storage, bundesland, kreis_je_plz)
     return sorted(zeilen, key=lambda z: (z.plz or "", z.name or ""))
 
@@ -346,7 +353,8 @@ def luecken_werte(z: Luecke) -> list:
                    else SOZIETAET if z.sozietaet else NICHT_ZUGEORDNET if z.nicht_zugeordnet
                    else OHNE_GESELLSCHAFT if z.ohne_gesellschaft else None)
     return [z.kandidat_id, z.name, z.berufstraeger, kennzeichen, z.firma,
-            z.strasse, z.plz, z.ort, z.kreis, z.website, z.telefon, z.stand, z.kanzleiname, z.konfidenz]
+            z.strasse, z.plz, z.ort, z.kreis, z.website, z.telefon, z.stand, z.kanzleiname, z.konfidenz,
+            f"{z.angestellt} – {ANGESTELLT}" if z.angestellt else None]
 
 
 def luecken_csv(zeilen: list[Luecke], pfad: str | Path) -> Path:

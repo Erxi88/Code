@@ -1062,18 +1062,27 @@ def stb_verzeichnis_analyse(
     console.print(f"Summe: {summe['eintraege']} Einträge ({summe['gesellschaften']} Gesellschaften, {summe['personen']} "
                   f"Personen) → {summe['kanzleien']} Kanzleien, {summe['syndikus']} Syndikus; {summe['fremde_plz']} "
                   "Einträge mit einer anderen PLZ als der abgefragten")
-    eindeutig = {h.quell_id for a in analysen for h in a.liste}
-    sozietaet = sum(a.sozietaet for a in analysen)
-    console.print(f"[bold]Kanzleien gesamt (ohne Doppel aus mehreren Abfragen): {len(eindeutig)}[/bold] – davon "
-                  f"{sum(a.person_einzeln for a in analysen)} einzeln, {sozietaet} Sozietät/Bürogemeinschaft"
-                  + (f"; {sum(a.anderes_land for a in analysen)} laut PLZ und Ort in einem anderen Land, nicht gezählt"
+    # Aufschlüsselung über die Kanzleien ohne Doppel (eine Kanzlei kann in mehreren Abfragen stehen)
+    from .search.verzeichnisse import ANGESTELLT_PRAEFIX, BERUFSTRAEGER_SNIPPET
+
+    eindeutig = list({h.quell_id: h for a in analysen for h in a.liste}.values())
+    sn = [h.snippet or "" for h in eindeutig]
+    mehr = sum(NICHT_ZUGEORDNET in x for x in sn)
+    einzeln = sum(ist_einzeln(x) for x in sn)
+    soz = [x for x in sn if SOZIETAET in x]
+    firmz = sum(FIRMENZEILE_TEXT in x for x in sn)
+    angestellt = sum(len(m.group(1).split(" | ")) for x in sn
+                     if (m := re.search(rf"{re.escape(ANGESTELLT_PRAEFIX)}(.+?)(?:;|$)", x)))
+    soz_personen = sum(int(m.group(1)) for x in soz if (m := BERUFSTRAEGER_SNIPPET.search(x)))
+    console.print(f"[bold]Kanzleien gesamt (ohne Doppel aus mehreren Abfragen): {len(eindeutig)}[/bold]"
+                  + (f" – {sum(a.anderes_land for a in analysen)} laut PLZ und Ort in einem anderen Land nicht gezählt"
                      if bundesland else ""))
-    einzeln = sum(a.person_einzeln for a in analysen)
-    an_kanzlei = sum(a.einzeln_an_kanzlei_adresse for a in analysen)
-    geteilt = sum(a.einzeln_adresse_geteilt for a in analysen)
-    console.print(f"Einzelpersonen (ohne Firmenzeile): {einzeln} – davon {an_kanzlei} an einer Adresse mit Kanzlei "
-                  f"(Gesellschaft/Firmenzeile, wahrscheinlich dort angestellt), {geteilt} teilen die Adresse mit weiteren "
-                  "Einzelpersonen")
+    console.print(f"  Gesellschaft {len(eindeutig) - firmz - len(soz) - einzeln} · aus Firmenzeile {firmz} · "
+                  f"Sozietät/Bürogemeinschaft {len(soz)} ({soz_personen} Personen) · einzeln {einzeln} (davon "
+                  f"{einzeln - mehr} allein an ihrer Adresse, {mehr} an einer Mehrkanzlei-Adresse – zuordnen, Blatt "
+                  f"„Zu prüfen“)")
+    console.print(f"  Personen ohne Firmenzeile, einer Kanzlei an ihrer Adresse zugeordnet (Regel 4, angestellt "
+                  f"(vermutet)): {angestellt}")
     verdacht = sorted({f for a in analysen for f in a.syndikus_verdacht})
     if verdacht:
         console.print(f"Syndikus-Verdacht (als Kanzlei gezählt, Firmenzeile mit Konzern-Steuerabteilung): "

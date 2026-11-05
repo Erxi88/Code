@@ -107,6 +107,10 @@ def zu_pruefen_grund(k: Kanzlei) -> str | None:
     if k.status != Status.NEU:
         return None
     abw = k.abweichung or ""
+    from .search.verzeichnisse import NICHT_ZUGEORDNET
+
+    if NICHT_ZUGEORDNET in abw:  # Regel 4: Einzelperson an einer Adresse mit mehreren Kanzleien, keine passt
+        return NICHT_ZUGEORDNET
     rang = _RANG.search(abw)
     if NAME_ABGELEITET in abw and rang:
         return f"Q5 Name abgeleitet, keine Kammer, keine Berufsbezeichnung ({rang.group(2).strip()})"

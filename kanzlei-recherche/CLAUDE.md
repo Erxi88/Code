@@ -244,7 +244,15 @@ der nächsten Quelle füllen.**
       abgefragte Land. Einträge eines anderen Landes legt dessen eigener Lauf an (es hat die PLZ in seiner Ortsliste,
       dieselbe Anfrage kommt aus dem Cache) – keine Doppel bei parallelen Ländern; Ausgabe „anderes Land" je PLZ.
       `stb-verzeichnis-analyse -b SH` zählt nur die PLZ und Kanzleien des Landes und nennt die Gesamtzahl ohne Doppel.
-      `GRUPPIERUNG_VERSION` „2026-11-05-land". Ein Land mit älterer Gruppierung wird vor Nachsuche, crawl und extract neu gruppiert;
+      **Regel 4** (SH 05.11.2026: 980 Einzelpersonen, 193 an einer Kanzlei-Adresse – die Diagnose zählte vor der
+      Gruppierung, die Zuordnung galt schon als Regel 1): die einer Kanzlei an ihrer Adresse zugeordneten Personen ohne
+      Firmenzeile stehen im Snippet („Angestellt vermutet (Regel 4): …") und in der Lückenliste in der Spalte
+      „Berufsträger angestellt (vermutet)"; bei mehreren Kanzleien ohne Namenstreffer eigene Zeile mit Kennzeichen
+      „Einzelperson an Mehrkanzlei-Adresse – zuordnen", die über extract ins Blatt „Zu prüfen" kommt. Die Analyse
+      schlüsselt nach der Gruppierung auf: Gesellschaft, aus Firmenzeile, Sozietät (Personen), einzeln (allein an der
+      Adresse / an Mehrkanzlei-Adresse) und zugeordnete Personen. Die Berufsträger-Liste im Snippet endet vor „;" (vorher
+      hing bei Kanzleien aus Firmenzeile der Kennzeichen-Text als Schein-Ansprechpartner daran).
+      `GRUPPIERUNG_VERSION` „2026-11-05-regel4". Ein Land mit älterer Gruppierung wird vor Nachsuche, crawl und extract neu gruppiert;
       der Schritt „nach" verweigert bis dahin, die Warteschlange schickt das Land zuerst wieder durch den Netz-Teil.
       `stb-verzeichnis --neu-gruppieren`: amtliche Kandidaten entfernen (andere nur um amtliche Funde bereinigen),
       Lauf-Protokoll leeren, dann aus dem Cache neu anlegen – keine neuen Abfragen; Nachsuche-Merker nur der

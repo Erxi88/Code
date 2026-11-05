@@ -289,9 +289,54 @@ def test_analyse_diagnose_der_einzelpersonen():
         karte("Ole Rau", "Rau Steuerberatung", "Markt 1"), karte("Eva Ott", None, "Markt 1"),
         karte("Kai Lund", None, "Wall 9"), karte("Ina Behn", "Muster AG Steuerabteilung", "Hafen 2")]) + "</body></html>"
     a = analysiere(html, "20095")
-    # Eva Ott sitzt an der Adresse genau einer Kanzlei → zugeordnet (Regel 1); einzeln bleibt Kai Lund
-    assert (a.person_einzeln, a.einzeln_an_kanzlei_adresse, a.einzeln_adresse_geteilt) == (1, 1, 0)
+    # Eva Ott sitzt an der Adresse genau einer Kanzlei → zugeordnet (Regel 4, angestellt vermutet); einzeln bleibt
+    # Kai Lund (allein an seiner Adresse)
+    assert (a.person_einzeln, a.einzeln_allein, a.einzeln_mehrkanzlei, a.angestellt) == (1, 1, 0, 1)
     assert a.syndikus_verdacht == ["Muster AG Steuerabteilung"]
+
+
+def test_regel_4_vermerk_kennzeichen_zu_pruefen_und_berufstraeger(storage, tmp_path):
+    """SH 05.11.2026, Regel 4: Einzelperson ohne Firmenzeile an einer Adresse mit genau einer Kanzlei → dort
+    Berufsträger (auch ohne Nachnamen im Namen), Vermerk „angestellt (vermutet)" im Kontrollblatt; bei mehreren
+    Kanzleien ohne Namenstreffer eigene Zeile „Einzelperson an Mehrkanzlei-Adresse – zuordnen" → Blatt „Zu prüfen".
+    Dazu: die Berufsträger-Liste endet vor dem Kennzeichen (vorher hing „Kanzlei aus Firmenzeile …" daran)."""
+    from recherche.extract.merge import amtliche_berufstraeger
+    from recherche.models import Fund, Status
+    from recherche.qualitaet import zu_pruefen_grund
+    from recherche.search.verzeichnisse import (
+        ANGESTELLT,
+        NICHT_ZUGEORDNET,
+        StbvKarte,
+        stbv_gruppieren,
+    )
+    from recherche.stbv_lauf import LUECKEN_SPALTEN, luecken_werte
+
+    def person(name, firma, strasse, titel=None):
+        return StbvKarte(name, "Steuerberater", titel, firma, strasse, "24103", "Kiel", f"https://x/{name}")
+
+    def ges(name, strasse):
+        return StbvKarte(name, None, None, None, strasse, "24103", "Kiel", f"https://x/{name}")
+
+    hits = {h.name: h for h in stbv_gruppieren([
+        person("Ole Rau", "Rau Steuerberatung", "Markt 1"), person("Eva Ott", None, "Markt 1", "Dipl.-Kffr. (FH)"),
+        ges("Nord Treuhand GmbH StBG", "Wall 9"), ges("Süd Revision GmbH WPG", "Wall 9"),
+        person("Kai Lund", None, "Wall 9")])}
+    rau = hits["Rau Steuerberatung"]
+    assert amtliche_berufstraeger([Fund(bundesland="SH", quelle=QUELLE, quell_id="1", snippet=rau.snippet)]) == [
+        "Steuerberater Ole Rau", "Steuerberater Dipl.-Kffr. (FH) Eva Ott"]
+    lund = hits["Steuerberater Kai Lund"]
+    assert NICHT_ZUGEORDNET in lund.snippet
+
+    for i, h in enumerate((rau, lund)):
+        kid = storage.add_kandidat(Kandidat(bundesland="SH", name=h.name, strasse=h.strasse, plz=h.plz, ort=h.ort,
+                                            quelle=QUELLE))
+        storage.add_fund(Fund(kandidat_id=kid, bundesland="SH", quelle=QUELLE, quell_id=f"q{i}", snippet=h.snippet))
+    zeilen = {z.name: luecken_werte(z) for z in luecken(storage, "SH")}
+    spalte = LUECKEN_SPALTEN.index(f"Berufsträger {ANGESTELLT}")
+    assert zeilen["Rau Steuerberatung"][spalte] == f"Steuerberater Dipl.-Kffr. (FH) Eva Ott – {ANGESTELLT}"
+    assert zeilen["Steuerberater Kai Lund"][LUECKEN_SPALTEN.index("Kennzeichen")] == NICHT_ZUGEORDNET
+    assert zu_pruefen_grund(Kanzlei(lauf_bundesland="SH", status=Status.NEU, abweichung=NICHT_ZUGEORDNET)) == \
+        NICHT_ZUGEORDNET
 
 
 def test_syndikus_in_der_lueckenliste_ohne_kandidat(storage, tmp_path):
@@ -421,4 +466,6 @@ def test_analyse_je_land_mit_gesamtzahl(monkeypatch, db_pfad):
     text = " ".join(r.output.split())
     assert r.exit_code == 0, r.output
     assert "Kanzleien gesamt (ohne Doppel aus mehreren Abfragen): 2" in text  # Lund & Ott, Behn
-    assert "1 Sozietät/Bürogemeinschaft" in text and "1 laut PLZ und Ort in einem anderen Land" in text
+    assert "1 laut PLZ und Ort in einem anderen Land nicht gezählt" in text
+    assert "Sozietät/Bürogemeinschaft 1 (2 Personen) · einzeln 1 (davon 1 allein an ihrer Adresse, 0 an einer " \
+           "Mehrkanzlei-Adresse" in text

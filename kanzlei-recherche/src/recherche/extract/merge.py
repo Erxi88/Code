@@ -87,7 +87,7 @@ def _stufe_b_quellen() -> frozenset[str]:
 
 
 AMTLICH = "amtlich"
-_BT_SNIPPET = re.compile(r"Amtliches Steuerberaterverzeichnis: (\d+) Berufsträger \((.*)\)")
+_BT_SNIPPET = re.compile(r"Amtliches Steuerberaterverzeichnis: (\d+) Berufsträger \((.*?)\)(?=;|$)")
 
 
 def amtliche_daten(funde: list[Fund]) -> dict | None:
@@ -1505,6 +1505,10 @@ def zusammenfuehren(
     if rechtsform == "Einzelkanzlei":
         name = name_mit_vorname(name, personen)
     hat_personeninfo = llm is not None or bool(erkannte) or bool(personen)
+    from ..search.verzeichnisse import NICHT_ZUGEORDNET
+
+    if any(f.quelle == "stb_verzeichnis" and NICHT_ZUGEORDNET in (f.snippet or "") for f in funde):
+        abweichungen.append(NICHT_ZUGEORDNET)  # Regel 4 → Blatt „Zu prüfen"
 
     # ---- Website, Quellen, Datum
     start = seiten.get(Seitentyp.START)

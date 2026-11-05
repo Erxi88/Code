@@ -342,7 +342,13 @@ def _firma(zeilen: list[str]) -> str | None:
 
 
 OHNE_GESELLSCHAFT = "Person ohne Gesellschaft an dieser Adresse"
-NICHT_ZUGEORDNET = "Person ohne Firmenzeile, mehrere Kanzleien an dieser Adresse – nicht zugeordnet"
+NICHT_ZUGEORDNET = "Einzelperson an Mehrkanzlei-Adresse – zuordnen"
+# Regel 4 (SH 05.11.2026): Person ohne Firmenzeile, einer Kanzlei an ihrer Adresse als Berufsträger zugeordnet –
+# Vermerk für das Kontrollblatt, damit echte Einzelkanzleien im selben Haus erkennbar bleiben
+ANGESTELLT = "angestellt (vermutet)"
+ANGESTELLT_PRAEFIX = "Angestellt vermutet (Regel 4): "  # im Snippet ohne Klammern (Berufsträger-Liste steht in Klammern)
+# Berufsträger-Liste im Snippet: bis zur schließenden Klammer vor „;" bzw. Ende – Namen mit „(FH)" bleiben ganz
+BERUFSTRAEGER_SNIPPET = re.compile(r"Amtliches Steuerberaterverzeichnis: (\d+) Berufsträger \((.*?)\)(?=;|$)")
 
 
 SOZIETAET = "Sozietät/Bürogemeinschaft – Name über Website prüfen"
@@ -618,6 +624,8 @@ def stbv_gruppieren(karten: list[StbvKarte], quelle: str = "stb_verzeichnis") ->
         else:
             vor_ort = [g for (a, _), g in gruppen.items() if a == adr and g["art"] not in ("person", "personen")]
             ziel = _kanzlei_zur_person(k.name, vor_ort)
+            if ziel is not None:  # Regel 1/4: als Berufsträger der Kanzlei an der Adresse, Vermerk „angestellt"
+                ziel.setdefault("angestellt", []).append(person)
             if ziel is None and vor_ort:  # mehrere Kanzleien, kein Nachname passt → einzeln
                 ziel = gruppen.setdefault((adr, _schluessel_name(einzelname)), dict(
                     name=einzelname, strasse=k.strasse, plz=k.plz, ort=k.ort, url=k.url, personen=[], art="person",
@@ -649,6 +657,8 @@ def stbv_gruppieren(karten: list[StbvKarte], quelle: str = "stb_verzeichnis") ->
         else:
             snippet = (f"Amtliches Steuerberaterverzeichnis: 1 Berufsträger ({'; '.join(g['personen'])}); "
                        f"{NICHT_ZUGEORDNET if g.get('mehrere') else OHNE_GESELLSCHAFT}")
+        if g.get("angestellt"):
+            snippet += f"; {ANGESTELLT_PRAEFIX}{' | '.join(g['angestellt'])}"
         if len(g.get("namen") or []) > 1:
             snippet += f"; {KURZFORM_ZUSAMMEN}{key.removeprefix('kurz:')}: {' | '.join(g['namen'])}"
         hits.append(SearchHit(quelle=quelle, quell_id=f"{g['plz']}|{adr}|{key}", name=g["name"], strasse=g["strasse"],
