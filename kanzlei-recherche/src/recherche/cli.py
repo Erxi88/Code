@@ -437,7 +437,12 @@ def _export(ctx: Kontext, out: Path | None, kontrollblaetter: bool = False) -> P
 
 
 def _coverage(ctx: Kontext, st: Storage) -> CoverageErgebnis:
-    referenz = load_referenz(ctx.settings.pfad(ctx.settings.pfade.referenz), ctx.bundesland)
+    """Referenz: die Verzeichniszahl, sobald das amtliche Verzeichnis im Bestand ist (Vorgabe 05.11.2026), sonst die
+    Kammer-Schätzung aus referenz_kammern.yaml."""
+    from .coverage import verzeichnis_referenz
+
+    referenz = verzeichnis_referenz(st, ctx.bundesland, ctx.orte(None, mit_zusatz=False)) or load_referenz(
+        ctx.settings.pfad(ctx.settings.pfade.referenz), ctx.bundesland)
     return berechne(st, ctx.bundesland, ctx.orte(None), referenz, ziel_land=ctx.bl_cfg.name)
 
 

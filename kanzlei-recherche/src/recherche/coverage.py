@@ -9,7 +9,9 @@ Zuordnung zu Ort/Kreis (beste verfügbare Angabe): Ort (Adresse) → PLZ → Suc
 Vor dem Crawl haben reine Websuche-Treffer keine Adresse; dann zählt der Suchort,
 was unscharf ist (die Suche „Steuerberater Kiel" findet auch Umlandkanzleien).
 
-Erwartete Zahlen (config/referenz_kammern.yaml):
+Erwartete Zahlen (Vorgabe 05.11.2026): sobald das amtliche Steuerberaterverzeichnis für das Land im Bestand ist, die
+Verzeichniszahl – Kanzleien nach der Gruppierung (Kandidaten mit Fund „stb_verzeichnis"), je Kreis über PLZ und Ort
+(`verzeichnis_referenz`); die Kammer-Schätzung ist damit überholt. Sonst wie bisher (config/referenz_kammern.yaml):
 - je Kreis aus eigenem Wert, sonst Rest von `gesamt`, verteilt nach Einwohnern der Orte
   (Spalte einwohner der Ortsliste),
 - je Ort: Kreiswert anteilig nach Einwohnern der gelisteten Orte des Kreises,
@@ -79,6 +81,34 @@ def load_referenz(pfad: str | Path, bundesland: str) -> Referenz | None:
         quelle=daten.get("quelle"),
         stand=str(daten["stand"]) if daten.get("stand") else None,
     )
+
+
+VERZEICHNIS_QUELLE = "Amtliches Steuerberaterverzeichnis (Kanzleien nach Gruppierung)"
+
+
+def verzeichnis_referenz(storage: Storage, bundesland: str, orte: list[Ort]) -> Referenz | None:
+    """Verzeichniszahl als Referenz: je Kreis die Kandidaten des Landes mit Fund des amtlichen Verzeichnisses (Kreis
+    über PLZ und Ort laut Ortsliste); None ohne amtliche Funde."""
+    from .stbv_lauf import QUELLE, _ort_schluessel
+
+    ids = {f.kandidat_id for f in storage.funde(bundesland, QUELLE) if f.kandidat_id is not None}
+    if not ids:
+        return None
+    je_plz: dict[str, list[tuple[str, str]]] = defaultdict(list)
+    for o in orte:
+        if o.kreis:
+            for p in o.alle_plz:
+                je_plz[p].append((_ort_schluessel(o.gemeinde or o.name), o.kreis))
+    kreise: dict[str, float] = defaultdict(float)
+    for k in storage.kandidaten(bundesland):
+        if k.id not in ids:
+            continue
+        moeglich = je_plz.get(k.plz or "", [])
+        passend = {kr for name, kr in moeglich if name == _ort_schluessel(k.ort)} or {kr for _, kr in moeglich}
+        kreise[sorted(passend)[0] if len(passend) == 1 else UNBEKANNT] += 1
+    stand = (storage.cache_get("stbv_gruppierung", bundesland) or {}).get("version")
+    return Referenz(bundesland.upper(), "kanzleien", None, float(sum(kreise.values())),
+                    {k: v for k, v in kreise.items() if k != UNBEKANNT}, VERZEICHNIS_QUELLE, stand)
 
 
 @dataclass

@@ -181,3 +181,23 @@ def test_coverage_zaehlt_wie_der_export_ueber_alle_laeufe(storage):
     assert erg.gefunden == len(haupt) == 2
     assert (erg.aus_anderen_laeufen, erg.ausserhalb) == (1, 1)
     assert {o.ort: o.gefunden for o in erg.orte} == {"Kiel": 1, "Wedel": 1}
+
+
+def test_verzeichniszahl_als_referenz(storage):
+    """Vorgabe 05.11.2026: coverage misst gegen die Verzeichniszahl (Kanzleien des amtlichen Verzeichnisses nach der
+    Gruppierung, je Kreis über PLZ und Ort) – die Kammer-Schätzung ist überholt. Ohne amtliche Funde: None."""
+    from recherche.coverage import VERZEICHNIS_QUELLE, verzeichnis_referenz
+    from recherche.search.pipeline import Ort
+
+    orte = [Ort("Kiel", "24103", KIEL), Ort("Kronshagen", "24119", RD), Ort("Braak", "22145", "Kreis Stormarn"),
+            Ort("Stapelfeld", "22145", "Kreis Stormarn")]
+    assert verzeichnis_referenz(storage, "SH", orte) is None
+    for i, (plz, ort) in enumerate([("24103", "Kiel"), ("24103", "Kiel"), ("24119", "Kronshagen"), ("22145", "Braak"),
+                                    ("99999", "Nirgendwo")]):
+        kid = storage.add_kandidat(Kandidat(bundesland="SH", name=f"Kanzlei {i}", plz=plz, ort=ort,
+                                            quelle="stb_verzeichnis"))
+        storage.add_fund(Fund(kandidat_id=kid, bundesland="SH", quelle="stb_verzeichnis", quell_id=f"v{i}"))
+    storage.add_kandidat(Kandidat(bundesland="SH", domain="nur-brave.example", plz="24103", ort="Kiel"))  # kein amtl.
+    ref = verzeichnis_referenz(storage, "SH", orte)
+    assert (ref.quelle, ref.erwartet_gesamt) == (VERZEICHNIS_QUELLE, 5)
+    assert ref.kreise == {KIEL: 2, RD: 1, "Kreis Stormarn": 1}  # 99999 → unbekannt, nur in der Summe

@@ -96,6 +96,10 @@ der nächsten Quelle füllen.**
   Seitenregel × 20), werden ihre PLZ-Bezirke aus OpenPLZ als Zusatz-Suchorte nachgesucht – auch ohne
   Stadtteil-Einträge in der Ortsliste und auch für schon erledigte Queries (Wiederaufnahme, Pilot-
   Bestand). `recherche orte` legt die Zusatz-Suchorte nur mit Einwohnerzahlen (GV-ISys) an.
+- **Referenz der Coverage** (Vorgabe 05.11.2026): sobald das amtliche Verzeichnis für das Land im Bestand ist, die
+  **Verzeichniszahl** – Kandidaten mit Fund „stb_verzeichnis" (Kanzleien nach der Gruppierung, ohne Syndikus und
+  Beratungsstellen), je Kreis über PLZ und Ort der Ortsliste (`coverage.verzeichnis_referenz`); die Kammer-Schätzung
+  (`referenz_kammern.yaml`, unverändert) gilt nur noch für Länder ohne amtliche Funde. Ausgabe nennt die Quelle.
 - **Danach `recherche coverage`** (nach der Extraktion zählt **dieselbe Auswahl wie das Hauptblatt im Export**:
   Kanzleien mit PLZ im Land aus allen Läufen, ohne weitere Domains und „Zu prüfen" – Q14 stimmt damit; Zeilen ohne
   geprüfte PLZ beim Land ihres Laufs; Ausgabe „davon aus anderen Läufen"; Kreis aus der extrahierten PLZ; „keine Kanzlei", „außerhalb",
