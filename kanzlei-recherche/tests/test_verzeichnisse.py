@@ -190,7 +190,7 @@ def test_firmenschluessel_und_syndikus():
               person("Ina Behn", "Sozietät Behn & Kock", "Wall 9"), person("Jan Kock", "Sozietät Behn & Kock", "Wall 9"),
               person("Lea Voss", "Voss Steuerberatung", "Wall 9")]  # andere Firmenzeile an derselben Adresse
     hits = stbv_gruppieren(karten)
-    assert sorted(h.name for h in hits) == ["Nordlicht Treuhand GmbH Wirtschaftsprüfungsgesellschaft",
+    assert sorted(h.name for h in hits) == ["Nordlicht Treuhand GmbH",  # zwei Schreibweisen, kürzester Name
                                             "Sozietät Behn & Kock", "Voss Steuerberatung"]
     assert [k.name for k in stbv_syndikus(karten)] == ["Kai Lund"]
 
@@ -345,3 +345,44 @@ def test_hamburger_regeln_person_und_firmenzeile_an_kanzlei_adresse():
     assert "2 Berufsträger" in k["Luecke und Partner"].snippet  # Kanzlei aus Firmenzeile zählt für Regel 1
     assert NICHT_ZUGEORDNET in k["Steuerberater Lea Voss"].snippet
     assert OHNE_GESELLSCHAFT in k["Steuerberater Imke Thordsen"].snippet
+
+
+def test_regel_2_zwischen_firmenzeilen_und_kurzformen_grosser_gesellschaften():
+    """Freigabe 05.11.2026: Regel 2 auch zwischen zwei Firmenzeilen an derselben Adresse (Berufsbezeichnung vorn zählt
+    nicht); gleiche Kurzform einer Großgesellschaft an derselben Adresse = eine Kanzlei, Name = kürzester (Gesellschaft
+    vor Firmenzeile). Fiktiv nach den Kieler Fällen (Kruse Jäckel Groß, PwC/PricewaterhouseCoopers)."""
+    from recherche.search.verzeichnisse import (
+        KURZFORM_ZUSAMMEN,
+        StbvKarte,
+        kurzform,
+        stbv_gruppieren,
+    )
+
+    def person(name, firma, strasse, plz="24103"):
+        return StbvKarte(name, "Steuerberater", None, firma, strasse, plz, "Kiel", f"https://x/{name}")
+
+    def ges(name, strasse):
+        return StbvKarte(name, None, None, None, strasse, "24103", "Kiel", f"https://x/{name}")
+
+    karten = [person("Ole Rau", "StB Muster Lang Kurz Partnerschaft mbB", "Stiftstraße 1"),
+              person("Eva Ott", "Steuerberater Muster Lang Kurz PartG mbB", "Stiftstraße 1"),
+              person("Kai Lund", "PricewaterhouseCoopers GmbH WPG", "Damm 4"),
+              person("Ina Behn", "PwC GmbH Wirtschaftsprüfungsgesellschaft", "Damm 4"),
+              ges("Ernst & Young GmbH Wirtschaftsprüfungsgesellschaft", "Hafen 5"),
+              ges("EY Tax GmbH Steuerberatungsgesellschaft", "Hafen 5"),
+              person("Jan Kock", "EY GmbH & Co. KG WPG", "Hafen 5"),
+              person("Lea Voss", "KPMG AG WPG", "Damm 4"),  # andere Kurzform → eigene Kanzlei
+              person("Tom Hahn", "PwC GmbH WPG", "Andere Straße 9", "24105")]  # andere Adresse → eigene Kanzlei
+    k = {(h.name, h.strasse): h for h in stbv_gruppieren(karten)}
+    assert sorted(k) == sorted([("StB Muster Lang Kurz Partnerschaft mbB", "Stiftstraße 1"),
+                                ("PricewaterhouseCoopers GmbH WPG", "Damm 4"),
+                                ("EY Tax GmbH Steuerberatungsgesellschaft", "Hafen 5"),
+                                ("KPMG AG WPG", "Damm 4"), ("PwC GmbH WPG", "Andere Straße 9")])
+    assert "2 Berufsträger" in k[("StB Muster Lang Kurz Partnerschaft mbB", "Stiftstraße 1")].snippet
+    pwc = k[("PricewaterhouseCoopers GmbH WPG", "Damm 4")].snippet
+    assert "2 Berufsträger" in pwc and f"{KURZFORM_ZUSAMMEN}PwC: " in pwc
+    ey = k[("EY Tax GmbH Steuerberatungsgesellschaft", "Hafen 5")]
+    assert "Jan Kock" in ey.snippet and ey.roh_url == "https://x/EY Tax GmbH Steuerberatungsgesellschaft"
+    assert [kurzform(n) for n in ("Rödl & Partner GmbH", "Forvis Mazars GmbH", "Baker Tilly GmbH & Co. KG",
+                                  "ECOVIS Wirtschaftstreuhand", "Muster Steuerberatung")] == \
+        ["Rödl", "Forvis Mazars", "Baker Tilly", "ECOVIS", None]

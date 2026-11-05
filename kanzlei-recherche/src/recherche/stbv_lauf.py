@@ -32,7 +32,7 @@ from .storage import Storage
 
 QUELLE = "stb_verzeichnis"
 # Stand der Gruppierungsregeln (stbv_gruppieren): ein Land mit älterem Stand wird automatisch neu gruppiert
-GRUPPIERUNG_VERSION = "2026-11-05-adresse"  # Regeln 1 und 2 (HH): Personen/Firmenzeilen an Kanzlei-Adressen
+GRUPPIERUNG_VERSION = "2026-11-05-kurzform"  # Regeln 1, 2 (auch Firmenzeile↔Firmenzeile), Kurzformen
 SCHRITT = "stb-verzeichnis"
 
 

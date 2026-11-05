@@ -404,6 +404,7 @@ _RECHTSFORM_ENDE = re.compile(
     r"\bkg\b|\bgbr\b|\bohg\b|e\.\s?v\.", re.IGNORECASE)
 SYNDIKUS = "Syndikus/Unternehmen"
 FIRMENZEILE_OHNE_KARTE = "Kanzlei aus Firmenzeile (ohne Gesellschaftskarte)"
+KURZFORM_ZUSAMMEN = "zusammengeführt über die Kurzform "
 
 
 def hat_steuerbezug(firma: str | None) -> bool:
@@ -458,23 +459,70 @@ _ZUSATZ_ENDE = re.compile(
     r"rechtsanwaelte|wirtschaftspruefer)\.?$")
 
 
+# Berufsbezeichnungen am Anfang („StB Kruse Jäckel Groß …" = „Steuerberater Kruse Jäckel Groß …")
+_BERUF_ANFANG = re.compile(r"^(?:(?:stb|steuerberater(?:in)?|wp|wirtschaftspruefer(?:in)?|ra|rechtsanwa(?:lt|eltin|elte))"
+                           r"\.?(?:\s|[,&+/-])+)+")
+
+
+def _ohne_beruf_vorn(text: str) -> str:
+    return _BERUF_ANFANG.sub("", _falten(text).strip())
+
+
 def _firmenkern(firma: str) -> str:
-    """„Cordes + Partner WPG" → „cordespartner": ohne Rechtsform- und Berufszusätze am Ende, nur Buchstaben/Ziffern."""
-    f = _falten(firma).strip()
+    """„Cordes + Partner WPG" → „cordespartner": ohne Berufsbezeichnung vorn und Rechtsform-/Berufszusätze am Ende,
+    nur Buchstaben/Ziffern."""
+    f = _ohne_beruf_vorn(firma)
     while (kurz := _ZUSATZ_ENDE.sub("", f).strip()) != f and kurz:
         f = kurz
     return re.sub(r"[^0-9a-z]", "", f)
 
 
-def _gesellschaft_zur_firmenzeile(firma: str, vor_ort: list[dict]) -> dict | None:
-    """Regel 2 (HH 05.11.2026): Gesellschaft an derselben Adresse, deren Name mit denselben ersten zwei Namenswörtern
-    beginnt („PKF Fasselt" → „PKF Fasselt Partnerschaft mbB …") oder die Firmenzeile ohne Zusätze enthält („Cordes +
-    Partner WPG" → „CFH Cordes + Partner …"). Mehrere passende → die mit dem kürzesten Namen (Hauptgesellschaft)."""
-    woerter, kern = _namenswoerter(firma)[:2], _firmenkern(firma)
-    passend = [g for g in vor_ort
-               if (len(woerter) == 2 and _namenswoerter(g["name"])[:2] == woerter)
-               or (len(kern) >= 6 and kern in re.sub(r"[^0-9a-z]", "", _falten(g["name"])))]
+def _name_passt(firma: str, name: str) -> bool:
+    """Regel 2: gleiche erste zwei Namenswörter (ohne Berufsbezeichnung vorn) oder die Firmenzeile ohne Zusätze ist im
+    Namen enthalten."""
+    woerter = _namenswoerter(_ohne_beruf_vorn(firma))[:2]
+    kern = _firmenkern(firma)
+    return ((len(woerter) == 2 and _namenswoerter(_ohne_beruf_vorn(name))[:2] == woerter)
+            or (len(kern) >= 6 and kern in re.sub(r"[^0-9a-z]", "", _falten(name))))
+
+
+def _passende_kanzlei(firma: str, vor_ort: list[dict]) -> dict | None:
+    """Regel 2 (HH 05.11.2026): Kanzlei an derselben Adresse – Gesellschaft oder (Freigabe 05.11.2026) Kanzlei aus
+    einer anderen Firmenzeile –, die zur Firmenzeile passt (`_name_passt`, in beide Richtungen): „PKF Fasselt" →
+    „PKF Fasselt Partnerschaft mbB …", „Cordes + Partner WPG" → „CFH Cordes + Partner …", „StB Kruse Jäckel Groß
+    Partnerschaft mbB" = „Steuerberater Kruse Jäckel Groß PartG mbB". Mehrere passende → kürzester Name
+    (Hauptgesellschaft)."""
+    passend = [g for g in vor_ort if _name_passt(firma, g["name"]) or _name_passt(g["name"], firma)]
     return min(passend, key=lambda g: len(g["name"])) if passend else None
+
+
+# Kurzformen großer Gesellschaften und Netzwerke (Vorgabe 05.11.2026): gleiche Kurzform an derselben Adresse = eine
+# Kanzlei („PwC GmbH WPG" = „PricewaterhouseCoopers GmbH WPG"). Muster auf dem gefalteten Namen (ä → ae …).
+GROSSGESELLSCHAFTEN: dict[str, str] = {
+    "PwC": r"\bpwc\b|pricewaterhouse",
+    "EY": r"\bey\b|ernst\s*(?:&|\+|und)\s*young",
+    "KPMG": r"\bkpmg\b",
+    "BDO": r"\bbdo\b",
+    "Deloitte": r"deloitte",
+    "RSM": r"\brsm\b",
+    "Forvis Mazars": r"\bmazars\b|\bforvis\b",
+    "Rödl": r"\broedl\b",
+    "Baker Tilly": r"baker\s*tilly",
+    "Grant Thornton": r"grant\s*thornton",
+    "PKF": r"\bpkf\b",
+    "HLB": r"\bhlb\b",
+    "Ebner Stolz": r"ebner\s*stolz",
+    "WTS": r"\bwts\b",
+    "ETL": r"\betl\b",
+    "ECOVIS": r"\becovis\b",
+}
+_GROSS = [(kurz, re.compile(muster)) for kurz, muster in GROSSGESELLSCHAFTEN.items()]
+
+
+def kurzform(name: str | None) -> str | None:
+    """Kurzform einer Großgesellschaft im Namen („PricewaterhouseCoopers GmbH" → „PwC"), sonst None."""
+    f = _falten(name or "")
+    return next((kurz for kurz, m in _GROSS if m.search(f)), None)
 
 
 def _kanzlei_zur_person(name: str, vor_ort: list[dict]) -> dict | None:
@@ -507,11 +555,27 @@ def stbv_gruppieren(karten: list[StbvKarte], quelle: str = "stb_verzeichnis") ->
     - Firmenzeile ohne Steuerberatungsbezug („Siemens AG") → Syndikus/Unternehmen, kein Kandidat (`stbv_syndikus`).
     """
     gruppen: dict[tuple, dict] = {}
+
+    def kurz_gruppe(adr: str, kz: str, name: str, k: StbvKarte, art: str) -> dict:
+        """Gruppe der Großgesellschaft `kz` an der Adresse; Name = kürzester (Gesellschaft vor Firmenzeile)."""
+        g = gruppen.setdefault((adr, "kurz:" + kz), dict(name=name, strasse=k.strasse, plz=k.plz, ort=k.ort, url=k.url,
+                                                         personen=[], art=art, namen=[]))
+        if name not in g["namen"]:
+            g["namen"].append(name)
+        rang = lambda art_, n: (art_ != "gesellschaft", len(n))  # noqa: E731
+        if rang(art, name) < rang(g["art"], g["name"]):
+            g.update(name=name, art=art, url=k.url if art == "gesellschaft" else g["url"])
+        return g
+
     for k in karten:
         if k.gesellschaft:
-            key = (adresse_key(k.strasse, k.plz) or f"{k.strasse}|{k.plz}", _schluessel_name(k.firma or k.name))
-            gruppen.setdefault(key, dict(name=k.firma or k.name, strasse=k.strasse, plz=k.plz, ort=k.ort, url=k.url,
-                                         personen=[], art="gesellschaft"))
+            adr = adresse_key(k.strasse, k.plz) or f"{k.strasse}|{k.plz}"
+            if kz := kurzform(k.firma or k.name):
+                kurz_gruppe(adr, kz, k.firma or k.name, k, "gesellschaft")
+                continue
+            gruppen.setdefault((adr, _schluessel_name(k.firma or k.name)), dict(
+                name=k.firma or k.name, strasse=k.strasse, plz=k.plz, ort=k.ort, url=k.url, personen=[],
+                art="gesellschaft"))
     kanzleien = _kanzlei_schluessel(karten)
     # erst Personen mit Firmenzeile (bilden ggf. Kanzleien aus Firmenzeile), dann ohne – Regel 1 sieht alle Kanzleien
     for k in sorted(karten, key=lambda k: not k.firma):
@@ -521,17 +585,25 @@ def stbv_gruppieren(karten: list[StbvKarte], quelle: str = "stb_verzeichnis") ->
         einzelname = f"{k.beruf} {k.name}"
         adr = adresse_key(k.strasse, k.plz) or f"{k.strasse}|{k.plz}"
         ziel = None
-        if k.firma:
+        if k.firma and (kz := kurzform(k.firma)):
+            ziel = kurz_gruppe(adr, kz, k.firma, k, "firmenzeile")
+        elif k.firma:
             vor_ort = [(key, g) for (a, key), g in gruppen.items() if a == adr and g["art"] == "gesellschaft"]
             fk, fw, fs = _schluessel_name(k.firma), _erstes_wort(k.firma), firmen_schluessel(k.firma)
             gleich = [g for key, g in vor_ort if key == fk or firmen_schluessel(g["name"]) == fs]
             praefix = [g for key, g in vor_ort if key.startswith(fk) or fk.startswith(key)]
             wort = [g for _, g in vor_ort if _erstes_wort(g["name"]) == fw]
             ziel = gleich[0] if gleich else praefix[0] if len(praefix) == 1 else wort[0] if len(wort) == 1 else None
-            ziel = ziel or _gesellschaft_zur_firmenzeile(k.firma, [g for _, g in vor_ort])
-            if ziel is None:  # gleiche Firmenzeile an derselben Adresse = eine Kanzlei (ohne Gesellschaftskarte)
-                ziel = gruppen.setdefault((adr, "firma:" + fs), dict(
-                    name=k.firma, strasse=k.strasse, plz=k.plz, ort=k.ort, url=k.url, personen=[], art="firmenzeile"))
+            ziel = ziel or _passende_kanzlei(k.firma, [g for _, g in vor_ort])
+            if ziel is None:  # gleiche bzw. passende Firmenzeile an derselben Adresse = eine Kanzlei (ohne Karte)
+                ziel = gruppen.get((adr, "firma:" + fs)) or _passende_kanzlei(k.firma, [
+                    g for (a, _), g in gruppen.items() if a == adr and g["art"] == "firmenzeile"])
+                if ziel is None:
+                    ziel = gruppen.setdefault((adr, "firma:" + fs), dict(
+                        name=k.firma, strasse=k.strasse, plz=k.plz, ort=k.ort, url=k.url, personen=[],
+                        art="firmenzeile"))
+                elif len(k.firma) < len(ziel["name"]):  # Hauptname = kürzester
+                    ziel["name"] = k.firma
         else:
             vor_ort = [g for (a, _), g in gruppen.items() if a == adr and g["art"] != "person"]
             ziel = _kanzlei_zur_person(k.name, vor_ort)
@@ -552,6 +624,8 @@ def stbv_gruppieren(karten: list[StbvKarte], quelle: str = "stb_verzeichnis") ->
         else:
             snippet = (f"Amtliches Steuerberaterverzeichnis: 1 Berufsträger ({'; '.join(g['personen'])}); "
                        f"{NICHT_ZUGEORDNET if g.get('mehrere') else OHNE_GESELLSCHAFT}")
+        if len(g.get("namen") or []) > 1:
+            snippet += f"; {KURZFORM_ZUSAMMEN}{key.removeprefix('kurz:')}: {' | '.join(g['namen'])}"
         hits.append(SearchHit(quelle=quelle, quell_id=f"{g['plz']}|{adr}|{key}", name=g["name"], strasse=g["strasse"],
                               plz=g["plz"], ort=g["ort"], snippet=snippet, roh_url=g["url"]))
     return hits

@@ -207,13 +207,19 @@ der nächsten Quelle füllen.**
       ohne Lebenszeichen seit 10 min gilt die Sperre als verwaist (kein PID-Test – unter Windows beendet `os.kill`
       den Prozess). Der Einzellauf endet dann mit Code 1.
       **Gruppierung an Kanzlei-Adressen** (HH-Analyse 05.11.2026: 977 Einträge → 386 Kanzleien, Soll ~200;
-      `GRUPPIERUNG_VERSION` „2026-11-05-adresse"): (1) Person ohne Firmenzeile – genau eine Kanzlei (Gesellschaft oder
+      Freigabe 05.11.2026): (1) Person ohne Firmenzeile – genau eine Kanzlei (Gesellschaft oder
       Kanzlei aus Firmenzeile) an der Adresse → zugeordnet; mehrere → die, deren Name den Nachnamen enthält (Bartsch →
       „ETL Bartsch & Kollegen", Umlaute gefaltet); sonst einzeln mit Kennzeichen „Person ohne Firmenzeile, mehrere
       Kanzleien an dieser Adresse – nicht zugeordnet". (2) Firmenzeile an der Adresse einer Gesellschaft, deren Name mit
       denselben ersten zwei Namenswörtern beginnt („PKF Fasselt") oder die Firmenzeile ohne Rechtsform-/Berufszusätze
       enthält („Cordes + Partner WPG" → „CFH Cordes + Partner …") → zur Gesellschaft; mehrere passende → kürzester
-      Name (Hauptgesellschaft). Ein Land mit älterer Gruppierung wird vor Nachsuche, crawl und extract neu gruppiert;
+      Name (Hauptgesellschaft). Regel 2 gilt auch zwischen zwei Firmenzeilen an derselben Adresse, eine
+      Berufsbezeichnung vorn zählt nicht („StB Kruse Jäckel Groß Partnerschaft mbB" = „Steuerberater Kruse Jäckel Groß
+      PartG mbB"); Name = kürzester. **Kurzformen** (`GROSSGESELLSCHAFTEN` in `search/verzeichnisse.py`: PwC, EY, KPMG,
+      BDO, Deloitte, RSM, Forvis Mazars, Rödl, Baker Tilly, Grant Thornton, PKF, HLB, Ebner Stolz, WTS, ETL, ECOVIS):
+      gleiche Kurzform an derselben Adresse = eine Kanzlei (Gesellschaften und Firmenzeilen; Name = kürzester
+      Gesellschaftsname, sonst kürzeste Firmenzeile; Snippet „zusammengeführt über die Kurzform X: Name | Name").
+      `GRUPPIERUNG_VERSION` „2026-11-05-kurzform". Ein Land mit älterer Gruppierung wird vor Nachsuche, crawl und extract neu gruppiert;
       der Schritt „nach" verweigert bis dahin, die Warteschlange schickt das Land zuerst wieder durch den Netz-Teil.
       `stb-verzeichnis --neu-gruppieren`: amtliche Kandidaten entfernen (andere nur um amtliche Funde bereinigen),
       Lauf-Protokoll leeren, dann aus dem Cache neu anlegen – keine neuen Abfragen; Nachsuche-Merker nur der
