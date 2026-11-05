@@ -49,6 +49,7 @@ from .personen import (
 from .personen import (
     ErkanntePerson,
     Mitarbeiterzahl,
+    _namensliste,
     _nur_titel,
     erkenne_personen,
     funktion_aus_namen,
@@ -262,7 +263,8 @@ def personen_vereinigen(personen: list[LlmPerson]) -> list[LlmPerson]:
 # Schwache („Partner", „Gesellschafter") nur als Label mit Doppelpunkt – sonst trifft die Navigation
 # („Partner Berufsträger Firmenphilosophie Historie").
 _VERTRETUNG_STARK = re.compile(
-    r"vertretungs?berechtigt\w*|vertreten\s+durch|geschäftsführ\w*|geschaeftsfuehr\w*|inhaber\w*|"
+    r"vertretungs?berechtigt\w*|vertreten\s+durch|gesetzliche[rn]?\s+vertreter\w*|geschäftsführ\w*|geschaeftsfuehr\w*|"
+    r"inhaber\w*|"
     # „Vertretung" ⏎ „StB Friso …" (etl-holstein), „Leitung"/„Kanzleileitung" nur als eigene Überschrift
     r"\bvertretung\b|^\s*(?:kanzlei)?leitung\s*:?\s*$", re.I | re.M
 )
@@ -290,6 +292,10 @@ def _klammer_teilen(teil: str) -> list[str]:
     return [m.group(1), m.group(2)] if (m := _KLAMMER.match(teil)) else [teil]
 
 
+_TITEL_HINTEN = re.compile(r"\s+(StBin|StB|WP|WPin|vBP|RA|RAin|B\.\s?A\.?|M\.\s?A\.?|B\.\s?Sc\.?|M\.\s?Sc\.?|MBA|"
+                           r"LL\.\s?[MB]\.?|\(FH\))\s*$")
+
+
 def _namen_mit_funktion(text: str) -> list[tuple[str, str | None]]:
     """„die Partner: Dipl.-Kfm. Jens Hansen, Maren Petersen und Ole Brandt" → Namen;
     „Yvonne Baur, Steuerberaterin / Sven Drews, Steuerberater" → Namen mit Berufsbezeichnung."""
@@ -299,11 +305,18 @@ def _namen_mit_funktion(text: str) -> list[tuple[str, str | None]]:
     # „Yvonne Baur (Steuerberaterin)" → Name und Funktion als eigene Teile
     teile = [x for teil in teile for x in _klammer_teilen(teil)]
     for k, teil in enumerate(teile):
+        # Titel/Berufskürzel hinter dem Namen („Frank Vangerow StB", „Lillemor Vangerow B.A." – jaich-vangerow.de)
+        hinten = None
+        while (m := _TITEL_HINTEN.search(teil)) and len(teil[: m.start()].split()) >= 2:
+            if ist_berufstraeger_funktion(m.group(1)):
+                hinten = hinten or m.group(1)
+            teil = teil[: m.start()]
         woerter = teil.split()
         for start in range(min(3, len(woerter))):  # einleitende Wörter („die Partner") überspringen
             if nt := name_zerlegen(" ".join(woerter[start:])):
                 folge = teile[k + 1] if k + 1 < len(teile) else ""
                 funktion = folge if folge and not name_zerlegen(folge) and ist_berufstraeger_funktion(folge) else None
+                funktion = funktion or hinten
                 if funktion is None and nt[1] and ist_berufstraeger_funktion(nt[1]):
                     funktion = nt[1]  # „StB Friso Dührkop", „StBin …": Berufskürzel vor dem Namen
                 gefunden.append((nt[0], funktion))
@@ -444,7 +457,10 @@ def vertretung(impressum: str, fremd: set[int] | None = None, rahmen: set[str] |
         if im_rahmen or (i in fremd and not eigener_abschnitt):
             protokoll.append(f"Zeile {i + 1} „{z[:70]}“ → übersprungen ({'Navigation/Fußzeile' if im_rahmen else 'Fremd-Abschnitt'})")
             continue
-        folge_gesperrt = (lambda j: " ".join(zeilen[j].lower().split()) in rahmen) if eigener_abschnitt else gesperrt
+        # Namen unter einer Schlüsselwort-Zeile des Inhalts dürfen im Rahmen stehen: „Verantwortlich:" ⏎ „Dörte
+        # Andruleit" – Name und Anschrift stehen als Seitenleiste auf jeder Seite (andruleit.de, fixture-eval 05.11.2026)
+        folge_gesperrt = (lambda j: " ".join(zeilen[j].lower().split()) in rahmen) if eigener_abschnitt else (
+            lambda j: j in fremd)
         gefunden_namen, grund = _abschnitt_namen(zeilen, i, m, stark, folge_gesperrt)
         protokoll.append(f"Zeile {i + 1} „{z[:70]}“ → {grund}")
         for name, funktion in gefunden_namen:
@@ -532,6 +548,9 @@ def impressum_berufsbezeichnung(impressum: str, fremd: set[int] | None = None) -
 
 # „Dipl.-Kfm. Jens Eder – Kanzlei für Steuerberatung": Name vorn, dahinter die Kanzleibezeichnung (kanzlei-eder.tax)
 _KOPF_NAME_ZUSATZ = re.compile(r"^(.+?)\s+[–—-]\s+(?:kanzlei|steuerkanzlei|steuerbüro|steuerberatung|büro)\b", re.I)
+
+
+_PLZ_ZEILE = re.compile(r"\b\d{5}\b")
 
 
 def _kopf_inhaber(zeile: str) -> str | None:
@@ -669,6 +688,31 @@ def _zentralnummern(kandidat: Kandidat, seiten: dict) -> set[str]:
     return fest | (nummern(imp) - standort if standort else set())
 
 
+_REGISTER = re.compile(r"\b(?:HRB|HRA|PR|GnR)\s*\d|handelsregister(?!\s+(?:nicht|keine))|partnerschaftsregister",
+                       re.IGNORECASE)
+_IMPRESSUM_UEBERSCHRIFT = re.compile(r"^(?:impressum|imprint|anbieterkennzeichnung)\s*:?$", re.IGNORECASE)
+
+
+def firmierung_unter_impressum(impressum: str | None) -> str | None:
+    """Erste Zeile mit Gesellschaftsform (nicht Einzelkanzlei) in den 3 Zeilen unter einer Überschrift „Impressum",
+    wenn das Impressum einen Registereintrag nennt (HRB …) – Rahmenzeilen zählen (Fußzeile auf jeder Seite)."""
+    if not impressum or not _REGISTER.search(impressum):
+        return None
+    zeilen = [z.strip() for z in (text_normalisieren(impressum) or "").splitlines() if z.strip()]
+    for i, z in enumerate(zeilen):
+        if not _IMPRESSUM_UEBERSCHRIFT.match(z):
+            continue
+        davor = None
+        for folge in zeilen[i + 1: i + 4]:
+            if _IMPRESSUM_UEBERSCHRIFT.match(folge) or re.search(r"\d{5}|@|:", folge) or len(folge) > 80:
+                break
+            if (form := rechtsform_aus_text(folge)) and form != "Einzelkanzlei" and not _SATZANFANG.match(folge):
+                # „ETL HOLSTEIN" ⏎ „Steuerberatungsgesellschaft mbH": nur die Kanzleiform → mit der Zeile davor
+                return f"{davor} {folge}" if davor and _NUR_KANZLEIFORM.match(folge) else folge
+            davor = folge
+    return None
+
+
 def bezeichnung_aus_partnerschaftsname(name: str | None) -> str | None:
     """„Brandenburg und Partner mbB Steuerberater" → „Steuerberater": Der Name einer Partnerschaft nennt
     die Berufe aller Partner (§ 2 PartGG) – steht dort genau einer, gilt er für die Vertretungsberechtigten."""
@@ -714,10 +758,17 @@ def ansprechpartner(
         if not vertreter and (beruf := bezeichnung or impressum_berufsbezeichnung(impressum, fremd)):
             # erste Kopfzeile ist nur ein Name („Noémie Lümers" ⏎ „Noémie Lümers Steuerberatung"), die
             # Berufsbezeichnung steht weiter unten: die Person ist die Inhaberin (luemers.de)
-            kopf = kopfzeilen(impressum, rahmen)
-            if kopf and (inhaber := _kopf_inhaber(kopf[0])):
-                vertreter.append(inhaber)
-                v.funktionen[inhaber] = beruf
+            # auch die zweite/dritte Kopfzeile unter der Firmierung und eine Namensliste („Christian Backmann, Torsten
+            # Mitterhuber" unter „Steuerkanzlei Backmann · Mitterhuber" – steuerkanzlei-mbm.de, fixture-eval 05.11.2026)
+            for z in kopfzeilen(impressum, rahmen)[:3]:
+                if _PLZ_ZEILE.search(z):
+                    break
+                namen = [inhaber] if (inhaber := _kopf_inhaber(z)) else [nt[0] for nt in _namensliste(z) or []]
+                if namen:
+                    for n in namen:
+                        vertreter.append(n)
+                        v.funktionen[n] = beruf
+                    break
         if not vertreter and (firma := kopf_firmierung(impressum)):
             # „Steuerbüro Jens Wiese" mit Berufsbezeichnung im Impressum: Jens Wiese ist der Inhaber
             inhaber = _KANZLEI_VORN.sub("", firma)
@@ -1177,6 +1228,12 @@ def zusammenfuehren(
     else:
         verworfener_name = None
     llm_name = name_vervollstaendigen(name_aus_impressum(roh_name, impressum_text, fremd, rahmen), impressum_text)
+    if (firma := firmierung_unter_impressum(impressum_text)) and (not llm_name or not rechtsform_aus_text(llm_name)):
+        # Registereintrag und Firmenzeile mit Rechtsform direkt unter „Impressum" (auch als Fußzeile auf jeder Seite):
+        # das ist die Firmierung, nicht „Wirtschaftsprüfer Ralf Helfmann" (panares-nord.de, fixture-eval 05.11.2026)
+        if llm_name and _name_norm(llm_name) != _name_norm(firma):
+            abweichungen.append(f"Name: Firmierung „{firma}“ aus dem Impressum statt „{llm_name}“")
+        llm_name = firma
     name = disc["name"] or llm_name
     if disc["name"] and llm_name and not (name_tokens(disc["name"]) & name_tokens(llm_name)):
         abweichungen.append(f"Name: {disc['quelle_name']} „{disc['name']}“ / Website „{llm_name}“")

@@ -52,7 +52,8 @@ _KEINE_NAMEN = frozenset(
     berufshaftpflicht berufsordnung streitschlichtung information informationen allgemeine
     anwendbares anwendbar recht rechts gerichtsstand rubrik
     büro buchstelle beratungsstelle zweigstelle zweigniederlassung niederlassung geschäftsstelle außenstelle filiale
-    vertretungsberechtigte vertretungsberechtigter gesellschafter
+    vertretungsberechtigte vertretungsberechtigter gesellschafter gesetzliche gesetzlicher vertreter vertreterin
+    vertretung
     berufsträger berufstraeger firmenphilosophie philosophie historie geschichte leitbild werte vision
     mandantenportal portal aktuelles blog presse veranstaltungen seminare newsletter formulare rechner
     partner netzwerk kooperationen branchen schwerpunkte kompetenzen digitalisierung ausbildung

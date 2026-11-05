@@ -480,6 +480,16 @@ der nächsten Quelle füllen.**
     Fremd-Abschnitten stehen, entfallen. „Steuerberater Christian Backmann, Torsten Mitterhuber" → beide (Namensliste
     hinter der Berufsbezeichnung). Einzelkanzlei ohne Gesellschaftsform mit genau einer genannten Person (auch ohne
     Berufstitel und Schlüsselwort) → diese Person („einzige genannte Person (Einzelkanzlei)").
+    **An den echten Seiten (fixture-eval 05.11.2026):** „Gesetzliche Vertreter:" ist ein starkes Schlüsselwort und nie
+    ein Name; Titel und Berufskürzel hinter dem Namen („Frank Vangerow StB", „Lillemor Vangerow B.A., StBin") werden vor
+    der Namensprüfung abgetrennt, ein Berufskürzel wird Funktion (jaich-vangerow.de). Namen unter einer
+    Schlüsselwort-Zeile des Inhalts dürfen im Rahmen stehen („Verantwortlich:" ⏎ Name/Anschrift als Seitenleiste –
+    andruleit.de). Die Inhaber-Regel aus dem Kopf (Lümers/Eder) prüft die ersten drei Kopfzeilen bis zur PLZ-Zeile und
+    nimmt auch eine Namensliste („Steuerkanzlei Backmann · Mitterhuber" ⏎ „Christian Backmann, Torsten Mitterhuber" –
+    steuerkanzlei-mbm.de). Name: Nennt das Impressum einen Registereintrag (HRB, HRA, PR, Handelsregister) und steht in
+    den drei Zeilen unter „Impressum" eine Firmenzeile mit Gesellschaftsform (auch als Fußzeile jeder Seite; reine
+    Kanzleiform mit der Zeile davor), ist sie die Firmierung vor einem LLM-Namen ohne Rechtsform („PANARES nord GmbH"
+    statt „Wirtschaftsprüfer Ralf Helfmann" – panares-nord.de; `firmierung_unter_impressum`).
   - Ansprechpartner = nur **Berufsträger und Leitung**; Mehrfachnennungen werden
     vereinigt (Funktionen und Titel). Reihenfolge: Vertretungsberechtigte in der
     Reihenfolge des Impressum-Abschnitts „vertretungsberechtigt/vertreten durch", dann alle
