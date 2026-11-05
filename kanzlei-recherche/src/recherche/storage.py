@@ -336,8 +336,10 @@ class Storage:
         self.pfad = Path(pfad)
         if str(pfad) != ":memory:":
             self.pfad.parent.mkdir(parents=True, exist_ok=True)
-        self.conn = sqlite3.connect(str(pfad))
+        # timeout/busy_timeout: mehrere Länder parallel (stb-verzeichnis --alle-laender --parallel) schreiben nacheinander
+        self.conn = sqlite3.connect(str(pfad), timeout=120)
         self.conn.row_factory = sqlite3.Row
+        self.conn.execute("PRAGMA busy_timeout=120000")
         self.conn.execute("PRAGMA journal_mode=WAL")
         self.conn.execute("PRAGMA foreign_keys=ON")
         self._migrieren()

@@ -85,6 +85,19 @@ OrteOpt = Annotated[
 ]
 
 
+def orte_aus_openplz(settings: Settings, bundesland: str, db: Path) -> list[Ort]:
+    """Gemeinden mit allen PLZ und Kreis (laut OpenPLZ) eines Landes – für Länder ohne orte_<BL>.csv (ohne
+    Einwohnerzahlen; die Einwohnerregel der Websuche gilt dort nicht). Antworten im api_cache."""
+    from .orte import OpenPlzOrte, gemeinden_aus_localities
+
+    with Storage(db) as st:
+        client = OpenPlzOrte(settings.openplz.url, cache=st, page_size=settings.openplz.page_size,
+                             pause_s=settings.openplz.pause_s)
+        gemeinden = gemeinden_aus_localities(client.localities(LAND_SCHLUESSEL[bundesland]))
+    return [Ort(g.name, g.plz[0], g.kreis_openplz, ags=g.ags, plz_weitere=tuple(g.plz[1:]))
+            for g in sorted(gemeinden.values(), key=lambda g: g.name) if g.plz]
+
+
 class Kontext:
     def __init__(self, config: Path | None, bundesland: str | None, db: Path | None):
         self.settings: Settings = load_settings(config)
@@ -96,7 +109,11 @@ class Kontext:
         return Storage(self.db)
 
     def orte(self, auswahl: str | None, mit_zusatz: bool = True) -> list[Ort]:
-        orte = load_orte(self.settings.pfad(self.bl_cfg.orte_datei), mit_zusatz=mit_zusatz)
+        pfad = self.settings.pfad(self.bl_cfg.orte_datei)
+        if pfad.exists():
+            orte = load_orte(pfad, mit_zusatz=mit_zusatz)
+        else:  # ohne orte_<BL>.csv: Gemeinden und PLZ direkt aus OpenPLZ (gecacht) – kein Vorlauf nötig
+            orte = orte_aus_openplz(self.settings, self.bundesland, self.db)
         return orte_filtern(orte, auswahl.split(",") if auswahl else None)
 
     def vorlagen(self) -> Suchplan:
@@ -1042,6 +1059,157 @@ def stb_verzeichnis_analyse(
         console.print(f"CSV: {analyse_csv(analysen, out)}")
 
 
+def _stbv_netz(ctx: Kontext, orte: list[Ort], auswahl: list[Ort], kreis: str | None, endung: str, ja: bool,
+               ohne_details: bool, neu_gruppieren: bool) -> bool:
+    """Netz-Teil von stb-verzeichnis (parallel je Land möglich): Neu-Gruppierung (ausdrücklich oder automatisch bei
+    älterer Gruppierung), Suchseiten je PLZ, Detailseiten. False bei Abbruch (Limit, Rückfrage verneint)."""
+    from .stbv_lauf import (
+        GRUPPIERUNG_VERSION,
+        QUELLE,
+        bericht_csv,
+        neu_gruppieren_vorbereiten,
+        offene_details,
+        offene_plz,
+        run_details,
+        run_verzeichnis,
+    )
+
+    bl = ctx.bundesland
+    with ctx.storage() as st:
+        stand = (st.cache_get("stbv_gruppierung", bl) or {}).get("version")
+        alt = stand != GRUPPIERUNG_VERSION and bool(st.funde(bl, QUELLE))
+    if neu_gruppieren or alt:
+        if neu_gruppieren and not ja and not typer.confirm(
+                "Kandidaten des amtlichen Verzeichnisses entfernen und aus dem Cache neu gruppieren? (Läuft gerade ein "
+                "anderes stb-verzeichnis, vorher beenden.)", default=False):
+            console.print("Abgebrochen – nichts geändert.")
+            return False
+        with ctx.storage() as st:
+            entfernt, bereinigt = neu_gruppieren_vorbereiten(st, bl)
+        console.print(f"Neu gruppieren {bl}{' (ältere Gruppierung im Bestand)' if alt else ''}: {entfernt} Kandidaten "
+                      f"entfernt, {bereinigt} um amtliche Funde bereinigt – Seiten kommen aus dem Cache.")
+    with ctx.storage() as st:
+        st.cache_put("stbv_gruppierung", bl, {"version": GRUPPIERUNG_VERSION})
+        adapter = build_adapter(QUELLE, ctx.settings, cache=st)
+        _adapter_pruefen(adapter, explizit=True)
+        adapter.melden = lambda m: console.print(f"  [yellow]{bl}: {m}[/yellow]")
+        offen = offene_plz(st, bl, orte)
+        cfg = adapter.cfg
+        je = cfg.pause_s + cfg.pause_jitter_s / 2 + 2
+        console.print(f"Amtliches Verzeichnis {ctx.bl_cfg.name}: {len(orte)} PLZ, davon {len(offen)} offen – geschätzt "
+                      f"{_dauer(len(offen) * je)} ({je:.0f} s je PLZ; Antworten aus dem Cache sofort).")
+        if offen and not ja and not typer.confirm("Verzeichnis abfragen?", default=True):
+            console.print("Abgebrochen – nichts abgefragt.")
+            return False
+        stat = run_verzeichnis(st, adapter, orte, bl, ctx.blocklist(), _lauf_id(),
+                               fortschritt=lambda m: console.print(f"  {bl} {m}"))
+        console.print(f"Verzeichnis {bl}: {stat.plz - stat.uebersprungen} PLZ abgefragt ({stat.uebersprungen} schon "
+                      f"erledigt), {stat.treffer} Kanzleien – {stat.neu} neu (direkt im Bestand), {stat.bekannt} bekannt, "
+                      f"{stat.verworfen} schon von dieser Quelle, {stat.fehler} Fehler")
+        _verzeichnis_bericht(stat)
+        if stat.berichte:
+            ziel = ctx.settings.ausgabe_pfad(bl).with_name(f"stb_verzeichnis_plz_{bl}{endung}.csv")
+            console.print(f"Bericht je PLZ: [bold]{bericht_csv(stat.berichte, ziel)}[/bold]")
+        if stat.abbruch:
+            console.print(f"[yellow]Verzeichnis {bl} vorzeitig beendet:[/yellow] {stat.abbruch} – erneut starten setzt fort.")
+            return False
+        if ohne_details:
+            return True
+        im_kreis = {p for o in auswahl for p in o.alle_plz} if kreis else None
+        details = offene_details(st, bl, im_kreis)
+        je_detail = cfg.detail_pause_s + cfg.detail_pause_jitter_s / 2 + 1
+        console.print(f"Detailseiten {bl}: {len(details)} offen – geschätzt {_dauer(len(details) * je_detail)} "
+                      f"({je_detail:.1f} s je Seite; aus dem Cache sofort)")
+        if details and (ja or typer.confirm("Detailseiten lesen?", default=True)):
+            ds = run_details(st, adapter, bl, ctx.blocklist(), _lauf_id(),
+                             fortschritt=lambda m: console.print(f"  {bl} {m}", markup=False, highlight=False),
+                             plz=im_kreis)
+            console.print(f"Detailseiten {bl}: {ds.gelesen} gelesen – {ds.mit_telefon} mit Telefon, {ds.mit_email} mit "
+                          f"E-Mail, {ds.mit_internet} mit Internet ({ds.zusammengefuehrt} mit dem Kandidaten derselben "
+                          f"Website zusammengeführt), {ds.beratungsstellen} weitere Beratungsstellen als Standorte, "
+                          f"{ds.leer} ohne Eintrag, {ds.fehler} Fehler")
+            if ds.abbruch:
+                console.print(f"[yellow]Detailseiten {bl} vorzeitig beendet:[/yellow] {ds.abbruch} – erneut starten "
+                              "setzt fort.")
+                return False
+    return True
+
+
+LAND_MERKER = "stbv_land"  # api_cache: je Land erledigte Schritte der Warteschlange (netz, nach, export)
+
+
+def _alle_laender(config: Path | None, db: Path | None, parallel: int, ohne_nachsuche: bool, ohne_details: bool,
+                  nur_verzeichnis: bool, mit_export: bool, laender: list[str] | None = None) -> None:
+    """Warteschlange über alle 16 Länder (fortsetzbar): je Land Netz-Teil (Neu-Gruppierung, Suchseiten, Detailseiten)
+    – bis zu `parallel` Länder gleichzeitig, je eigener Abstand, mindestens min_abstand_host_s zwischen zwei Anfragen
+    an den Host –, danach im Hauptprozess nacheinander Nachsuche, crawl, extract (eine GPU) und mit `mit_export` der
+    Export des Landes; am Ende export --gesamt. Erledigte Schritte stehen je Land im api_cache."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    from .stbv_lauf import plz_orte
+
+    s = load_settings(config)
+    db_pfad = db or s.db_pfad()
+    laender = laender or list(BUNDESLAENDER)
+
+    def stand(bl: str) -> dict:
+        with Storage(db_pfad) as st:
+            return st.cache_get(LAND_MERKER, bl) or {}
+
+    def merken(bl: str, schritt: str) -> None:
+        with Storage(db_pfad) as st:
+            st.cache_put(LAND_MERKER, bl, {**(st.cache_get(LAND_MERKER, bl) or {}), schritt: True})
+
+    def netz(bl: str) -> bool:
+        ctx = _kontext(config, bl, db)
+        orte = plz_orte(ctx.orte(None, mit_zusatz=False))
+        if _stbv_netz(ctx, orte, orte, None, "", True, ohne_details, False):
+            merken(bl, "netz")
+            return True
+        return False
+
+    def nach(bl: str) -> None:
+        if not nur_verzeichnis and not stand(bl).get("nach"):
+            stb_verzeichnis(bundesland=bl, db=db, config=config, ja=True, ohne_nachsuche=ohne_nachsuche,
+                            nur_verzeichnis=False, out=None, kreis=None, ohne_details=ohne_details,
+                            neu_gruppieren=False, alle_laender=False, parallel=1, schritte="nach")
+            merken(bl, "nach")
+        if mit_export and not stand(bl).get("export"):
+            _export(_kontext(config, bl, db), None)
+            merken(bl, "export")
+
+    erledigt = {bl: stand(bl) for bl in laender}
+    console.print("Warteschlange: " + ", ".join(
+        f"{bl} ({'fertig' if st.get('netz') and (nur_verzeichnis or st.get('nach')) and (not mit_export or st.get('export')) else 'offen'})"
+        for bl, st in erledigt.items()) + f" – {parallel} Land/Länder gleichzeitig im Verzeichnis")
+    fehler: list[str] = []
+    for bl in laender:  # Netz schon erledigt, Rest offen (Abbruch nach dem Verzeichnis): zuerst nachholen
+        if erledigt[bl].get("netz"):
+            try:
+                nach(bl)
+            except (typer.Exit, Exception) as e:  # noqa: BLE001 – ein Land darf die Warteschlange nicht beenden
+                fehler.append(f"{bl}: {e!r}")
+    offen = [bl for bl in laender if not erledigt[bl].get("netz")]
+    with ThreadPoolExecutor(max_workers=max(1, parallel)) as pool:
+        laeufe = {pool.submit(netz, bl): bl for bl in offen}
+        for f in as_completed(laeufe):
+            bl = laeufe[f]
+            try:
+                if not f.result():
+                    fehler.append(f"{bl}: Verzeichnis/Detailseiten nicht abgeschlossen (Limit oder Abbruch)")
+                    continue
+                console.print(f"[bold]{bl}: Verzeichnis und Detailseiten fertig – Nachsuche, crawl, extract …[/bold]")
+                nach(bl)
+            except (typer.Exit, Exception) as e:  # noqa: BLE001
+                fehler.append(f"{bl}: {e!r}")
+    if mit_export and not fehler:
+        export(bundesland=None, db=db, config=config, out=None, gesamt=True, mit_kontrollblaettern=False)
+    for f in fehler:
+        console.print(f"[yellow]{f} – erneuter Aufruf setzt fort[/yellow]")
+    if not fehler:
+        console.print("Warteschlange fertig: alle Länder abgearbeitet.")
+
+
 @app.command("stb-verzeichnis")
 def stb_verzeichnis(
     bundesland: BundeslandOpt = None,
@@ -1059,23 +1227,22 @@ def stb_verzeichnis(
     neu_gruppieren: Annotated[bool, typer.Option("--neu-gruppieren", help=(
         "Kandidaten des amtlichen Verzeichnisses entfernen und aus dem Cache neu gruppieren (keine neuen Abfragen; "
         "nicht neben einem laufenden stb-verzeichnis)"))] = False,
+    alle_laender: Annotated[bool, typer.Option("--alle-laender", help=(
+        "alle 16 Länder als fortsetzbare Warteschlange (je Land: Verzeichnis, Detailseiten, Nachsuche, crawl, extract)"))
+    ] = False,
+    parallel: Annotated[int, typer.Option("--parallel", help=(
+        "mit --alle-laender: so viele Länder gleichzeitig im Verzeichnis (je eigener Abstand)"))] = 1,
+    schritte: Annotated[str, typer.Option("--schritte", hidden=True, help="alles | netz | nach")] = "alles",
 ) -> None:
     """Stufe B für das ganze Land: amtliches Steuerberaterverzeichnis PLZ für PLZ, Abgleich mit dem Bestand, neue
     Einträge direkt als Kandidaten, Website-Nachsuche (Brave, Kosten vorab), crawl, extract und Lückenliste (CSV und
     Blatt „Lücken (amtlich)" im Export). Nach Abbruch einfach erneut starten."""
     from .search.nachsuche import MERKER
-    from .stbv_lauf import (
-        QUELLE,
-        bericht_csv,
-        kreise,
-        luecken,
-        luecken_csv,
-        offene_plz,
-        orte_im_kreis,
-        plz_orte,
-        run_verzeichnis,
-    )
+    from .stbv_lauf import QUELLE, kreise, luecken, luecken_csv, orte_im_kreis, plz_orte
 
+    if alle_laender:
+        _alle_laender(config, db, parallel, ohne_nachsuche, ohne_details, nur_verzeichnis, mit_export=False)
+        return
     ctx = _kontext(config, bundesland, db)
     try:
         alle_orte = ctx.orte(None, mit_zusatz=False)
@@ -1089,70 +1256,20 @@ def stb_verzeichnis(
         console.print(f"Pilot: nur {auswahl[0].kreis} ({len(auswahl)} Gemeinden)")
     orte = plz_orte(auswahl)
     endung = f"_{re.sub(r'[^0-9a-zA-ZäöüÄÖÜß]+', '_', auswahl[0].kreis or kreis).strip('_')}" if kreis else ""
-    if neu_gruppieren:
-        from .stbv_lauf import neu_gruppieren_vorbereiten
-
-        if not ja and not typer.confirm("Kandidaten des amtlichen Verzeichnisses entfernen und aus dem Cache neu "
-                                        "gruppieren? (Läuft gerade ein anderes stb-verzeichnis, vorher beenden.)",
-                                        default=False):
-            console.print("Abgebrochen – nichts geändert.")
+    if schritte in ("alles", "netz"):
+        if not _stbv_netz(ctx, orte, auswahl, kreis, endung, ja, ohne_details, neu_gruppieren):
             return
+    if schritte == "netz":
+        return
+    if not ohne_nachsuche:
         with ctx.storage() as st:
-            entfernt, bereinigt = neu_gruppieren_vorbereiten(st, ctx.bundesland)
-        console.print(f"Neu gruppieren: {entfernt} Kandidaten entfernt, {bereinigt} um amtliche Funde bereinigt – "
-                      "Verzeichnis-Seiten, Nachsuche und Crawl kommen aus dem Cache.")
-    with ctx.storage() as st:
-        adapter = build_adapter(QUELLE, ctx.settings, cache=st)
-        _adapter_pruefen(adapter, explizit=True)
-        adapter.melden = lambda m: console.print(f"  [yellow]{m}[/yellow]")
-        offen = offene_plz(st, ctx.bundesland, orte)
-        cfg = adapter.cfg
-        je = cfg.pause_s + cfg.pause_jitter_s / 2 + 2
-        console.print(f"Amtliches Verzeichnis {ctx.bl_cfg.name}: {len(orte)} PLZ, davon {len(offen)} offen – geschätzt "
-                      f"{_dauer(len(offen) * je)} ({je:.0f} s je PLZ; Antworten aus dem Cache sofort).")
-        if offen and not ja and not typer.confirm("Verzeichnis abfragen?", default=True):
-            console.print("Abgebrochen – nichts abgefragt.")
-            return
-        stat = run_verzeichnis(st, adapter, orte, ctx.bundesland, ctx.blocklist(), _lauf_id(),
-                               fortschritt=lambda m: console.print(f"  {m}"))
-        console.print(f"Verzeichnis: {stat.plz - stat.uebersprungen} PLZ abgefragt ({stat.uebersprungen} schon erledigt), "
-                      f"{stat.treffer} Kanzleien – {stat.neu} neu (direkt im Bestand), {stat.bekannt} bekannt, "
-                      f"{stat.verworfen} schon von dieser Quelle, {stat.fehler} Fehler")
-        _verzeichnis_bericht(stat)
-        if stat.berichte:
-            ziel = ctx.settings.ausgabe_pfad(ctx.bundesland).with_name(f"stb_verzeichnis_plz_{ctx.bundesland}{endung}.csv")
-            console.print(f"Bericht je PLZ: [bold]{bericht_csv(stat.berichte, ziel)}[/bold]")
-        if stat.abbruch:
-            console.print(f"[yellow]Verzeichnis vorzeitig beendet:[/yellow] {stat.abbruch} – erneut starten setzt fort.")
-            return
-        if not ohne_details:
-            from .stbv_lauf import offene_details, run_details
-
-            im_kreis = {p for o in auswahl for p in o.alle_plz} if kreis else None
-            details = offene_details(st, ctx.bundesland, im_kreis)
-            je_detail = cfg.detail_pause_s + cfg.detail_pause_jitter_s / 2 + 1
-            console.print(f"Detailseiten: {len(details)} offen – geschätzt {_dauer(len(details) * je_detail)} "
-                          f"({je_detail:.1f} s je Seite; aus dem Cache sofort)")
-            if details and (ja or typer.confirm("Detailseiten lesen?", default=True)):
-                ds = run_details(st, adapter, ctx.bundesland, ctx.blocklist(), _lauf_id(),
-                                 fortschritt=lambda m: console.print(f"  {m}", markup=False, highlight=False),
-                                 plz=im_kreis)
-                console.print(f"Detailseiten: {ds.gelesen} gelesen – {ds.mit_telefon} mit Telefon, {ds.mit_email} mit "
-                              f"E-Mail, {ds.mit_internet} mit Internet ({ds.zusammengefuehrt} mit dem Kandidaten "
-                              f"derselben Website zusammengeführt), {ds.beratungsstellen} weitere Beratungsstellen als "
-                              f"Standorte, {ds.leer} ohne Eintrag, {ds.fehler} Fehler")
-                if ds.abbruch:
-                    console.print(f"[yellow]Detailseiten vorzeitig beendet:[/yellow] {ds.abbruch} – erneut starten "
-                                  "setzt fort.")
-                    return
-        if not ohne_nachsuche:
             # nur Einträge ohne „Internet" (Website) – die übrigen haben sie aus der Detailseite
             ohne_website = [k for k in st.kandidaten(ctx.bundesland) if k.quelle == QUELLE
                             and not (k.domain or k.website) and k.name and st.cache_get(MERKER, str(k.id)) is None]
             brave = build_adapter(ctx.settings.discovery.stufe_a.adapter, ctx.settings, cache=st)
             kosten = brave.kosten(len(ohne_website)) if isinstance(brave, QueryAdapter) else 0.0
-            console.print(f"Website-Nachsuche: {len(ohne_website)} neue Einträge ohne Website, je eine Anfrage – "
-                          f"geschätzt {len(ohne_website)} Anfragen ≈ {kosten:.2f}")
+            console.print(f"Website-Nachsuche {ctx.bundesland}: {len(ohne_website)} neue Einträge ohne Website, je eine "
+                          f"Anfrage – geschätzt {len(ohne_website)} Anfragen ≈ {kosten:.2f}")
             if ohne_website and (ja or typer.confirm("Nachsuche starten?", default=True)):
                 _website_nachsuche(ctx, st, QUELLE)
     if not nur_verzeichnis:
@@ -1508,8 +1625,17 @@ def run(
     out: Annotated[Path | None, typer.Option("--out", "-o", help="Ziel-.xlsx")] = None,
     ja: JaOpt = False,
     mit_kontrollblaettern: Annotated[bool, typer.Option("--mit-kontrollblaettern", help="Kontrollblätter im Export")] = False,
+    alle_laender: Annotated[bool, typer.Option("--alle-laender", help=(
+        "alle 16 Länder über das amtliche Verzeichnis: Verzeichnis, Detailseiten, Nachsuche, crawl, extract, Export je "
+        "Land und export --gesamt – fortsetzbar"))] = False,
+    parallel: Annotated[int, typer.Option("--parallel", help="mit --alle-laender: Länder gleichzeitig im Verzeichnis")] = 1,
 ) -> None:
-    """Gesamtlauf Stufe A: search → crawl → extract → export. Nach Abbruch einfach erneut starten."""
+    """Gesamtlauf Stufe A: search → crawl → extract → export. Nach Abbruch einfach erneut starten.
+    --alle-laender: amtliches Verzeichnis für alle Länder bis zum Export (Warteschlange wie stb-verzeichnis)."""
+    if alle_laender:
+        _alle_laender(config, db, parallel, ohne_nachsuche=False, ohne_details=False, nur_verzeichnis=False,
+                      mit_export=True)
+        return
     ctx = _kontext(config, bundesland, db)
     if not _search(ctx, orte, adapter, _lauf_id(), ja):
         return

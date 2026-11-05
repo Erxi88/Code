@@ -26,6 +26,8 @@ from .search.verzeichnisse import FIRMA_LAUT_VERZEICHNIS, OHNE_GESELLSCHAFT
 from .storage import Storage
 
 QUELLE = "stb_verzeichnis"
+# Stand der Gruppierungsregeln (stbv_gruppieren): ein Land mit älterem Stand wird automatisch neu gruppiert
+GRUPPIERUNG_VERSION = "2026-11-05-firmenzeile"
 SCHRITT = "stb-verzeichnis"
 
 

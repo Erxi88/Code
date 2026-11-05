@@ -27,6 +27,7 @@ import json
 import logging
 import random
 import re
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -121,6 +122,22 @@ def schema_org_eintraege(html: str, basis_url: str, quelle: str) -> list[SearchH
     return hits
 
 
+_HOST_SPERRE = threading.Lock()
+_HOST_LETZTE: dict[str, float] = {}
+
+
+def _host_abstand(url: str, mindestens: float, sleep: Callable[[float], None]) -> None:
+    """Mindestabstand zwischen zwei Anfragen an denselben Host über alle Threads (mehrere Länder parallel)."""
+    if mindestens <= 0:
+        return
+    host = urlsplit(url).netloc
+    with _HOST_SPERRE:
+        warten = _HOST_LETZTE.get(host, 0.0) + mindestens - time.monotonic()
+        _HOST_LETZTE[host] = time.monotonic() + max(warten, 0.0)
+    if warten > 0:
+        sleep(warten)
+
+
 class _Verzeichnis(OrtsAdapter):
     """Gemeinsamer Ablauf: Ergebnisseiten abrufen (gedrosselt, robots.txt, Cache) und parsen."""
 
@@ -178,6 +195,7 @@ class _Verzeichnis(OrtsAdapter):
                 basis, zufall = pause or (self.cfg.pause_s, self.cfg.pause_jitter_s)
                 self._sleep(basis + self._rng.uniform(0, zufall))
             self._anfrage_zaehlen()
+            _host_abstand(url, self.cfg.min_abstand_host_s, self._sleep)
             start = time.monotonic()
             try:
                 resp = self.client.post(url, data=daten) if daten is not None else self.client.get(url)

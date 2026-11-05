@@ -191,6 +191,17 @@ der nächsten Quelle füllen.**
       PLZ und die Orte der Einträge; `--liste` gibt die gebildeten Kanzleien mit Adresse aus.
       `stb-verzeichnis --neu-gruppieren`: amtliche Kandidaten entfernen (andere nur um amtliche Funde bereinigen),
       Lauf-Protokoll leeren, dann aus dem Cache neu anlegen – keine neuen Abfragen.
+      Automatisch: Hat ein Land amtliche Funde einer älteren Gruppierung (`GRUPPIERUNG_VERSION` im api_cache
+      „stbv_gruppierung"), wird es vor dem Verzeichnis-Schritt neu gruppiert.
+      **Alle Länder** (Vorgabe 05.11.2026): `recherche stb-verzeichnis --alle-laender [--parallel 3]` arbeitet die 16
+      Länder als fortsetzbare Warteschlange ab (erledigte Schritte je Land im api_cache „stbv_land": netz, nach,
+      export). Netz-Teil je Land (`_stbv_netz`: Neu-Gruppierung, Suchseiten, Detailseiten) für bis zu `--parallel` Länder
+      gleichzeitig in eigenen Threads mit eigener Datenbankverbindung (SQLite `busy_timeout` 120 s), je eigener Abstand
+      (Suche 30–35 s, Detailseiten 5 s) und mindestens `min_abstand_host_s` (1 s) zwischen zwei Anfragen an den Host über
+      alle Threads; danach im Hauptprozess nacheinander Nachsuche, crawl, extract (eine GPU). Ein fehlerhaftes Land hält
+      die anderen nicht auf („erneuter Aufruf setzt fort"). `recherche run --alle-laender [--parallel 3]`: dasselbe bis
+      zum Export je Land und `export --gesamt`. Länder ohne `config/orte_<BL>.csv` (und ohne Eintrag in settings.yaml)
+      nehmen Gemeinden, PLZ und Kreis direkt aus OpenPLZ (`orte_aus_openplz`, gecacht; ohne Einwohnerzahlen).
     - `gelbeseiten`, `dasoertliche`, `elf880` (11880.com) **nur Ergänzung** (`nur_ergaenzen`): Treffer werden
       nur bekannten Kandidaten **ohne Website** zugeordnet (leere Felder Telefon, Adresse, Website; Fund
       gespeichert; extract neu, bei neuer Website auch crawl). Unbekannte Einträge werden nicht angelegt,

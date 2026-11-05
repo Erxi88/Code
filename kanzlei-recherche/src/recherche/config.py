@@ -126,7 +126,9 @@ class VerzeichnisConfig(QuelleConfig):
     user_agent: str = "kanzlei-recherche/0.1 (Recherche-Tool; Kontakt siehe README)"
     # Detailseiten (nur amtliches Verzeichnis): eigener, kürzerer Abstand – detail_pause_s + Zufall 0..jitter (5–10 s)
     detail_pause_s: float = 5.0
-    detail_pause_jitter_s: float = 5.0
+    detail_pause_jitter_s: float = 0.0
+    # Mindestabstand zwischen zwei Anfragen an denselben Host über alle parallel laufenden Länder (--parallel)
+    min_abstand_host_s: float = 0.0  # settings.yaml: amtliches Verzeichnis 1 s
 
 
 class QuellenConfig(BaseModel):
@@ -330,6 +332,10 @@ class Settings(BaseModel):
         try:
             return self.bundeslaender[code.upper()]
         except KeyError:
+            from .models import BUNDESLAENDER
+
+            if code.upper() in BUNDESLAENDER:  # alle 16 Länder ohne Eintrag: Ortsliste config/orte_<BL>.csv bzw. OpenPLZ
+                return BundeslandConfig(name=BUNDESLAENDER[code.upper()], orte_datei=f"config/orte_{code.upper()}.csv")
             bekannt = ", ".join(sorted(self.bundeslaender)) or "keine"
             raise ValueError(
                 f"Bundesland {code!r} ist nicht in settings.yaml konfiguriert (bekannt: {bekannt})"

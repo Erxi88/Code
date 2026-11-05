@@ -132,7 +132,8 @@ discovery:
       formular: {nachnameOrFirmenname: "", ortFilter: "", plzFilter: "{plz}"}   # Suche per POST
       max_seiten: 1                  # alle Treffer einer PLZ auf einer Seite („Treffer: 209 von 209")
       detail_pause_s: 5.0            # Detailseite je Kandidat (Telefon, E-Mail, Internet, Vertreter, Beratungsstellen):
-      detail_pause_jitter_s: 5.0     #   5–10 s Abstand, gecacht, fortsetzbar
+      detail_pause_jitter_s: 0.0     #   5 s Abstand (Vorgabe 05.11.2026), gecacht, fortsetzbar
+      min_abstand_host_s: 1.0        # --alle-laender --parallel N: mindestens 1 s zwischen zwei Anfragen an den Host
 
 crawl:
   parallel_domains: 10               # so viele Domains gleichzeitig
