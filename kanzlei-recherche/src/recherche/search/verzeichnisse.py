@@ -541,6 +541,10 @@ class StbVerzeichnisAdapter(_Verzeichnis):
                 self.melden(meldung)
         return hits
 
+    def detail_erlaubt(self, url: str) -> bool:
+        """robots.txt erlaubt die Detailseiten (HH-Lauf 05.11.2026: /details/ ist gesperrt – Verbot bleibt respektiert)."""
+        return self._erlaubt(url)
+
     def detail(self, url: str) -> StbvDetail | None:
         """Detailseite eines Eintrags – eigener, kürzerer Abstand (detail_pause_s + Zufall), gecacht."""
         html = self._hole(url, pause=(self.cfg.detail_pause_s, self.cfg.detail_pause_jitter_s))

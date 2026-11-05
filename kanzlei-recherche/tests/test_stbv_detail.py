@@ -153,3 +153,28 @@ def test_beratungsstelle_mit_zentrale_verknuepft(storage):
     spalte = standort_spalte(zeilen)
     assert spalte[_schluessel(zentrale)].startswith("Zentrale") and "Standort von" in spalte[_schluessel(bs)]
     assert zentrale_spalte(zeilen)[_schluessel(bs)] == "hansen-petersen.example"
+
+
+def test_detailseiten_per_robots_gesperrt_eine_zeile(storage):
+    """HH-Lauf 05.11.2026: /details/ per robots.txt gesperrt – eine Zeile, keine Fehlerzeile je Kandidat, kein Abruf."""
+    from recherche.stbv_lauf import ROBOTS_GESPERRT
+
+    such = (FIX / "beispiele" / "stbv_24103.html").read_text(encoding="utf-8")
+    abrufe = []
+
+    def handler(req):
+        if req.url.path == "/robots.txt":
+            return httpx.Response(200, text="User-agent: *\nDisallow: /details/\n")
+        abrufe.append(req.url.path)
+        return httpx.Response(200, text=such)
+
+    cfg = VerzeichnisConfig(url_vorlage=STBV_URL, formular={"nachnameOrFirmenname": "", "plzFilter": "{plz}"},
+                            pause_s=0, pause_jitter_s=0, je_plz=True, max_seiten=1)
+    a = StbVerzeichnisAdapter(cfg, cache=storage, client=httpx.Client(transport=httpx.MockTransport(handler)),
+                              sleep=lambda s: None)
+    run_verzeichnis(storage, a, plz_orte([Ort("Kiel", "24103", "Kreisfreie Stadt Kiel")]), "SH", set(), "l1")
+    meldungen = []
+    stat = run_details(storage, a, "SH", set(), "l1", fortschritt=meldungen.append)
+    assert stat.robots_gesperrt and stat.gelesen == 0 and stat.fehler == 0
+    assert meldungen == [ROBOTS_GESPERRT] and not any("/details/" in x for x in abrufe)
+    assert len(offene_details(storage, "SH")) == 4  # bleibt offen – läuft, sobald robots.txt es erlaubt

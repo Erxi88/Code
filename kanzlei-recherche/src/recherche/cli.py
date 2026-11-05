@@ -1043,6 +1043,16 @@ def stb_verzeichnis_analyse(
     console.print(f"Summe: {summe['eintraege']} Einträge ({summe['gesellschaften']} Gesellschaften, {summe['personen']} "
                   f"Personen) → {summe['kanzleien']} Kanzleien, {summe['syndikus']} Syndikus; {summe['fremde_plz']} "
                   "Einträge mit einer anderen PLZ als der abgefragten")
+    einzeln = sum(a.person_einzeln for a in analysen)
+    an_kanzlei = sum(a.einzeln_an_kanzlei_adresse for a in analysen)
+    geteilt = sum(a.einzeln_adresse_geteilt for a in analysen)
+    console.print(f"Einzelpersonen (ohne Firmenzeile): {einzeln} – davon {an_kanzlei} an einer Adresse mit Kanzlei "
+                  f"(Gesellschaft/Firmenzeile, wahrscheinlich dort angestellt), {geteilt} teilen die Adresse mit weiteren "
+                  "Einzelpersonen")
+    verdacht = sorted({f for a in analysen for f in a.syndikus_verdacht})
+    if verdacht:
+        console.print(f"Syndikus-Verdacht (als Kanzlei gezählt, Firmenzeile mit Konzern-Steuerabteilung): "
+                      f"{'; '.join(verdacht[:20])}{' …' if len(verdacht) > 20 else ''}", markup=False, highlight=False)
     for p in (x.strip() for x in (liste or "").split(",") if x.strip()):
         a = next((a for a in analysen if a.plz == p), None)
         if a is None:
@@ -1062,19 +1072,54 @@ def stb_verzeichnis_analyse(
 def _stbv_netz(ctx: Kontext, orte: list[Ort], auswahl: list[Ort], kreis: str | None, endung: str, ja: bool,
                ohne_details: bool, neu_gruppieren: bool) -> bool:
     """Netz-Teil von stb-verzeichnis (parallel je Land möglich): Neu-Gruppierung (ausdrücklich oder automatisch bei
-    älterer Gruppierung), Suchseiten je PLZ, Detailseiten. False bei Abbruch (Limit, Rückfrage verneint)."""
+    älterer Gruppierung), Suchseiten je PLZ, Detailseiten. False bei Abbruch (Limit, Rückfrage verneint);
+    LandGesperrt, wenn ein anderer Lauf das Land gerade bearbeitet (Sperre mit Lebenszeichen im api_cache)."""
+    from .stbv_lauf import fremde_sperre, lauf_kennung, sperre_loesen, sperre_setzen
+
+    bl = ctx.bundesland
+    kennung = lauf_kennung()
+    with ctx.storage() as st:
+        if andere := fremde_sperre(st, bl, kennung):
+            seit = datetime.fromtimestamp(andere.get("seit", 0)).strftime("%d.%m. %H:%M")
+            console.print(f"[yellow]{bl}: läuft bereits in einem anderen Lauf ({andere.get('kennung')}, seit {seit}, "
+                          f"Schritt {andere.get('schritt') or '–'}) – übersprungen; dessen Cache wird später genutzt[/yellow]")
+            raise LandGesperrt(bl)
+        sperre_setzen(st, bl, kennung, "start")
+    try:
+        return _stbv_netz_gesperrt(ctx, orte, auswahl, kreis, endung, ja, ohne_details, neu_gruppieren, kennung)
+    finally:
+        with ctx.storage() as st:
+            sperre_loesen(st, bl, kennung)
+
+
+class LandGesperrt(RuntimeError):
+    """Ein anderer Lauf bearbeitet dieses Land gerade (frische Sperre) – überspringen, später erneut."""
+
+
+def _stbv_netz_gesperrt(ctx: Kontext, orte: list[Ort], auswahl: list[Ort], kreis: str | None, endung: str, ja: bool,
+                        ohne_details: bool, neu_gruppieren: bool, kennung: str) -> bool:
     from .stbv_lauf import (
         GRUPPIERUNG_VERSION,
         QUELLE,
+        ROBOTS_GESPERRT,
         bericht_csv,
         neu_gruppieren_vorbereiten,
         offene_details,
         offene_plz,
         run_details,
         run_verzeichnis,
+        sperre_setzen,
     )
 
     bl = ctx.bundesland
+    letztes = [0.0]
+
+    def lebenszeichen(st: Storage, schritt: str, meldung: str) -> None:
+        if time.monotonic() - letztes[0] > 30:
+            sperre_setzen(st, bl, kennung, schritt)
+            letztes[0] = time.monotonic()
+        console.print(meldung, markup=False, highlight=False)
+
     with ctx.storage() as st:
         stand = (st.cache_get("stbv_gruppierung", bl) or {}).get("version")
         alt = stand != GRUPPIERUNG_VERSION and bool(st.funde(bl, QUELLE))
@@ -1102,7 +1147,7 @@ def _stbv_netz(ctx: Kontext, orte: list[Ort], auswahl: list[Ort], kreis: str | N
             console.print("Abgebrochen – nichts abgefragt.")
             return False
         stat = run_verzeichnis(st, adapter, orte, bl, ctx.blocklist(), _lauf_id(),
-                               fortschritt=lambda m: console.print(f"  {bl} {m}"))
+                               fortschritt=lambda m: lebenszeichen(st, "Suchseiten", f"  {bl} {m}"))
         console.print(f"Verzeichnis {bl}: {stat.plz - stat.uebersprungen} PLZ abgefragt ({stat.uebersprungen} schon "
                       f"erledigt), {stat.treffer} Kanzleien – {stat.neu} neu (direkt im Bestand), {stat.bekannt} bekannt, "
                       f"{stat.verworfen} schon von dieser Quelle, {stat.fehler} Fehler")
@@ -1117,22 +1162,33 @@ def _stbv_netz(ctx: Kontext, orte: list[Ort], auswahl: list[Ort], kreis: str | N
             return True
         im_kreis = {p for o in auswahl for p in o.alle_plz} if kreis else None
         details = offene_details(st, bl, im_kreis)
+        if details and hasattr(adapter, "detail_erlaubt") and not adapter.detail_erlaubt(details[0][1]):
+            console.print(f"{bl}: {ROBOTS_GESPERRT}")  # Verbot respektiert; die Warteschlange läuft ohne Detailschritt
+            st.cache_put(DETAIL_MERKER, bl, {"gesperrt": True})  # beim nächsten Aufruf erneut prüfen
+            return True
         je_detail = cfg.detail_pause_s + cfg.detail_pause_jitter_s / 2 + 1
         console.print(f"Detailseiten {bl}: {len(details)} offen – geschätzt {_dauer(len(details) * je_detail)} "
                       f"({je_detail:.1f} s je Seite; aus dem Cache sofort)")
         if details and (ja or typer.confirm("Detailseiten lesen?", default=True)):
             ds = run_details(st, adapter, bl, ctx.blocklist(), _lauf_id(),
-                             fortschritt=lambda m: console.print(f"  {bl} {m}", markup=False, highlight=False),
-                             plz=im_kreis)
+                             fortschritt=lambda m: lebenszeichen(st, "Detailseiten", f"  {bl} {m}"), plz=im_kreis)
             console.print(f"Detailseiten {bl}: {ds.gelesen} gelesen – {ds.mit_telefon} mit Telefon, {ds.mit_email} mit "
                           f"E-Mail, {ds.mit_internet} mit Internet ({ds.zusammengefuehrt} mit dem Kandidaten derselben "
                           f"Website zusammengeführt), {ds.beratungsstellen} weitere Beratungsstellen als Standorte, "
                           f"{ds.leer} ohne Eintrag, {ds.fehler} Fehler")
+            if ds.robots_gesperrt:
+                st.cache_put(DETAIL_MERKER, bl, {"gesperrt": True})
+                return True
             if ds.abbruch:
                 console.print(f"[yellow]Detailseiten {bl} vorzeitig beendet:[/yellow] {ds.abbruch} – erneut starten "
                               "setzt fort.")
                 return False
+        if not offene_details(st, bl, im_kreis):
+            st.cache_put(DETAIL_MERKER, bl, {"gesperrt": False})
     return True
+
+
+DETAIL_MERKER = "stbv_details"  # api_cache: {"gesperrt": True}, solange robots.txt die Detailseiten verbietet
 
 
 LAND_MERKER = "stbv_land"  # api_cache: je Land erledigte Schritte der Warteschlange (netz, nach, export)
@@ -1160,11 +1216,20 @@ def _alle_laender(config: Path | None, db: Path | None, parallel: int, ohne_nach
         with Storage(db_pfad) as st:
             st.cache_put(LAND_MERKER, bl, {**(st.cache_get(LAND_MERKER, bl) or {}), schritt: True})
 
+    def details_gesperrt(bl: str) -> bool:
+        with Storage(db_pfad) as st:
+            return not ohne_details and bool((st.cache_get(DETAIL_MERKER, bl) or {}).get("gesperrt"))
+
     def netz(bl: str) -> bool:
         ctx = _kontext(config, bl, db)
         orte = plz_orte(ctx.orte(None, mit_zusatz=False))
+        vorher = details_gesperrt(bl)
         if _stbv_netz(ctx, orte, orte, None, "", True, ohne_details, False):
             merken(bl, "netz")
+            if vorher and not details_gesperrt(bl):  # Detailseiten nachgeholt → Nachsuche, crawl, extract, Export neu
+                with Storage(db_pfad) as st:
+                    alt = st.cache_get(LAND_MERKER, bl) or {}
+                    st.cache_put(LAND_MERKER, bl, {k: v for k, v in alt.items() if k not in ("nach", "export")})
             return True
         return False
 
@@ -1180,8 +1245,8 @@ def _alle_laender(config: Path | None, db: Path | None, parallel: int, ohne_nach
 
     erledigt = {bl: stand(bl) for bl in laender}
     console.print("Warteschlange: " + ", ".join(
-        f"{bl} ({'fertig' if st.get('netz') and (nur_verzeichnis or st.get('nach')) and (not mit_export or st.get('export')) else 'offen'})"
-        for bl, st in erledigt.items()) + f" – {parallel} Land/Länder gleichzeitig im Verzeichnis")
+        f"{bl} ({'fertig' if st.get('netz') and (nur_verzeichnis or st.get('nach')) and (not mit_export or st.get('export')) else 'offen'}"
+        f"{', Detailseiten per robots.txt gesperrt' if details_gesperrt(bl) else ''})" for bl, st in erledigt.items()) + f" – {parallel} Land/Länder gleichzeitig im Verzeichnis")
     fehler: list[str] = []
     for bl in laender:  # Netz schon erledigt, Rest offen (Abbruch nach dem Verzeichnis): zuerst nachholen
         if erledigt[bl].get("netz"):
@@ -1189,7 +1254,9 @@ def _alle_laender(config: Path | None, db: Path | None, parallel: int, ohne_nach
                 nach(bl)
             except (typer.Exit, Exception) as e:  # noqa: BLE001 – ein Land darf die Warteschlange nicht beenden
                 fehler.append(f"{bl}: {e!r}")
-    offen = [bl for bl in laender if not erledigt[bl].get("netz")]
+    # offen: Netz-Teil nicht erledigt, oder Detailseiten bisher per robots.txt gesperrt (erneut prüfen; Suchseiten
+    # kommen dann aus dem Cache)
+    offen = [bl for bl in laender if not erledigt[bl].get("netz") or details_gesperrt(bl)]
     with ThreadPoolExecutor(max_workers=max(1, parallel)) as pool:
         laeufe = {pool.submit(netz, bl): bl for bl in offen}
         for f in as_completed(laeufe):
@@ -1198,6 +1265,13 @@ def _alle_laender(config: Path | None, db: Path | None, parallel: int, ohne_nach
                 if not f.result():
                     fehler.append(f"{bl}: Verzeichnis/Detailseiten nicht abgeschlossen (Limit oder Abbruch)")
                     continue
+            except LandGesperrt:
+                fehler.append(f"{bl}: läuft in einem anderen Lauf – übersprungen")
+                continue
+            except (typer.Exit, Exception) as e:  # noqa: BLE001
+                fehler.append(f"{bl}: {e!r}")
+                continue
+            try:
                 console.print(f"[bold]{bl}: Verzeichnis und Detailseiten fertig – Nachsuche, crawl, extract …[/bold]")
                 nach(bl)
             except (typer.Exit, Exception) as e:  # noqa: BLE001
@@ -1257,8 +1331,11 @@ def stb_verzeichnis(
     orte = plz_orte(auswahl)
     endung = f"_{re.sub(r'[^0-9a-zA-ZäöüÄÖÜß]+', '_', auswahl[0].kreis or kreis).strip('_')}" if kreis else ""
     if schritte in ("alles", "netz"):
-        if not _stbv_netz(ctx, orte, auswahl, kreis, endung, ja, ohne_details, neu_gruppieren):
-            return
+        try:
+            if not _stbv_netz(ctx, orte, auswahl, kreis, endung, ja, ohne_details, neu_gruppieren):
+                return
+        except LandGesperrt:
+            raise typer.Exit(1) from None
     if schritte == "netz":
         return
     if not ohne_nachsuche:

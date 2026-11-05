@@ -72,3 +72,79 @@ def test_plz_aus_openplz_ohne_ortsliste(db_pfad):
     assert [(o.name, o.plz, o.plz_weitere) for o in orte] == [("Bremen", "28195", ("28199",)),
                                                               ("Bremerhaven", "27568", ())]
     assert all(o.kreis for o in orte)
+
+
+def test_land_mit_frischer_fremder_sperre_wird_uebersprungen(monkeypatch, db_pfad):
+    """Ein anderer Lauf bearbeitet HH gerade (Lebenszeichen jung) – die Warteschlange überspringt HH; eine verwaiste
+    Sperre (älter als 10 min) gilt nicht."""
+    import time
+
+    from recherche.stbv_lauf import SPERRE, SPERRE_VERWAIST_S, fremde_sperre
+
+    FakeVerzeichnis.abgefragt = []
+    monkeypatch.setattr(cli, "build_adapter", lambda name, s, cache=None: FakeVerzeichnis())
+    monkeypatch.setattr(cli.Kontext, "orte", lambda self, auswahl, mit_zusatz=True: ORTE[self.bundesland])
+    meldungen = []
+    monkeypatch.setattr(cli.console, "print", lambda *a, **k: meldungen.append(" ".join(map(str, a))))
+    with Storage(db_pfad) as st:
+        st.cache_put(SPERRE, "HH", {"kennung": "anderer-rechner:1:1", "seit": time.time(), "zuletzt": time.time()})
+        st.cache_put(SPERRE, "SH", {"kennung": "abgebrochen:2:2", "seit": 0, "zuletzt": time.time() - SPERRE_VERWAIST_S - 5})
+    cli._alle_laender(None, db_pfad, 2, ohne_nachsuche=True, ohne_details=True, nur_verzeichnis=True, mit_export=False,
+                      laender=["SH", "HH"])
+    assert FakeVerzeichnis.abgefragt == ["24103"]  # SH (verwaiste Sperre) ja, HH nein
+    assert any("HH: läuft in einem anderen Lauf" in m for m in meldungen)
+    with Storage(db_pfad) as st:
+        assert st.cache_get(SPERRE, "SH") is None  # nach dem Lauf freigegeben
+        assert fremde_sperre(st, "HH", "ich:0:0") is not None
+
+
+def test_detailseiten_per_robots_gesperrt_werden_spaeter_nachgeholt(monkeypatch, db_pfad):
+    """Vorgabe 05.11.2026: Detailschritt auslassen, solange robots.txt ihn sperrt – aber nicht als erledigt merken.
+    Der nächste Aufruf prüft erneut (Suchseiten aus dem Protokoll, keine neue Abfrage); erlaubt robots.txt die Seiten
+    dann, werden sie gelesen und Nachsuche/crawl/extract/Export des Landes neu angestoßen."""
+    from recherche import stbv_lauf
+
+    erlaubt = [False]
+
+    class MitDetails(FakeVerzeichnis):
+        def search_ort(self, ort):
+            with self.sperre:
+                self.abgefragt.append(ort.plz)
+            return [SearchHit(quelle=QUELLE, quell_id="stbv-1", name="Steuerkanzlei Kiel", strasse="Markt 1",
+                              plz=ort.plz, ort=ort.name, roh_url="https://stbv.example/details/1",
+                              snippet="Amtliches Steuerberaterverzeichnis: 1 Berufsträger (x)")]
+
+        def detail_erlaubt(self, url):
+            return erlaubt[0]
+
+    MitDetails.abgefragt = []
+    monkeypatch.setattr(cli, "build_adapter", lambda name, s, cache=None: MitDetails())
+    monkeypatch.setattr(cli.Kontext, "orte", lambda self, auswahl, mit_zusatz=True: ORTE[self.bundesland])
+    meldungen = []
+    monkeypatch.setattr(cli.console, "print", lambda *a, **k: meldungen.append(" ".join(map(str, a))))
+    lauf = lambda: cli._alle_laender(None, db_pfad, 1, ohne_nachsuche=True, ohne_details=False,  # noqa: E731
+                                     nur_verzeichnis=True, mit_export=False, laender=["SH"])
+    lauf()
+    assert any(stbv_lauf.ROBOTS_GESPERRT in m for m in meldungen) and MitDetails.abgefragt == ["24103"]
+    with Storage(db_pfad) as st:
+        assert st.cache_get(cli.DETAIL_MERKER, "SH") == {"gesperrt": True}
+        st.cache_put(cli.LAND_MERKER, "SH", {"netz": True, "nach": True, "export": True})
+
+    meldungen.clear()
+    lauf()  # weiter gesperrt: erneut geprüft, keine neue Suchanfrage
+    assert MitDetails.abgefragt == ["24103"] and any(stbv_lauf.ROBOTS_GESPERRT in m for m in meldungen)
+
+    erlaubt[0] = True
+    gelesen = []
+    monkeypatch.setattr(stbv_lauf, "run_details",
+                        lambda *a, **k: gelesen.append(1) or stbv_lauf.DetailStatistik(gelesen=1))
+    echt = stbv_lauf.offene_details
+    monkeypatch.setattr(stbv_lauf, "offene_details", lambda *a, **k: [] if gelesen else echt(*a, **k))
+    lauf()
+    assert gelesen == [1]
+    with Storage(db_pfad) as st:
+        assert st.cache_get(cli.DETAIL_MERKER, "SH") == {"gesperrt": False}
+        assert st.cache_get(cli.LAND_MERKER, "SH") == {"netz": True}  # nach/export werden neu angestoßen
+    gelesen.clear()
+    lauf()  # jetzt erledigt – kein weiterer Netz-Teil
+    assert gelesen == []

@@ -188,7 +188,21 @@ der nächsten Quelle füllen.**
       `recherche stb-verzeichnis-analyse [--plz …] [--liste 21493,22926] [--out …csv]` (`stbv_analyse.py`): wertet die
       gecachten Ergebnisseiten **schreibgeschützt** aus (läuft neben einem laufenden Lauf) – je PLZ Einträge,
       Gesellschaften, Personen (ohne Firmenzeile), Syndikus, Kanzleien nach aktueller Gruppierung, Einträge mit anderer
-      PLZ und die Orte der Einträge; `--liste` gibt die gebildeten Kanzleien mit Adresse aus.
+      PLZ und die Orte der Einträge; `--liste` gibt die gebildeten Kanzleien mit Adresse aus. Diagnose der
+      Einzelpersonen (Anlass HH 05.11.2026: 1.562 von 2.286 Kanzleien sind Personen ohne Firmenzeile): davon „an
+      Kanzlei-Adresse" (Adresse einer Gesellschaft oder Firmenzeile) und „Adresse geteilt" (mit weiteren solchen
+      Personen) sowie Syndikus-Verdacht (Firmenzeilen mit Konzern-Steuerabteilung, „AG … Tax" u. Ä.) – nur angezeigt,
+      die Gruppierung ändert das nicht.
+      **robots.txt verbietet `/details/`** (Stand 05.11.2026): `run_details` prüft vor dem ersten Abruf
+      (`detail_erlaubt`) und meldet eine Zeile „Detailseiten per robots.txt gesperrt – übersprungen" statt eines
+      Fehlers je Kandidat; die Detailseiten bleiben offen. Die Warteschlange merkt das (api_cache „stbv_details"
+      `gesperrt`) und prüft beim nächsten Aufruf erneut (Suchseiten aus dem Protokoll); erlaubt robots.txt sie dann,
+      werden sie gelesen und Nachsuche, crawl, extract und Export des Landes neu angestoßen.
+      **Sperre je Land** (api_cache „stbv_sperre": Kennung Rechner:PID:Thread, Lebenszeichen alle 30 s): ein Land,
+      das ein anderer Lauf (Einzellauf `-b HH` oder zweite Warteschlange) gerade bearbeitet, wird übersprungen
+      („läuft bereits in einem anderen Lauf – übersprungen") und beim nächsten Aufruf aus dessen Cache fortgesetzt;
+      ohne Lebenszeichen seit 10 min gilt die Sperre als verwaist (kein PID-Test – unter Windows beendet `os.kill`
+      den Prozess). Der Einzellauf endet dann mit Code 1.
       `stb-verzeichnis --neu-gruppieren`: amtliche Kandidaten entfernen (andere nur um amtliche Funde bereinigen),
       Lauf-Protokoll leeren, dann aus dem Cache neu anlegen – keine neuen Abfragen.
       Automatisch: Hat ein Land amtliche Funde einer älteren Gruppierung (`GRUPPIERUNG_VERSION` im api_cache
@@ -220,10 +234,13 @@ der nächsten Quelle füllen.**
   `kosten_je_1000` steht beim jeweiligen Adapter. Anfragen und Kosten landen je Query im
   Lauf-Protokoll und werden am Ende ausgegeben.
 - **Limits**: `LimitErreicht` (Kontingent/Tageslimit, Budget, ungültiger Key) beendet
-  den Lauf sauber; ein erneuter Aufruf macht dort weiter. Brave: HTTP 402, `X-RateLimit-Remaining`
-  mit Monatsrest 0 oder ein Guthaben-/Limit-Fehlertext → sofort „Brave-Guthaben erschöpft – im
-  Dashboard aufladen, dann erneut starten" (meldet eine erfolgreiche Antwort Rest 0, endet der Lauf vor
-  der nächsten Anfrage). Jeder Request hat einen **harten Gesamt-Timeout** (`timeout_s` + 2 s, Watchdog-
+  den Lauf sauber; ein erneuter Aufruf macht dort weiter. Brave (Rückmeldung 05.11.2026: Abbruch „Restkontingent
+  0" trotz Guthaben und ohne Limit): HTTP 402 oder ein Guthaben-Fehlertext → „Brave-Guthaben erschöpft"; ein
+  Monatsrest 0 zählt nur, wenn `X-RateLimit-Limit` ein Monatslimit > 0 nennt (sonst ist Remaining 0 bedeutungslos)
+  → „Monatslimit aufgebraucht" (endet vor der nächsten Anfrage); HTTP 429 → warten bis `X-RateLimit-Reset`
+  (Sekundenfenster, mind. 1 s) und fortsetzen, erst nach den Wiederholungen Fehler der Query. Jede Abbruchmeldung
+  nennt HTTP-Status und X-RateLimit-Limit/Remaining/Reset. Die Nachsuche ist je Eintrag gecacht (Antwort im
+  api_cache, Merker je Kandidat) – ein Neustart zahlt nichts doppelt. Jeder Request hat einen **harten Gesamt-Timeout** (`timeout_s` + 2 s, Watchdog-
   Thread – httpx' Timeout gilt nur je Lesevorgang), höchstens `retries` (3) Wiederholungen, danach
   Query als Fehler und weiter; Retry-Meldungen erscheinen sofort im Terminal. Fortschritt je Query:
   „Ort 812/1127 · … · gesamt N Anfragen ≈ X". Vor dem Start: offene Queries × Seiten × Preis gegen

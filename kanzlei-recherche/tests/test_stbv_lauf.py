@@ -263,3 +263,21 @@ def test_neu_gruppieren_aus_dem_cache_ohne_abfragen(storage):
     stat = run_verzeichnis(storage, adapter, orte, "SH", set(), "p2")
     assert adapter.anfragen == 0 and stat.berichte[0].cache and stat.neu == 3
     assert {k.name for k in storage.kandidaten("SH")} == vorher
+
+
+def test_analyse_diagnose_der_einzelpersonen():
+    """Einzelperson ohne Firmenzeile an einer Kanzlei-Adresse (wohl dort angestellt) und Syndikus-Verdacht
+    (Konzern-Steuerabteilung) werden gezählt – Grundlage für die HH-Einschätzung."""
+    from recherche.stbv_analyse import analysiere
+
+    def karte(name, firma, strasse, beruf="Steuerberater"):
+        zusatz = f"{firma}<br>" if firma else ""
+        return (f'<a class="link-to-detail" href="https://x/details/{name}/"><p class="beruf">{beruf}</p>'
+                f'<p class="name">{name}</p><p class="address-display">{zusatz}{strasse}<br>20095 Hamburg</p></a>')
+
+    html = "<html><body>Treffer: 4 von 4" + "".join([
+        karte("Ole Rau", "Rau Steuerberatung", "Markt 1"), karte("Eva Ott", None, "Markt 1"),
+        karte("Kai Lund", None, "Wall 9"), karte("Ina Behn", "Muster AG Steuerabteilung", "Hafen 2")]) + "</body></html>"
+    a = analysiere(html, "20095")
+    assert (a.person_einzeln, a.einzeln_an_kanzlei_adresse, a.einzeln_adresse_geteilt) == (2, 1, 0)
+    assert a.syndikus_verdacht == ["Muster AG Steuerabteilung"]

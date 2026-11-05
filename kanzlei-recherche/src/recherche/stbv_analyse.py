@@ -59,6 +59,10 @@ class PlzAnalyse:
     gesamt: int | None = None
     orte: Counter = field(default_factory=Counter)  # „PLZ Ort" der Einträge
     liste: list = field(default_factory=list)  # gebildete Kanzleien (SearchHit)
+    # Diagnose der Einzelpersonen (Rückmeldung HH 05.11.2026: 1.562 von 2.286 „Kanzleien" sind Einzelpersonen)
+    einzeln_an_kanzlei_adresse: int = 0  # Person ohne Firmenzeile an einer Adresse mit Gesellschaft/Firmenzeile
+    einzeln_adresse_geteilt: int = 0  # Person ohne Firmenzeile, Adresse mit weiteren solchen Personen geteilt
+    syndikus_verdacht: list = field(default_factory=list)  # Firmenzeilen mit Konzern-Steuerabteilung o. Ä.
 
     @property
     def fremde_plz(self) -> int:
@@ -76,11 +80,25 @@ def analysiere(html: str, plz: str, url: str = "") -> PlzAnalyse:
     a.person_einzeln = sum(OHNE_GESELLSCHAFT in (h.snippet or "") for h in hits)
     a.aus_gesellschaft = a.kanzleien - a.aus_firmenzeile - a.person_einzeln
     a.orte = Counter(f"{k.plz or '?'} {k.ort or '?'}" for k in karten)
+    adr = lambda k: (k.strasse or "", k.plz or "")  # noqa: E731
+    kanzlei_adressen = {adr(k) for k in karten if k.gesellschaft or k.firma}
+    ohne = [k for k in karten if not k.gesellschaft and not k.firma]
+    je_adresse = Counter(adr(k) for k in ohne)
+    a.einzeln_an_kanzlei_adresse = sum(1 for k in ohne if adr(k) in kanzlei_adressen)
+    a.einzeln_adresse_geteilt = sum(1 for k in ohne if je_adresse[adr(k)] > 1)
+    a.syndikus_verdacht = sorted({k.firma for k in karten if not k.gesellschaft and k.firma
+                                  and _KONZERN_STEUER.search(k.firma)})
     return a
 
 
+# Steuerbezug nur über eine Konzern-Steuerabteilung („Beiersdorf AG Steuerabteilung", „Otto GmbH & Co KG Tax")
+_KONZERN_STEUER = re.compile(r"steuerabteilung|abteilung\s+steuern|konzernsteuer|\btax\s+(?:department|dept)|"
+                             r"\bgroup\s+tax|\b(?:ag|se)\b.*\btax\b", re.IGNORECASE)
+
+
 ANALYSE_SPALTEN = ["PLZ", "Einträge", "Gesellschaften", "Personen", "davon ohne Firmenzeile", "Syndikus",
-                   "Kanzleien", "aus Gesellschaft", "aus Firmenzeile", "Person einzeln", "Treffer angezeigt",
+                   "Kanzleien", "aus Gesellschaft", "aus Firmenzeile", "Person einzeln",
+                   "einzeln an Kanzlei-Adresse", "einzeln, Adresse geteilt", "Syndikus-Verdacht", "Treffer angezeigt",
                    "Treffer gesamt", "Einträge mit anderer PLZ", "Orte der Einträge"]
 
 
@@ -92,6 +110,8 @@ def analyse_csv(analysen: list[PlzAnalyse], pfad: str | Path) -> Path:
         w.writerow(ANALYSE_SPALTEN)
         for a in analysen:
             w.writerow([a.plz, a.eintraege, a.gesellschaften, a.personen, a.personen_ohne_firmenzeile, a.syndikus,
-                        a.kanzleien, a.aus_gesellschaft, a.aus_firmenzeile, a.person_einzeln, a.angezeigt, a.gesamt,
+                        a.kanzleien, a.aus_gesellschaft, a.aus_firmenzeile, a.person_einzeln,
+                        a.einzeln_an_kanzlei_adresse, a.einzeln_adresse_geteilt, "; ".join(a.syndikus_verdacht),
+                        a.angezeigt, a.gesamt,
                         a.fremde_plz, ", ".join(f"{o} ({n})" for o, n in a.orte.most_common())])
     return pfad

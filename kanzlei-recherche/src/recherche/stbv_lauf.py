@@ -316,6 +316,10 @@ class DetailStatistik:
     leer: int = 0
     fehler: int = 0
     abbruch: str | None = None
+    robots_gesperrt: bool = False  # robots.txt verbietet die Detailseiten – Schritt übersprungen
+
+
+ROBOTS_GESPERRT = "Detailseiten per robots.txt gesperrt – übersprungen"
 
 
 def run_details(storage: Storage, adapter, bundesland: str, blocklist: set[str], lauf_id: str,
@@ -333,6 +337,11 @@ def run_details(storage: Storage, adapter, bundesland: str, blocklist: set[str],
     stat = DetailStatistik()
     zuordnung = Zuordnung(storage, bundesland, blocklist, lauf_id)
     offen = offene_details(storage, bundesland, plz)
+    if offen and hasattr(adapter, "detail_erlaubt") and not adapter.detail_erlaubt(offen[0][1]):
+        stat.robots_gesperrt = True  # eine Zeile statt einer Fehlermeldung je Kandidat
+        if fortschritt:
+            fortschritt(ROBOTS_GESPERRT)
+        return stat
     for n, (kid, url) in enumerate(offen, start=1):
         k = storage.get_kandidat(kid)
         if k is None:
@@ -342,6 +351,11 @@ def run_details(storage: Storage, adapter, bundesland: str, blocklist: set[str],
         except SearchError as e:
             if isinstance(e, LimitErreicht):
                 stat.abbruch = str(e)
+                break
+            if "robots.txt verbietet" in str(e):  # Sperre erst im Lauf (robots.txt geändert): einmal melden, Schluss
+                stat.robots_gesperrt = True
+                if fortschritt:
+                    fortschritt(ROBOTS_GESPERRT)
                 break
             stat.fehler += 1
             if fortschritt:
@@ -393,3 +407,38 @@ def run_details(storage: Storage, adapter, bundesland: str, blocklist: set[str],
             fortschritt(f"Detail {n}/{len(offen)} · {d.name}: {', '.join(teile) or 'keine Kontaktdaten'}"
                         + (f", {len(d.beratungsstellen)} weitere Beratungsstelle(n)" if d.beratungsstellen else ""))
     return stat
+
+
+# ---------------------------------------------------------------------- Sperre je Land (laufende Einzelläufe erkennen)
+
+SPERRE = "stbv_sperre"
+SPERRE_VERWAIST_S = 600  # ohne Lebenszeichen seit 10 min gilt eine Sperre als verwaist (Lauf abgebrochen)
+
+
+def lauf_kennung() -> str:
+    import os
+    import socket
+    import threading
+
+    return f"{socket.gethostname()}:{os.getpid()}:{threading.get_ident()}"
+
+
+def fremde_sperre(storage: Storage, bundesland: str, kennung: str, jetzt: float | None = None) -> dict | None:
+    """Sperre eines anderen, noch lebenden Laufs (Lebenszeichen jünger als SPERRE_VERWAIST_S) – sonst None."""
+    sperre = storage.cache_get(SPERRE, bundesland)
+    jetzt = time.time() if jetzt is None else jetzt
+    if not sperre or sperre.get("kennung") == kennung or jetzt - sperre.get("zuletzt", 0) > SPERRE_VERWAIST_S:
+        return None
+    return sperre
+
+
+def sperre_setzen(storage: Storage, bundesland: str, kennung: str, schritt: str = "") -> None:
+    alt = storage.cache_get(SPERRE, bundesland) or {}
+    seit = alt.get("seit") if alt.get("kennung") == kennung else time.time()
+    storage.cache_put(SPERRE, bundesland, {"kennung": kennung, "seit": seit, "zuletzt": time.time(), "schritt": schritt})
+
+
+def sperre_loesen(storage: Storage, bundesland: str, kennung: str) -> None:
+    if (storage.cache_get(SPERRE, bundesland) or {}).get("kennung") == kennung:
+        with storage.conn:
+            storage.conn.execute("DELETE FROM api_cache WHERE adapter = ? AND schluessel = ?", (SPERRE, bundesland))
