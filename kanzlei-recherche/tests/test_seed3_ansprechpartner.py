@@ -126,3 +126,30 @@ def test_firmierung_unter_impressum_auch_als_fusszeile():
         k = _merge_mit_start(impressum, ["Willkommen", *fuss], LlmErgebnis(kanzleiname=llm_name))
         assert (k.kanzleiname, k.rechtsform) == ("Nordlicht nord GmbH", "GmbH"), llm_name
         assert k.hauptansprechpartner.name == "Ralf Rau"
+
+
+def test_steuerberatungsgesellschaft_ohne_zusatz_nie_einzelkanzlei():
+    """Rücksprache 05.11.2026 (andruleit.de): „RAU Steuerberatungsgesellschaft" mit einer genannten Person und ohne
+    Registereintrag – Rechtsform leer, nie „Einzelkanzlei"; „Steuerberaterin Dörte Rau" bleibt Einzelkanzlei."""
+    from recherche.extract.merge import ist_einzelkanzlei
+
+    for name in ("RAU Steuerberatungsgesellschaft", "Rau Partnerschaft", "Rau & Partner", "Steuerberater-Sozietät Rau"):
+        assert not ist_einzelkanzlei(name, "Impressum\nVerantwortlich: Dörte Rau", ["Dörte Rau"]), name
+    assert ist_einzelkanzlei("Steuerberaterin Dörte Rau", "Impressum", [])
+    leiste = ["Dörte Rau", "Buschberg 25", "24161 Altenholz"]
+    k = _merge_mit_start(["Impressum", "RAU Steuerberatungsgesellschaft", "Verantwortlich:", *leiste,
+                          "Telefon +494319000000"], ["Willkommen", *leiste],
+                         LlmErgebnis(kanzleiname="RAU Steuerberatungsgesellschaft", rechtsform="Einzelkanzlei"))
+    assert k.rechtsform is None and k.hauptansprechpartner.name == "Dörte Rau"
+
+
+def test_kanzlei_pruefung_korrigiert_gespeicherte_einzelkanzlei(storage):
+    from recherche.extract.kanzlei import run_pruefung
+    from recherche.models import Kanzlei
+
+    kid = storage.add_kandidat(Kandidat(bundesland="SH", domain="rau.example", website="https://rau.example/"))
+    storage.upsert_kanzlei(Kanzlei(kandidat_id=kid, domain="rau.example", lauf_bundesland="SH",
+                                   kanzleiname="RAU Steuerberatungsgesellschaft", rechtsform="Einzelkanzlei",
+                                   plz="24161", ort="Altenholz", plz_verifiziert=True))
+    run_pruefung(storage, "SH")
+    assert storage.kanzleien("SH")[0].rechtsform is None

@@ -374,6 +374,7 @@ def suchorte_je_stammdomain(storage: Storage, bundesland: str) -> dict[str, int]
     return {d: len(o) for d, o in orte.items()}
 
 
+_KEINE_EINZELKANZLEI = re.compile(r"gesellschaft|partnerschaft|\bpartner\b|sozietät|sozietaet", re.IGNORECASE)
 _VERWORFEN = re.compile(r"Name „(?P<name>[^“]+)“ ist nur Domain/Seitentitel – verworfen(?:; )?")
 
 
@@ -420,6 +421,8 @@ def run_pruefung(storage: Storage, bundesland: str, rechtsformen=STANDARD_RECHTS
         if verworfen:
             k.abweichung = "; ".join(dict.fromkeys(x for x in (k.abweichung, *verworfen) if x))
         name_ohne_ersatz_zurueck(k)
+        if k.rechtsform == "Einzelkanzlei" and k.kanzleiname and _KEINE_EINZELKANZLEI.search(k.kanzleiname):
+            k.rechtsform = None  # „… Steuerberatungsgesellschaft" ohne Zusatz: nie Einzelkanzlei (05.11.2026)
         if kanzlei_erkennung and k.domain and k.kandidat_id is not None:
             pruefen(k, storage.kandidat_seiten(k.kandidat_id), rechtsformen, storage.funde_kandidat(k.kandidat_id),
                     orte.get(stammdomain(k.domain), 0), ziel_land, blocklist)

@@ -998,9 +998,16 @@ def _impressum_vertreter(impressum: str | None, fremd, rahmen, personen) -> list
         p.name for p in personen if "(laut Impressum)" in (p.funktion or "")]
 
 
+_KEINE_EINZELKANZLEI = re.compile(r"gesellschaft|partnerschaft|\bpartner\b|sozietät|sozietaet", re.IGNORECASE)
+
+
 def ist_einzelkanzlei(name: str | None, impressum: str | None, vertreter: list[str]) -> bool:
     """Einzelperson mit Berufstitel, keine Gesellschaftsform: „Steuerberater Andreas Schreiner",
-    „Steuerbüro Thomas Schütt" – oder genau ein Inhaber/Vertreter und kein Registereintrag."""
+    „Steuerbüro Thomas Schütt" – oder genau ein Inhaber/Vertreter und kein Registereintrag. Nie, wenn der Name eine
+    Gesellschaft nennt („ANDRULEIT Steuerberatungsgesellschaft", „… Partnerschaft", „… Sozietät") – dann bleibt die
+    Rechtsform ohne Gesellschaftszusatz leer (Rücksprache 05.11.2026)."""
+    if name and _KEINE_EINZELKANZLEI.search(name):
+        return False
     if name and not _GESELLSCHAFT_HINWEIS.search(name):
         rest = _NAME_VORSILBE.sub("", name.strip())
         if (nt := name_zerlegen(rest)) and len(nt[0].split()) <= 3 and (nt[1] or rest != name.strip()):
@@ -1326,6 +1333,8 @@ def zusammenfuehren(
     llm_form = normalize_rechtsform(llm.rechtsform if llm else None)
     rechtsform = rechtsform_aus_seiten(name, impressum_text, fremd, rahmen) or (
         llm_form if rechtsform_belegt(llm_form, name, impressum_text, fremd, rahmen) else None)
+    if rechtsform == "Einzelkanzlei" and name and _KEINE_EINZELKANZLEI.search(name):
+        rechtsform = None  # „… Steuerberatungsgesellschaft" ist nie eine Einzelkanzlei (05.11.2026)
 
     # ---- Personen und Teamgröße: Regel-Erkennung auf den Teamseiten + LLM + Impressum
     from ..ketten import ist_standort_leitung, standortseite

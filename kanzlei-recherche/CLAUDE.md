@@ -543,7 +543,9 @@ der nächsten Quelle füllen.**
     Gesellschaftsform: Einzelperson mit Berufstitel im Namen („Steuerberater Andreas
     Schreiner", „Steuerbüro Thomas Schütt", auch „Steuerberater Schreiner") oder genau ein
     Vertreter ohne Registernummer (HRB/PR …; „keine Eintragung im Handelsregister" zählt nicht)
-    → Einzelkanzlei. Einzelkanzlei mit einem Berufsträger und höchstens einer Person
+    → Einzelkanzlei – **nie**, wenn der Name eine Gesellschaft nennt („… Steuerberatungsgesellschaft", „… Partnerschaft",
+    „& Partner", „Sozietät"; ohne Gesellschaftszusatz bleibt die Rechtsform dann leer, auch gegen eine LLM-Angabe;
+    `kanzlei-pruefung` korrigiert gespeicherte Zeilen – Rücksprache 05.11.2026, andruleit.de). Einzelkanzlei mit einem Berufsträger und höchstens einer Person
     auf den Teamseiten: Teamgröße 1; „Steuerberater Schreiner" + Person „Andreas Schreiner" →
     „Steuerberater Andreas Schreiner". Partnerschaftsregister/„PR 427" → PartG, mit „mbB" oder
     „beschränkter Berufshaftung" irgendwo im Impressum → PartG mbB. Kurzformen (AG, KG, UG,
