@@ -183,6 +183,8 @@ def test_person_ohne_gesellschaft_kennzeichen_und_zusammenfuehrung_ueber_website
 
     bestand = storage.add_kandidat(Kandidat(bundesland="SH", domain="thordsen-steuer.example",
                                             website="https://thordsen-steuer.example/", name="Steuerbüro Thordsen"))
+    storage.upsert_kanzlei(Kanzlei(kandidat_id=bestand, lauf_bundesland="SH", kanzleiname="Steuerbüro Thordsen",
+                                   domain="thordsen-steuer.example"))  # Regel 2: nur in eine Kanzlei-Zeile
     html = BEISPIEL_STBV.read_text(encoding="utf-8")
     run_verzeichnis(storage, _stbv_adapter(storage, {"24103": html}), plz_orte([Ort("Kiel", "24103", "Kreisfreie Stadt Kiel")]),
                     "SH", set(), "p1")
@@ -199,6 +201,14 @@ def test_person_ohne_gesellschaft_kennzeichen_und_zusammenfuehrung_ueber_website
     assert stat.schon_vergeben == 1 and storage.get_kandidat(imke.kandidat_id) is None
     assert [f.name for f in storage.funde_kandidat(bestand) if f.quelle == QUELLE] == ["Steuerberaterin Imke Thordsen"]
     assert any("zusammengeführt" in m for m in meldungen)
+
+    # Neu-Gruppierung setzt die von der Zusammenführung ergänzten Felder zurück (Adresse der Person)
+    from recherche.stbv_lauf import neu_gruppieren_vorbereiten
+
+    assert storage.get_kandidat(bestand).strasse == "Ring 1"
+    neu_gruppieren_vorbereiten(storage, "SH")
+    k = storage.get_kandidat(bestand)
+    assert (k.strasse, k.plz, k.domain) == (None, None, "thordsen-steuer.example")
 
 
 def luecken_werte_kennzeichen(z):
@@ -307,3 +317,60 @@ def test_syndikus_in_der_lueckenliste_ohne_kandidat(storage, tmp_path):
     assert luecken_werte(zeilen[0])[2:4] == ["Dr. Kai Lund, Steuerberater", SYNDIKUS_KENNZEICHEN]
     assert storage.kandidaten("SH") == []
     assert luecken(storage, "HH") == []  # HH hat diese PLZ nicht abgefragt
+
+
+def test_nachsuche_filtert_portale_und_fuehrt_nur_mit_bezug_zusammen(storage):
+    """SH-Nachsuche 05.11.2026 (596 Zusammenführungen, viele falsch), fiktiv nachgebaut:
+    1. Blocklist/Portal/„keine Kanzlei"-Domains werden übersprungen, der nächste Treffer zählt.
+    2. Zusammenführen nur mit einer Kanzlei-Zeile und Namens- oder Adressbezug, sonst „keine passende Website".
+    3. Domains von Ketten/Großgesellschaften (ketten.yaml) nie übernehmen."""
+    from fakes import FakeQueryAdapter
+
+    from recherche import ketten
+    from recherche.models import Status
+    from recherche.search.nachsuche import website_nachsuche
+
+    ketten.setze_config(ketten.KettenConfig.laden_aus(
+        {"grossgesellschaften": [{"name": "ETL", "muster": ["\\bETL\\b"], "domains": ["etl.example"]}]}))
+    try:
+        def amtlich(name, strasse="Markt 1", plz="25980", ort="Sylt"):
+            return storage.add_kandidat(Kandidat(bundesland="SH", name=name, strasse=strasse, plz=plz, ort=ort,
+                                                 quelle=QUELLE))
+
+        portal = storage.add_kandidat(Kandidat(bundesland="SH", domain="ortsportal.example",
+                                               website="https://ortsportal.example/", name="Ortsportal"))
+        storage.upsert_kanzlei(Kanzlei(kandidat_id=portal, lauf_bundesland="SH", kanzleiname="Ortsportal",
+                                       domain="ortsportal.example", status=Status.KEINE_KANZLEI))
+        fremd = storage.add_kandidat(Kandidat(bundesland="SH", domain="hansen-stb.example",
+                                              website="https://hansen-stb.example/", name="Steuerbüro Hansen"))
+        storage.upsert_kanzlei(Kanzlei(kandidat_id=fremd, lauf_bundesland="SH", kanzleiname="Steuerbüro Hansen",
+                                       domain="hansen-stb.example", strasse="Wall 9", plz="24103"))
+        beine = amtlich("Steuerberater Siegfried Beine")
+        forseti = amtlich("Forseti Steuerberatungsgesellschaft mbH", ort="Helgoland", plz="27498")
+        fwr = amtlich("FWR Steuerberatungsgesellschaft mbH")
+        lorenzen = amtlich("Lorenzen & Partner Steuerberater")
+        from fakes import hit
+
+        def t(url, titel):  # Titel nennt den Namen – wie bei Portal- und Registerseiten
+            return hit("brave", url, name=titel)
+
+        brave = FakeQueryAdapter("brave", {
+            # Portal (keine Kanzlei) übersprungen, eigener Treffer danach zählt
+            "Steuerberater Siegfried Beine Sylt": [t("https://ortsportal.example/beine", "Siegfried Beine – Ortsportal"),
+                                                   t("https://steuerberater-beine.example/", "Start")],
+            "Forseti Steuerberatungsgesellschaft mbH Helgoland": [
+                t("https://online-handelsregister.de/forseti", "Forseti Steuerberatungsgesellschaft mbH")],
+            "FWR Steuerberatungsgesellschaft mbH Sylt": [t("https://kanzlei.etl.example/fwr", "FWR Steuerberatung")],
+            # Domain gehört einer Kanzlei ohne Namens-/Adressbezug → verworfen, nicht zusammengeführt
+            "Lorenzen & Partner Steuerberater Sylt": [t("https://hansen-stb.example/lorenzen", "Lorenzen & Partner")],
+        })
+        meldungen = []
+        stat = website_nachsuche(storage, brave, "SH", QUELLE, {"online-handelsregister.de"}, fortschritt=meldungen.append)
+        assert storage.get_kandidat(beine).domain == "steuerberater-beine.example"
+        assert storage.get_kandidat(forseti).domain is None and storage.get_kandidat(fwr).domain is None
+        assert storage.get_kandidat(lorenzen) is not None and storage.get_kandidat(lorenzen).domain is None
+        assert (stat.gefunden, stat.schon_vergeben, stat.verworfen) == (1, 0, 1)
+        assert any("hansen-stb.example verworfen" in m and "ohne Namens- oder Adressbezug" in m for m in meldungen)
+        assert any("Standorte nur über ketten.yaml" in m for m in meldungen)
+    finally:
+        ketten.setze_config(ketten.KettenConfig())

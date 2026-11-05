@@ -305,6 +305,17 @@ def gruppierung_veraltet(storage: Storage, bundesland: str) -> bool:
     return stand != GRUPPIERUNG_VERSION and bool(storage.funde(bundesland, QUELLE))
 
 
+ZUSAMMEN_MERKER = "nachsuche_zusammengefuehrt"  # api_cache: Kandidat → von der Zusammenführung ergänzte Felder
+
+
+def _kein_kanzlei_ziel(storage: Storage, k) -> bool:
+    from .models import Status
+
+    z = storage.kanzlei_fuer_kandidat(k.id)
+    return bool((k.fehler and "Portal" in k.fehler)
+                or (z is not None and z.status in (Status.KEINE_KANZLEI, Status.UNGUELTIG)))
+
+
 def neu_gruppieren_vorbereiten(storage: Storage, bundesland: str) -> tuple[int, int]:
     """Gruppierung aus dem Cache neu berechnen (ohne neue Abfragen): Kandidaten, die nur das amtliche Verzeichnis (und
     dessen Website-Nachsuche) angelegt hat, werden entfernt; anderen Kandidaten werden nur die amtlichen Funde
@@ -329,6 +340,18 @@ def neu_gruppieren_vorbereiten(storage: Storage, bundesland: str) -> tuple[int, 
                 entfernt += 1
             else:
                 storage.conn.execute("DELETE FROM funde WHERE kandidat_id = ? AND quelle = ?", (k.id, QUELLE))
+                # Felder, die eine Zusammenführung der Nachsuche aus dem amtlichen Eintrag ergänzt hat, zurücksetzen –
+                # gemerkt seit 05.11.2026; ältere Zusammenführungen: nur bei Kandidaten „keine Kanzlei"/ungültig/Portal
+                # (die falschen Fälle des SH-Laufs), dort jedes Feld, das nur der amtliche Eintrag belegt
+                felder = (storage.cache_get(ZUSAMMEN_MERKER, str(k.id)) or {}).get("felder")
+                if felder is None and _kein_kanzlei_ziel(storage, k):
+                    felder = [f for f in ("strasse", "plz", "ort", "telefon")
+                              if getattr(k, f) and any(getattr(a, f, None) == getattr(k, f) for a in amtlich)
+                              and not any(getattr(x, f, None) == getattr(k, f) for x in funde if x.quelle != QUELLE)]
+                for feld in felder or []:
+                    storage.conn.execute(f"UPDATE kandidaten SET {feld} = NULL WHERE id = ?", (k.id,))
+                storage.conn.execute("DELETE FROM api_cache WHERE adapter = ? AND schluessel = ?",
+                                     (ZUSAMMEN_MERKER, str(k.id)))
                 bereinigt += 1
         if k.quelle != QUELLE or andere:
             storage.set_extract_status(k.id, SchrittStatus.OFFEN)

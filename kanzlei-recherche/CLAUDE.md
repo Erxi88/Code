@@ -170,7 +170,17 @@ der nächsten Quelle füllen.**
       Z bekannt". **Website-Nachsuche** (`search/nachsuche.py`): neue Einträge ohne Website → Brave
       „{Name} {Ort}", eine Seite; erster Treffer mit Kanzlei-Domain, die zum Namen passt, wird Website
       (Kandidat → crawl/extract); sonst bleibt die amtliche Anschrift („Website vorhanden" = nein). Jeder
-      Eintrag einmal.
+      Eintrag einmal. Regeln seit dem SH-Lauf 05.11.2026 (596 Zusammenführungen, viele falsch – Register-, Händler-,
+      Personen- und Ortsportale, kanzlei.etl.de): (1) Treffer gefiltert wie Suchtreffer – Blocklist, Portal-Muster,
+      Stammdomain in ≥ PORTAL_AB_ORTEN Suchorten, Domain eines Kandidaten mit „keine Kanzlei"/ungültig oder
+      Portal-Fehler; dann zählt der nächste Treffer. (2) Gehört die Domain einem Kandidaten, wird nur zusammengeführt,
+      wenn dessen Zeile eine Kanzlei ist und Nachname (Person) bzw. ein unterscheidendes Namenswort in Domain oder
+      Kanzleiname steht oder PLZ+Straße gleich sind – sonst Treffer verworfen, „keine passende Website". (3) Domains
+      von Ketten und Großgesellschaften (ketten.yaml) nie – Standorte nur über `recherche ketten`. Ergänzte Felder
+      einer Zusammenführung werden gemerkt (api_cache „nachsuche_zusammengefuehrt"); `--neu-gruppieren` setzt sie
+      zurück (ältere Zusammenführungen: bei Zielen „keine Kanzlei"/ungültig/Portal jedes nur amtlich belegte Feld).
+      Neu berechnen ohne Kosten: `recherche stb-verzeichnis -b SH --neu-gruppieren --ja` – Seiten und Brave-Antworten
+      kommen aus dem Cache.
       **Ganzes Land: `recherche stb-verzeichnis -b SH [--ja] [--ohne-nachsuche] [--nur-verzeichnis] [--out …csv]`**
       (`stbv_lauf.py`, Entscheidung 04.11.2026): alle PLZ des Landes aus der Ortsliste (je PLZ einmal, ohne
       Zusatz-Suchorte), Dauer-Schätzung vorab (offene PLZ × Pause), je PLZ eine Abfrage (Lauf-Protokoll Schritt

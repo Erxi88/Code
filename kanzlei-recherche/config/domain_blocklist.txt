@@ -202,5 +202,13 @@ jobs.denkerwulf.de
 # Website-Kopien (Drittseiten spiegeln Kanzlei-Websites unter eigener Subdomain; das Original zählt) – Seed 3
 dewebc.com
 
+# Website-Nachsuche SH 05.11.2026: Personen-/Firmenportale, Händler- und Registerdienste, Ortsportale
+yasni.de
+steuerfinder.com
+haendlerschutz.com
+online-handelsregister.de
+sylt4you.de
+sylt-web.de
+
 # Nicht hier: große Prüfungs-/Steuerberatungsgesellschaften (BDO, EY, PwC, KPMG, Deloitte, Baker Tilly …) sind
 # Zielkanzleien (Entscheidung 30.10.2026) – Kanzleityp „Großgesellschaft" über config/ketten.yaml.

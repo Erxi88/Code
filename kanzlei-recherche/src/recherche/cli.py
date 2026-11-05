@@ -511,8 +511,10 @@ def _website_nachsuche(ctx: Kontext, st: Storage, quelle: str) -> None:
     console.print(f"Website-Nachsuche für neue {quelle}-Einträge ohne Website mit {name} (eine Seite je Eintrag) …")
     stat = website_nachsuche(st, brave, ctx.bundesland, quelle, ctx.blocklist(), fortschritt=lambda m: console.print(f"  {m}"))
     console.print(f"Nachsuche: {stat.geprueft} gesucht, {stat.gefunden} mit Website (→ crawl/extract), "
-                  f"{stat.ohne_website} ohne Website (amtliche Anschrift bleibt), {stat.schon_vergeben} mit dem "
-                  f"Kandidaten derselben Website zusammengeführt, {stat.fehler} Fehler; {brave.anfragen} Anfragen ≈ {brave.kosten():.2f}")
+                  f"{stat.ohne_website} ohne Website (amtliche Anschrift bleibt; davon {stat.verworfen} Treffer verworfen: "
+                  f"Domain einer Nicht-Kanzlei bzw. ohne Namens-/Adressbezug), {stat.schon_vergeben} mit dem "
+                  f"Kandidaten derselben Website zusammengeführt, {stat.gefiltert} Treffer übersprungen (Portal, keine "
+                  f"Kanzlei, Kette), {stat.fehler} Fehler; {brave.anfragen} Anfragen ≈ {brave.kosten():.2f}")
     if stat.abbruch:
         console.print(f"[yellow]Nachsuche vorzeitig beendet:[/yellow] {stat.abbruch} – erneut `fill` aufrufen setzt fort.")
 
