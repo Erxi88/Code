@@ -65,6 +65,7 @@ class PlzAnalyse:
     einzeln_an_kanzlei_adresse: int = 0  # Person ohne Firmenzeile an einer Adresse mit Gesellschaft/Firmenzeile
     einzeln_adresse_geteilt: int = 0  # Person ohne Firmenzeile, Adresse mit weiteren solchen Personen geteilt
     syndikus_verdacht: list = field(default_factory=list)  # Firmenzeilen mit Konzern-Steuerabteilung o. Ä.
+    anderes_land: int = 0  # Kanzleien laut PLZ und Ort in einem anderen Land (nur mit -b gezählt)
 
     @property
     def fremde_plz(self) -> int:
@@ -72,12 +73,18 @@ class PlzAnalyse:
         return sum(n for o, n in self.orte.items() if not o.startswith(self.plz))
 
 
-def analysiere(html: str, plz: str, url: str = "") -> PlzAnalyse:
+def analysiere(html: str, plz: str, url: str = "", land: str | None = None, land_von=None) -> PlzAnalyse:
+    """Mit `land` und `land_von` (LandNachOrt) zählen nur Kanzleien, die laut PLZ und Ort in diesem Land liegen."""
     karten, zahl = stbv_karten(html, url)
     hits = stbv_gruppieren(karten)
+    anderes = 0
+    if land and land_von:
+        eigene = [h for h in hits if (land_von(h.plz, h.ort) or land) == land]
+        anderes, hits = len(hits) - len(eigene), eigene
     a = PlzAnalyse(plz, len(karten), sum(k.gesellschaft for k in karten), sum(not k.gesellschaft for k in karten),
                    sum(1 for k in karten if not k.gesellschaft and not k.firma), len(stbv_syndikus(karten)), len(hits),
                    angezeigt=zahl[0] if zahl else None, gesamt=zahl[1] if zahl else None, liste=hits)
+    a.anderes_land = anderes
     a.aus_firmenzeile = sum(FIRMENZEILE_OHNE_KARTE in (h.snippet or "") for h in hits)
     a.person_einzeln = sum(ist_einzeln(h.snippet) for h in hits)
     a.sozietaet = sum(SOZIETAET in (h.snippet or "") for h in hits)

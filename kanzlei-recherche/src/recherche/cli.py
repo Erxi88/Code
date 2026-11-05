@@ -985,7 +985,8 @@ def _verzeichnis_bericht(stat) -> None:
     if not stat.berichte:
         return
     t = Table(title="Amtliches Verzeichnis je PLZ")
-    for spalte in ("PLZ", "Ort", "Einträge", "Treffer", "Kanzleien", "ohne Ges.", "neu", "bekannt", "Antwort"):
+    for spalte in ("PLZ", "Ort", "Einträge", "Treffer", "Kanzleien", "ohne Ges.", "anderes Land", "neu", "bekannt",
+                   "Antwort"):
         t.add_column(spalte, justify="left" if spalte == "Ort" else "right")
     for b in stat.berichte:
         treffer = f"{b.angezeigt} von {b.gesamt}" if b.gesamt is not None else "–"
@@ -993,7 +994,7 @@ def _verzeichnis_bericht(stat) -> None:
             treffer = f"[red]{treffer}[/red]"
         zeit = "Cache" if b.cache else (f"{b.sekunden:.1f} s" if b.sekunden is not None else (b.fehler or "–"))
         t.add_row(b.plz, b.ort, str(b.eintraege if b.eintraege is not None else "–"), treffer, str(b.kanzleien),
-                  str(b.ohne_gesellschaft), str(b.neu), str(b.bekannt), zeit)
+                  str(b.ohne_gesellschaft), str(b.anderes_land), str(b.neu), str(b.bekannt), zeit)
     console.print(t)
     zeiten = [b.sekunden for b in stat.berichte if b.sekunden is not None and not b.cache]
     if zeiten:
@@ -1012,6 +1013,8 @@ def _verzeichnis_bericht(stat) -> None:
 def stb_verzeichnis_analyse(
     db: DbOpt = None,
     config: ConfigOpt = None,
+    bundesland: Annotated[str | None, typer.Option("--bundesland", "-b", help=(
+        "nur die PLZ dieses Landes (Ortsliste); Kanzleien laut PLZ und Ort in anderen Ländern nicht gezählt"))] = None,
     plz: Annotated[str | None, typer.Option("--plz", help="kommagetrennte PLZ (Standard: alle im Cache)")] = None,
     liste: Annotated[str | None, typer.Option("--liste", help=(
         "kommagetrennte PLZ, für die die gebildeten Kanzleien mit Adresse ausgegeben werden"))] = None,
@@ -1022,14 +1025,23 @@ def stb_verzeichnis_analyse(
     from .search.verzeichnisse import FIRMENZEILE_OHNE_KARTE as FIRMENZEILE_TEXT
     from .search.verzeichnisse import NICHT_ZUGEORDNET, SOZIETAET, ist_einzeln
     from .stbv_analyse import analyse_csv, analysiere, gecachte_seiten
+    from .stbv_lauf import LandNachOrt, plz_orte
 
     s = load_settings(config)
     seiten = gecachte_seiten(db or s.db_pfad())
     if plz:
         seiten = {p: seiten[p] for p in (x.strip() for x in plz.split(",")) if p in seiten}
+    land_von = None
+    if bundesland:
+        ctx = _kontext(config, bundesland, db)
+        bundesland = ctx.bundesland
+        land_plz = {o.plz for o in plz_orte(ctx.orte(None, mit_zusatz=False))}
+        seiten = {p: v for p, v in seiten.items() if p in land_plz}
+        land_von = LandNachOrt.aus_settings(s)
+        console.print(f"{bundesland}: {len(land_plz)} PLZ in der Ortsliste, {len(seiten)} davon im Cache")
     if not seiten:
         _fehler("Keine gecachten Seiten des amtlichen Verzeichnisses (für diese PLZ)")
-    analysen = [analysiere(html, p, url) for p, (url, html) in sorted(seiten.items())]
+    analysen = [analysiere(html, p, url, bundesland, land_von) for p, (url, html) in sorted(seiten.items())]
     t = Table(title=f"Amtliches Verzeichnis aus dem Cache ({len(analysen)} PLZ)")
     for spalte in ("PLZ", "Einträge", "Ges.", "Personen", "o. Firmenz.", "Syndikus", "Kanzleien", "aus Ges.",
                    "aus Firmenz.", "einzeln", "Sozietät", "andere PLZ", "Orte"):
@@ -1045,6 +1057,12 @@ def stb_verzeichnis_analyse(
     console.print(f"Summe: {summe['eintraege']} Einträge ({summe['gesellschaften']} Gesellschaften, {summe['personen']} "
                   f"Personen) → {summe['kanzleien']} Kanzleien, {summe['syndikus']} Syndikus; {summe['fremde_plz']} "
                   "Einträge mit einer anderen PLZ als der abgefragten")
+    eindeutig = {h.quell_id for a in analysen for h in a.liste}
+    sozietaet = sum(a.sozietaet for a in analysen)
+    console.print(f"[bold]Kanzleien gesamt (ohne Doppel aus mehreren Abfragen): {len(eindeutig)}[/bold] – davon "
+                  f"{sum(a.person_einzeln for a in analysen)} einzeln, {sozietaet} Sozietät/Bürogemeinschaft"
+                  + (f"; {sum(a.anderes_land for a in analysen)} laut PLZ und Ort in einem anderen Land, nicht gezählt"
+                     if bundesland else ""))
     einzeln = sum(a.person_einzeln for a in analysen)
     an_kanzlei = sum(a.einzeln_an_kanzlei_adresse for a in analysen)
     geteilt = sum(a.einzeln_adresse_geteilt for a in analysen)
@@ -1106,6 +1124,7 @@ def _stbv_netz_gesperrt(ctx: Kontext, orte: list[Ort], auswahl: list[Ort], kreis
         GRUPPIERUNG_VERSION,
         QUELLE,
         ROBOTS_GESPERRT,
+        LandNachOrt,
         bericht_csv,
         gruppierung_veraltet,
         neu_gruppieren_vorbereiten,
@@ -1151,10 +1170,14 @@ def _stbv_netz_gesperrt(ctx: Kontext, orte: list[Ort], auswahl: list[Ort], kreis
             console.print("Abgebrochen – nichts abgefragt.")
             return False
         stat = run_verzeichnis(st, adapter, orte, bl, ctx.blocklist(), _lauf_id(),
-                               fortschritt=lambda m: lebenszeichen(st, "Suchseiten", f"  {bl} {m}"))
+                               fortschritt=lambda m: lebenszeichen(st, "Suchseiten", f"  {bl} {m}"),
+                               land_von=LandNachOrt.aus_settings(ctx.settings))
         console.print(f"Verzeichnis {bl}: {stat.plz - stat.uebersprungen} PLZ abgefragt ({stat.uebersprungen} schon "
                       f"erledigt), {stat.treffer} Kanzleien – {stat.neu} neu (direkt im Bestand), {stat.bekannt} bekannt, "
                       f"{stat.verworfen} schon von dieser Quelle, {stat.fehler} Fehler")
+        if stat.anderes_land:
+            console.print("Laut PLZ und Ort in einem anderen Land (dort angelegt, wenn dessen Lauf die PLZ abfragt): "
+                          + ", ".join(f"{land} {n}" for land, n in stat.anderes_land.most_common()))
         _verzeichnis_bericht(stat)
         if stat.berichte:
             ziel = ctx.settings.ausgabe_pfad(bl).with_name(f"stb_verzeichnis_plz_{bl}{endung}.csv")

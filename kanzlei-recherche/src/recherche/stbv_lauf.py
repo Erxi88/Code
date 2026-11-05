@@ -15,6 +15,7 @@ from __future__ import annotations
 import csv
 import re
 import time
+from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -33,7 +34,7 @@ from .storage import Storage
 
 QUELLE = "stb_verzeichnis"
 # Stand der Gruppierungsregeln (stbv_gruppieren): ein Land mit älterem Stand wird automatisch neu gruppiert
-GRUPPIERUNG_VERSION = "2026-11-05-sozietaet"  # Regeln 1–3, Kurzformen
+GRUPPIERUNG_VERSION = "2026-11-05-land"  # Regeln 1–3, Kurzformen, Land über PLZ+Ort
 SCHRITT = "stb-verzeichnis"
 
 
@@ -68,6 +69,7 @@ class PlzBericht:
     gesamt: int | None = None
     kanzleien: int = 0  # Kandidaten nach der Gruppierung
     ohne_gesellschaft: int = 0  # davon Personen ohne Gesellschaft an ihrer Adresse
+    anderes_land: int = 0  # davon laut PLZ und Ort in einem anderen Land (legt dessen Lauf an)
     neu: int = 0
     bekannt: int = 0
     sekunden: float | None = None
@@ -119,15 +121,65 @@ class VerzeichnisStatistik:
     fehler: int = 0
     abbruch: str | None = None
     berichte: list[PlzBericht] = field(default_factory=list)
+    anderes_land: Counter = field(default_factory=Counter)  # Land → Kanzleien, die dessen Lauf anlegt
 
     @property
     def abgeschnitten(self) -> list[PlzBericht]:
         return [b for b in self.berichte if b.abgeschnitten]
 
 
+def _ort_schluessel(ort: str | None) -> str:
+    """„Hamburg (22145)" → „hamburg", „Elmenhorst (Herzogtum Lauenburg)" → „elmenhorst", „Bad Oldesloe, Stadt" →
+    „bad oldesloe"."""
+    o = re.sub(r"\s*\(.*?\)", "", (ort or "").casefold()).split(",")[0]
+    return " ".join(o.replace("ä", "ae").replace("ö", "oe").replace("ü", "ue").replace("ß", "ss").split())
+
+
+class LandNachOrt:
+    """Land eines Eintrags über PLZ und Ortsspalte (SH 05.11.2026: die Abfrage 22145 für Braak/Stapelfeld liefert auch
+    „22145 Hamburg" – das gehört zu HH, nicht über die abgefragte PLZ zu SH). Grundlage: alle Ortslisten
+    (config/orte_<BL>.csv). PLZ in nur einem Land → dieses; in mehreren → das, dessen Gemeinde (Name, Gemeinde- oder
+    Stadtteilname) zum Ort passt; sonst None (unbekannt – bleibt beim abgefragten Land)."""
+
+    def __init__(self, orte_je_land: dict[str, list[Ort]]):
+        self.index: dict[str, dict[str, set[str]]] = {}
+        for bl, orte in orte_je_land.items():
+            for o in orte:
+                namen = {_ort_schluessel(x) for x in (o.name, o.gemeinde, o.stadtteil) if x}
+                for p in o.alle_plz:
+                    self.index.setdefault(p, {}).setdefault(bl, set()).update(namen)
+
+    @classmethod
+    def aus_settings(cls, settings) -> LandNachOrt:
+        from .models import BUNDESLAENDER
+        from .search.pipeline import load_orte
+
+        orte = {}
+        for bl in BUNDESLAENDER:
+            pfad = settings.pfad(settings.bundesland(bl).orte_datei)
+            if pfad.exists():
+                orte[bl] = load_orte(pfad)
+        return cls(orte)
+
+    def __call__(self, plz: str | None, ort: str | None) -> str | None:
+        laender = self.index.get(plz or "")
+        if not laender:
+            return None
+        if len(laender) == 1:
+            return next(iter(laender))
+        o = _ort_schluessel(ort)
+        kandidaten = [bl for bl, namen in laender.items()
+                      if o in namen or re.split(r"[- ]", o)[0] in namen or any(n.startswith(o + " ") for n in namen)]
+        return kandidaten[0] if len(kandidaten) == 1 else None
+
+
 def run_verzeichnis(storage: Storage, adapter: OrtsAdapter, orte: list[Ort], bundesland: str, blocklist: set[str],
-                    lauf_id: str, fortschritt: Callable[[str], None] | None = None) -> VerzeichnisStatistik:
-    """Je PLZ eine Abfrage; Treffer über die Dubletten-Logik in den Bestand (neue Kandidaten direkt)."""
+                    lauf_id: str, fortschritt: Callable[[str], None] | None = None,
+                    land_von: Callable[[str | None, str | None], str | None] | None = None) -> VerzeichnisStatistik:
+    """Je PLZ eine Abfrage; Treffer über die Dubletten-Logik in den Bestand (neue Kandidaten direkt). Mit `land_von`
+    (LandNachOrt) bleibt ein Eintrag, dessen PLZ und Ort in einem anderen Land liegen, hier außen vor: dieses Land hat
+    die PLZ in seiner Ortsliste, fragt sie selbst ab (dieselbe Anfrage – aus dem Cache) und legt ihn dort an. So
+    entstehen bei parallelen Ländern keine Doppel."""
     zuordnung = Zuordnung(storage, bundesland, blocklist, lauf_id)
     stat = VerzeichnisStatistik(plz=len(orte))
     for n, ort in enumerate(orte, start=1):
@@ -161,6 +213,15 @@ def run_verzeichnis(storage: Storage, adapter: OrtsAdapter, orte: list[Ort], bun
             bericht.cache = bericht.cache or a.get("cache", False)
             bericht.eintraege = a.get("eintraege", bericht.eintraege)
             bericht.angezeigt, bericht.gesamt = a.get("angezeigt", bericht.angezeigt), a.get("gesamt", bericht.gesamt)
+        eigene = []
+        for h in hits:
+            land = (land_von(h.plz, h.ort) if land_von else None) or bundesland
+            if land == bundesland:
+                eigene.append(h)
+            else:
+                bericht.anderes_land += 1
+                stat.anderes_land[land] += 1
+        hits = eigene
         ergebnisse = [zuordnung.verarbeite(h, adapter, begriff, ort.name) for h in hits]
         neu = sum(e is True for e in ergebnisse)
         bekannt = sum(e is False for e in ergebnisse)

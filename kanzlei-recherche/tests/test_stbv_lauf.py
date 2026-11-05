@@ -374,3 +374,51 @@ def test_nachsuche_filtert_portale_und_fuehrt_nur_mit_bezug_zusammen(storage):
         assert any("Standorte nur über ketten.yaml" in m for m in meldungen)
     finally:
         ketten.setze_config(ketten.KettenConfig())
+
+
+def test_land_ueber_plz_und_ort_nicht_ueber_die_abgefragte_plz(storage):
+    """SH 05.11.2026: Die Abfrage 22145 (Braak, Stapelfeld) liefert auch „22145 Hamburg" – das gehört zu HH (dessen
+    Lauf fragt 22145 selbst ab und legt es an); 21493 Schwarzenbek bleibt SH."""
+    from recherche.stbv_lauf import LandNachOrt
+
+    land = LandNachOrt({"SH": [Ort("Braak", "22145", "Kreis Stormarn"), Ort("Stapelfeld", "22145", "Kreis Stormarn"),
+                               Ort("Schwarzenbek", "21493", "Kreis Herzogtum Lauenburg")],
+                        "HH": [Ort("Hamburg", "20095", "Hamburg", plz_weitere=("22145",)),
+                               Ort("Hamburg (22145)", "22145", "Hamburg", gemeinde="Hamburg")]})
+    assert [land("22145", "Hamburg"), land("22145", "Stapelfeld"), land("21493", "Schwarzenbek"),
+            land("22145", "Hamburg-Rahlstedt"), land("22145", "Irgendwo"), land("99999", "Hamburg")] == \
+        ["HH", "SH", "SH", "HH", None, None]
+
+    treffer = {"22145": [_hit(1, "Steuerkanzlei Rahlstedt", "Bahnhofstr. 1", "22145", "Hamburg"),
+                         _hit(2, "Steuerbüro Braak", "Dorfstraße 3", "22145", "Braak")]}
+    stat = run_verzeichnis(storage, FakeVerzeichnis(treffer), [Ort("Braak", "22145", "Kreis Stormarn")], "SH", set(),
+                           "l", land_von=land)
+    assert {k.name for k in storage.kandidaten("SH")} == {"Steuerbüro Braak"} and storage.kandidaten("HH") == []
+    assert stat.anderes_land == {"HH": 1} and stat.berichte[0].anderes_land == 1 and stat.treffer == 1
+
+
+def test_analyse_je_land_mit_gesamtzahl(monkeypatch, db_pfad):
+    """stb-verzeichnis-analyse -b SH: nur PLZ des Landes, Kanzleien anderer Länder (PLZ+Ort) nicht gezählt, Summe ohne
+    Doppel – die Landeszahl ohne neuen Lauf."""
+    from typer.testing import CliRunner
+
+    from recherche import cli, stbv_lauf
+    from recherche.storage import Storage
+
+    def karte(nr, name, strasse, ort):
+        return (f'<a class="link-to-detail" href="https://x/details/{nr}/"><p class="beruf">Steuerberater</p>'
+                f'<p class="name">{name}</p><p class="address-display">{strasse}<br>22145 {ort}</p></a>')
+
+    seite = ("<html><body>Treffer: 4 von 4" + karte(1, "Ole Lund", "Dorfstraße 1", "Braak")
+             + karte(2, "Eva Ott", "Dorfstraße 1", "Braak") + karte(3, "Kai Rau", "Bahnhofstr. 9", "Hamburg")
+             + karte(4, "Ina Behn", "Am Teich 2", "Stapelfeld") + "</body></html>")
+    with Storage(db_pfad) as st:
+        st.cache_put(QUELLE, "https://stbv.example/ POST plzFilter=22145", {"html": seite})
+    monkeypatch.setattr(cli.Kontext, "orte", lambda self, a, mit_zusatz=True: [Ort("Braak", "22145", "Kreis Stormarn")])
+    monkeypatch.setattr(stbv_lauf.LandNachOrt, "aus_settings", classmethod(lambda cls, s: cls(
+        {"SH": [Ort("Braak", "22145"), Ort("Stapelfeld", "22145")], "HH": [Ort("Hamburg", "22145")]})))
+    r = CliRunner().invoke(cli.app, ["stb-verzeichnis-analyse", "-b", "SH", "--db", str(db_pfad)], env={"COLUMNS": "300"})
+    text = " ".join(r.output.split())
+    assert r.exit_code == 0, r.output
+    assert "Kanzleien gesamt (ohne Doppel aus mehreren Abfragen): 2" in text  # Lund & Ott, Behn
+    assert "1 Sozietät/Bürogemeinschaft" in text and "1 laut PLZ und Ort in einem anderen Land" in text

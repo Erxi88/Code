@@ -234,7 +234,13 @@ der nächsten Quelle füllen.**
       Angestellte): vorläufiger Name „Steuerberater Nachname1 & Nachname2" (ab drei „A, B & C"), Berufsträger =
       Anzahl, Kennzeichen „Sozietät/Bürogemeinschaft – Name über Website prüfen" (Lückenliste, Analyse-Spalte
       „Sozietät"); die Website-Nachsuche läuft damit einmal je Adresse mit allen Nachnamen und Ort, beim
-      Zusammenführen zählt jeder der Nachnamen. `GRUPPIERUNG_VERSION` „2026-11-05-sozietaet". Ein Land mit älterer Gruppierung wird vor Nachsuche, crawl und extract neu gruppiert;
+      Zusammenführen zählt jeder der Nachnamen. **Land über PLZ und Ort** (SH 05.11.2026: die Abfrage 22145 für
+      Braak/Stapelfeld liefert auch „22145 Hamburg"): `LandNachOrt` aus allen `config/orte_<BL>.csv` – PLZ in nur einem
+      Land → dieses, in mehreren → das Land, dessen Gemeinde zum Ort passt („Hamburg-Rahlstedt" → HH); sonst das
+      abgefragte Land. Einträge eines anderen Landes legt dessen eigener Lauf an (es hat die PLZ in seiner Ortsliste,
+      dieselbe Anfrage kommt aus dem Cache) – keine Doppel bei parallelen Ländern; Ausgabe „anderes Land" je PLZ.
+      `stb-verzeichnis-analyse -b SH` zählt nur die PLZ und Kanzleien des Landes und nennt die Gesamtzahl ohne Doppel.
+      `GRUPPIERUNG_VERSION` „2026-11-05-land". Ein Land mit älterer Gruppierung wird vor Nachsuche, crawl und extract neu gruppiert;
       der Schritt „nach" verweigert bis dahin, die Warteschlange schickt das Land zuerst wieder durch den Netz-Teil.
       `stb-verzeichnis --neu-gruppieren`: amtliche Kandidaten entfernen (andere nur um amtliche Funde bereinigen),
       Lauf-Protokoll leeren, dann aus dem Cache neu anlegen – keine neuen Abfragen; Nachsuche-Merker nur der
