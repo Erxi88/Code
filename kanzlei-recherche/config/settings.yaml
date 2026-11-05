@@ -7,6 +7,51 @@ bundeslaender:
   SH:
     name: Schleswig-Holstein
     orte_datei: config/orte_SH.csv
+  HH:
+    name: Hamburg
+    orte_datei: config/orte_HH.csv
+  NI:
+    name: Niedersachsen
+    orte_datei: config/orte_NI.csv
+  HB:
+    name: Bremen
+    orte_datei: config/orte_HB.csv
+  MV:
+    name: Mecklenburg-Vorpommern
+    orte_datei: config/orte_MV.csv
+  BB:
+    name: Brandenburg
+    orte_datei: config/orte_BB.csv
+  BE:
+    name: Berlin
+    orte_datei: config/orte_BE.csv
+  ST:
+    name: Sachsen-Anhalt
+    orte_datei: config/orte_ST.csv
+  SN:
+    name: Sachsen
+    orte_datei: config/orte_SN.csv
+  TH:
+    name: Thüringen
+    orte_datei: config/orte_TH.csv
+  NW:
+    name: Nordrhein-Westfalen
+    orte_datei: config/orte_NW.csv
+  HE:
+    name: Hessen
+    orte_datei: config/orte_HE.csv
+  RP:
+    name: Rheinland-Pfalz
+    orte_datei: config/orte_RP.csv
+  SL:
+    name: Saarland
+    orte_datei: config/orte_SL.csv
+  BW:
+    name: Baden-Württemberg
+    orte_datei: config/orte_BW.csv
+  BY:
+    name: Bayern
+    orte_datei: config/orte_BY.csv
 
 pfade:
   db: data/recherche.sqlite
