@@ -89,11 +89,12 @@ def test_drosselung():
 
 
 def test_retry_bei_429_ratenlimit():
-    kopf = {"X-RateLimit-Remaining": "0, 950"}
+    """429 je Sekunde: warten bis X-RateLimit-Reset (Sekunden-Wert), dann weiter (Rückmeldung 05.11.2026)."""
+    kopf = {"X-RateLimit-Limit": "1, 15000", "X-RateLimit-Remaining": "0, 950", "X-RateLimit-Reset": "3, 2419200"}
     a, http, clock = _adapter([(429, F429, kopf), (200, SEITE1)])
     assert len(a.search("Steuerberater Kiel", 20)) == 5
     assert a.anfragen == 2
-    assert clock.pausen[0] == 5.0
+    assert 3.0 in clock.pausen
 
 
 def test_retry_bei_5xx_und_timeout():
@@ -102,17 +103,31 @@ def test_retry_bei_5xx_und_timeout():
     assert [p for p in clock.pausen if p >= 5] == [5.0, 10.0]
 
 
-def test_dauerhaftes_ratenlimit_beendet_lauf():
+def test_dauerhaftes_ratenlimit_ueberspringt_nur_die_anfrage():
+    """Bleibt es bei 429 (Sekundenlimit), scheitert nur diese Anfrage – kein Abbruch wegen „Guthaben"."""
     a, _, _ = _adapter([(429, F429)] * 3)
-    with pytest.raises(KontingentErschoepft, match="nach 3 Versuchen"):
+    with pytest.raises(SearchError, match="nach 3 Versuchen") as info:
         a.search("Steuerberater Kiel", 20)
+    assert not isinstance(info.value, KontingentErschoepft) and "429 Ratenlimit je Sekunde" in str(info.value)
 
 
 def test_monatskontingent_erschoepft_ohne_retry():
-    a, http, _ = _adapter([(429, F429, {"X-RateLimit-Remaining": "1, 0"})])
-    with pytest.raises(KontingentErschoepft, match="Brave-Guthaben erschöpft – im Dashboard aufladen"):
+    kopf = {"X-RateLimit-Limit": "1, 2000", "X-RateLimit-Remaining": "1, 0", "X-RateLimit-Reset": "1, 86400"}
+    a, http, _ = _adapter([(429, F429, kopf)])
+    with pytest.raises(KontingentErschoepft, match="Monatskontingent aufgebraucht") as info:
         a.search("Steuerberater Kiel", 20)
     assert len(http.anfragen) == 1
+    assert "HTTP 429 · Limit 1, 2000 · Remaining 1, 0 · Reset 1, 86400" in str(info.value)
+
+
+def test_ohne_monatslimit_ist_rest_null_kein_abbruch():
+    """HH-Lauf 05.11.2026: Monatswert 0 bei Limit 0 (kein Monatslimit, Abrechnung nach Verbrauch) ist kein
+    erschöpftes Kontingent – die nächste Anfrage läuft."""
+    kopf = {"X-RateLimit-Limit": "1, 0", "X-RateLimit-Remaining": "0, 0", "X-RateLimit-Reset": "1, 0"}
+    a, http, _ = _adapter([(200, SEITE0, kopf), (200, SEITE1, kopf)])
+    a.search("Steuerberater Kiel", 20)
+    a.search("Steuerkanzlei Kiel", 20)
+    assert len(http.anfragen) == 2
 
 
 def test_402_guthaben():
@@ -181,9 +196,10 @@ def test_guthabentext_im_429_bricht_sofort_ab():
 
 
 def test_restkontingent_null_in_erfolgreicher_antwort_stoppt_vor_naechster_anfrage():
-    a, http, _ = _adapter([(200, SEITE0, {"X-RateLimit-Remaining": "1, 0"}), (200, SEITE1)])
+    kopf = {"X-RateLimit-Limit": "1, 2000", "X-RateLimit-Remaining": "1, 0"}
+    a, http, _ = _adapter([(200, SEITE0, kopf), (200, SEITE1)])
     assert len(a.search("Steuerberater Kiel", 20)) == 20  # diese Antwort wird noch genutzt
-    with pytest.raises(KontingentErschoepft, match="Restkontingent 0"):
+    with pytest.raises(KontingentErschoepft, match="Monatskontingent aufgebraucht"):
         a.search("Steuerkanzlei Kiel", 20)
     assert len(http.anfragen) == 1
 

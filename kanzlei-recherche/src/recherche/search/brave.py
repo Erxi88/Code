@@ -4,9 +4,11 @@
 - bis 20 Treffer je Anfrage (count), Paging über offset = Seitenindex (0..9)
 - country=DE, search_lang=de
 - Retry mit Backoff bei 5xx und 429 (Ratenlimit je Sekunde)
-- 402, X-RateLimit-Remaining 0 (Monat) oder ein Fehlertext zu Guthaben/Limit: sofortiger Abbruch mit
-  „Brave-Guthaben erschöpft – im Dashboard aufladen, dann erneut starten"; meldet eine erfolgreiche
-  Antwort Restkontingent 0, endet der Lauf vor der nächsten Anfrage
+- 402 oder Guthaben-Fehlertext: Abbruch „Brave-Guthaben erschöpft …"; Monatslimit gesetzt (X-RateLimit-Limit
+  Monatswert > 0) und Rest 0: Abbruch „Monatskontingent aufgebraucht …" (eine erfolgreiche Antwort mit Rest 0 wird
+  noch genutzt); 429 ohne Guthabentext: Ratenlimit je Sekunde → warten bis X-RateLimit-Reset und weiter. Jede
+  Abbruchmeldung nennt HTTP-Status und X-RateLimit-Limit/Remaining/Reset (Rückmeldung 05.11.2026: Monatswert 0 ohne
+  gesetztes Limit galt fälschlich als „Restkontingent 0")
 - 401/403: Key ungültig → Lauf endet sauber
 """
 
@@ -24,20 +26,45 @@ from .http_base import HttpQueryAdapter, Retry, fehlertext, text_ohne_html, url_
 
 ENV_KEY = "BRAVE_API_KEY"
 ERSCHOEPFT = "Brave-Guthaben erschöpft – im Dashboard aufladen, dann erneut starten"
+MONAT_AUFGEBRAUCHT = ("Brave-Monatskontingent aufgebraucht (Monatslimit erreicht) – Limit im Dashboard erhöhen oder "
+                      "bis zum Reset warten, dann erneut starten")
 _GUTHABEN_TEXT = re.compile(r"credit|usage.?limit|quota|insufficient|payment|balance|subscription", re.I)
 MAX_OFFSET = 9  # Brave erlaubt Seitenindex 0..9
 
 
+def _werte(resp: httpx.Response, kopf: str) -> list[int | None]:
+    """'<je Sekunde>, <je Monat>' aus einer X-RateLimit-Kopfzeile (fehlend/unlesbar → None)."""
+    teile = [t.strip() for t in (resp.headers.get(kopf) or "").split(",") if t.strip()]
+    werte = []
+    for t in teile:
+        try:
+            werte.append(int(float(t)))
+        except ValueError:
+            werte.append(None)
+    return werte
+
+
+def _monat(resp: httpx.Response, kopf: str) -> int | None:
+    werte = _werte(resp, kopf)
+    return werte[1] if len(werte) >= 2 else None
+
+
 def _monatsrest(resp: httpx.Response) -> int | None:
-    """Restkontingent des Monats aus X-RateLimit-Remaining ('<je Sekunde>, <je Monat>')."""
-    roh = resp.headers.get("X-RateLimit-Remaining")
-    if not roh:
+    """Restkontingent des Monats aus X-RateLimit-Remaining – nur, wenn ein Monatslimit gesetzt ist (Limit > 0). Ohne
+    Monatslimit (Abrechnung nach Verbrauch) meldet Brave dort 0 – das ist kein erschöpftes Kontingent (05.11.2026)."""
+    limit, rest = _monat(resp, "X-RateLimit-Limit"), _monat(resp, "X-RateLimit-Remaining")
+    if rest is None or not limit:
         return None
-    teile = [t.strip() for t in roh.split(",")]
-    try:
-        return int(teile[-1]) if len(teile) >= 2 else None
-    except ValueError:
-        return None
+    return rest
+
+
+def ratenlimit_kopf(resp: httpx.Response) -> str:
+    """„HTTP 429 · Limit 1, 0 · Remaining 0, 0 · Reset 1, 2419200" – für Meldungen beim Abbruch."""
+    teile = [f"HTTP {resp.status_code}"]
+    for kopf in ("Limit", "Remaining", "Reset"):
+        if (wert := resp.headers.get(f"X-RateLimit-{kopf}")) is not None:
+            teile.append(f"{kopf} {wert}")
+    return " · ".join(teile)
 
 
 class BraveAdapter(HttpQueryAdapter):
@@ -48,6 +75,7 @@ class BraveAdapter(HttpQueryAdapter):
         super().__init__(cfg or BraveConfig(), **kwargs)
         self.api_key = env(ENV_KEY)
         self._erschoepft = False
+        self._grund: str | None = None
 
     def fehlende_keys(self) -> list[str]:
         return [] if self.api_key else [ENV_KEY]
@@ -101,19 +129,28 @@ class BraveAdapter(HttpQueryAdapter):
 
     def _hole(self, params: dict, headers: dict) -> dict:
         if self._erschoepft:
-            raise KontingentErschoepft(f"{ERSCHOEPFT} (letzte Antwort meldete Restkontingent 0)")
+            raise KontingentErschoepft(self._grund or MONAT_AUFGEBRAUCHT)
         return super()._hole(params, headers)
 
     def _pruefe(self, resp: httpx.Response) -> Retry | None:
         s = resp.status_code
+        kopf = ratenlimit_kopf(resp)
         if s == 200:
-            self._erschoepft = _monatsrest(resp) == 0  # diese Antwort noch nutzen, dann Schluss
+            if _monatsrest(resp) == 0:  # diese Antwort noch nutzen, dann Schluss
+                self._erschoepft = True
+                self._grund = f"{MONAT_AUFGEBRAUCHT} ({kopf})"
             return None
         text = fehlertext(resp)
-        if s == 402 or _monatsrest(resp) == 0 or (s == 429 and _GUTHABEN_TEXT.search(text)):
-            raise KontingentErschoepft(f"{ERSCHOEPFT} (HTTP {s}: {text})")
+        if s == 402 or (s == 429 and _GUTHABEN_TEXT.search(text)):
+            raise KontingentErschoepft(f"{ERSCHOEPFT} ({kopf}: {text})")  # Guthaben
+        if _monatsrest(resp) == 0:
+            raise KontingentErschoepft(f"{MONAT_AUFGEBRAUCHT} ({kopf}: {text})")
         if s == 429:
-            return Retry(f"429 Ratenlimit ({text})", endgueltig=KontingentErschoepft)
+            # Ratenlimit je Sekunde: warten bis X-RateLimit-Reset (Sekunden-Wert), dann weiter; bleibt es dabei, wird
+            # nur diese Anfrage übersprungen – die Nachsuche/der Lauf geht weiter
+            reset = (_werte(resp, "X-RateLimit-Reset") or [None])[0]
+            return Retry(f"429 Ratenlimit je Sekunde ({kopf}: {text})", endgueltig=SearchError,
+                         warte_s=max(float(reset or 1), 1.0))
         if s in (401, 403):
             raise ZugangVerweigert(f"brave: Zugriff verweigert – {ENV_KEY} prüfen ({text})")
         if s >= 500:

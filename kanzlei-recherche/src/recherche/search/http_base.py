@@ -44,6 +44,7 @@ class Retry:
     grund: str
     # wird geworfen, wenn auch der letzte Versuch so endet
     endgueltig: type[SearchError] = SearchError
+    warte_s: float | None = None  # vorgegebene Wartezeit (429: X-RateLimit-Reset), sonst Backoff
 
 
 def text_ohne_html(text: str | None) -> str | None:
@@ -175,7 +176,7 @@ class HttpQueryAdapter(QueryAdapter):
                 return antwort
             if versuch == versuche:
                 raise retry.endgueltig(f"{self.name}: {retry.grund} (nach {versuche} Versuchen)")
-            warte = self.cfg.backoff_s * 2 ** (versuch - 1)
+            warte = retry.warte_s if retry.warte_s is not None else self.cfg.backoff_s * 2 ** (versuch - 1)
             log.warning("%s: %s – Versuch %d/%d, warte %.0f s", self.name, retry.grund, versuch, versuche, warte)
             if self.melden:
                 self.melden(f"{self.name}: {retry.grund} – Versuch {versuch}/{versuche}, warte {warte:.0f} s")
