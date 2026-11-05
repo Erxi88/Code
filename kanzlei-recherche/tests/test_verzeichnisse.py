@@ -386,3 +386,29 @@ def test_regel_2_zwischen_firmenzeilen_und_kurzformen_grosser_gesellschaften():
     assert [kurzform(n) for n in ("Rödl & Partner GmbH", "Forvis Mazars GmbH", "Baker Tilly GmbH & Co. KG",
                                   "ECOVIS Wirtschaftstreuhand", "Muster Steuerberatung")] == \
         ["Rödl", "Forvis Mazars", "Baker Tilly", "ECOVIS", None]
+
+
+def test_regel_3_personen_ohne_firmenzeile_an_einer_adresse_ohne_kanzlei():
+    """SH 05.11.2026 (Basthorst 14 von 18 „ohne Ges."): mehrere Personen ohne Firmenzeile an derselben Adresse ohne
+    Gesellschaftskarte und ohne Kanzlei aus Firmenzeile = eine Kanzlei (Inhaber + Angestellte), vorläufiger Name
+    „Steuerberater Nachname1 & Nachname2", Kennzeichen Sozietät/Bürogemeinschaft; allein bleibt die Person einzeln."""
+    from recherche.search.verzeichnisse import (
+        OHNE_GESELLSCHAFT,
+        SOZIETAET,
+        StbvKarte,
+        ist_einzeln,
+        stbv_gruppieren,
+    )
+
+    def person(name, strasse, beruf="Steuerberater"):
+        return StbvKarte(name, beruf, None, None, strasse, "21483", "Basthorst", f"https://x/{name}")
+
+    hits = stbv_gruppieren([person("Ole Lund", "Dorfstraße 1"), person("Eva Ott", "Dorfstr. 1", "Steuerberaterin"),
+                            person("Kai Rau", "Dorfstraße 1"), person("Ina Behn", "Am Teich 2")])
+    k = {h.name: h for h in hits}
+    assert sorted(k) == ["Steuerberater Ina Behn", "Steuerberater Lund, Ott & Rau"]
+    soz = k["Steuerberater Lund, Ott & Rau"]
+    assert "3 Berufsträger" in soz.snippet and SOZIETAET in soz.snippet and not ist_einzeln(soz.snippet)
+    assert OHNE_GESELLSCHAFT in k["Steuerberater Ina Behn"].snippet
+    zwei = stbv_gruppieren([person("Ole Lund", "Dorfstraße 1"), person("Eva Ott", "Dorfstraße 1")])
+    assert [h.name for h in zwei] == ["Steuerberater Lund & Ott"]

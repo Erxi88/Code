@@ -19,6 +19,7 @@ from pathlib import Path
 
 from .search.verzeichnisse import (
     FIRMENZEILE_OHNE_KARTE,
+    SOZIETAET,
     ist_einzeln,
     stbv_gruppieren,
     stbv_karten,
@@ -55,6 +56,7 @@ class PlzAnalyse:
     aus_gesellschaft: int = 0
     aus_firmenzeile: int = 0
     person_einzeln: int = 0
+    sozietaet: int = 0  # Regel 3: mehrere Personen ohne Firmenzeile an einer Adresse ohne Kanzlei
     angezeigt: int | None = None
     gesamt: int | None = None
     orte: Counter = field(default_factory=Counter)  # „PLZ Ort" der Einträge
@@ -78,7 +80,8 @@ def analysiere(html: str, plz: str, url: str = "") -> PlzAnalyse:
                    angezeigt=zahl[0] if zahl else None, gesamt=zahl[1] if zahl else None, liste=hits)
     a.aus_firmenzeile = sum(FIRMENZEILE_OHNE_KARTE in (h.snippet or "") for h in hits)
     a.person_einzeln = sum(ist_einzeln(h.snippet) for h in hits)
-    a.aus_gesellschaft = a.kanzleien - a.aus_firmenzeile - a.person_einzeln
+    a.sozietaet = sum(SOZIETAET in (h.snippet or "") for h in hits)
+    a.aus_gesellschaft = a.kanzleien - a.aus_firmenzeile - a.person_einzeln - a.sozietaet
     a.orte = Counter(f"{k.plz or '?'} {k.ort or '?'}" for k in karten)
     adr = lambda k: (k.strasse or "", k.plz or "")  # noqa: E731
     kanzlei_adressen = {adr(k) for k in karten if k.gesellschaft or k.firma}
@@ -97,7 +100,7 @@ _KONZERN_STEUER = re.compile(r"steuerabteilung|abteilung\s+steuern|konzernsteuer
 
 
 ANALYSE_SPALTEN = ["PLZ", "Einträge", "Gesellschaften", "Personen", "davon ohne Firmenzeile", "Syndikus",
-                   "Kanzleien", "aus Gesellschaft", "aus Firmenzeile", "Person einzeln",
+                   "Kanzleien", "aus Gesellschaft", "aus Firmenzeile", "Person einzeln", "Sozietät/Bürogemeinschaft",
                    "einzeln an Kanzlei-Adresse", "einzeln, Adresse geteilt", "Syndikus-Verdacht", "Treffer angezeigt",
                    "Treffer gesamt", "Einträge mit anderer PLZ", "Orte der Einträge"]
 
@@ -110,7 +113,7 @@ def analyse_csv(analysen: list[PlzAnalyse], pfad: str | Path) -> Path:
         w.writerow(ANALYSE_SPALTEN)
         for a in analysen:
             w.writerow([a.plz, a.eintraege, a.gesellschaften, a.personen, a.personen_ohne_firmenzeile, a.syndikus,
-                        a.kanzleien, a.aus_gesellschaft, a.aus_firmenzeile, a.person_einzeln,
+                        a.kanzleien, a.aus_gesellschaft, a.aus_firmenzeile, a.person_einzeln, a.sozietaet,
                         a.einzeln_an_kanzlei_adresse, a.einzeln_adresse_geteilt, "; ".join(a.syndikus_verdacht),
                         a.angezeigt, a.gesamt,
                         a.fremde_plz, ", ".join(f"{o} ({n})" for o, n in a.orte.most_common())])

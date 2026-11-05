@@ -111,7 +111,7 @@ def _namenswoerter(k: Kandidat, firma: str | None, ort: str | None) -> set[str]:
     """Wörter, die in Domain oder Kanzleiname vorkommen müssen: bei Personen der Nachname, sonst die unterscheidenden
     Namenswörter (dazu die der Firmenzeile)."""
     person = bool(re.match(r"(?:Steuerberater(?:in)?|Steuerbevollmächtigte[rn]?|Wirtschaftsprüfer(?:in)?)\s",
-                           k.name or ""))
+                           k.name or "")) and "&" not in (k.name or "")  # „Steuerberater Lund & Ott" (Regel 3): alle
     woerter = ({_falten((k.name or "").split()[-1])} if person and (k.name or "").split()
                else set(name_tokens(k.name, ort)))
     if firma:

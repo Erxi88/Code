@@ -229,7 +229,12 @@ der nächsten Quelle füllen.**
       BDO, Deloitte, RSM, Forvis Mazars, Rödl, Baker Tilly, Grant Thornton, PKF, HLB, Ebner Stolz, WTS, ETL, ECOVIS):
       gleiche Kurzform an derselben Adresse = eine Kanzlei (Gesellschaften und Firmenzeilen; Name = kürzester
       Gesellschaftsname, sonst kürzeste Firmenzeile; Snippet „zusammengeführt über die Kurzform X: Name | Name").
-      `GRUPPIERUNG_VERSION` „2026-11-05-kurzform". Ein Land mit älterer Gruppierung wird vor Nachsuche, crawl und extract neu gruppiert;
+      (3) Personen ohne Firmenzeile an derselben Adresse ohne Kanzlei (keine Gesellschaftskarte, keine Kanzlei aus
+      Firmenzeile; SH 05.11.2026: Basthorst 14 von 18, Ahrensburg 31 von 54 „ohne Ges.") = eine Kanzlei (Inhaber +
+      Angestellte): vorläufiger Name „Steuerberater Nachname1 & Nachname2" (ab drei „A, B & C"), Berufsträger =
+      Anzahl, Kennzeichen „Sozietät/Bürogemeinschaft – Name über Website prüfen" (Lückenliste, Analyse-Spalte
+      „Sozietät"); die Website-Nachsuche läuft damit einmal je Adresse mit allen Nachnamen und Ort, beim
+      Zusammenführen zählt jeder der Nachnamen. `GRUPPIERUNG_VERSION` „2026-11-05-sozietaet". Ein Land mit älterer Gruppierung wird vor Nachsuche, crawl und extract neu gruppiert;
       der Schritt „nach" verweigert bis dahin, die Warteschlange schickt das Land zuerst wieder durch den Netz-Teil.
       `stb-verzeichnis --neu-gruppieren`: amtliche Kandidaten entfernen (andere nur um amtliche Funde bereinigen),
       Lauf-Protokoll leeren, dann aus dem Cache neu anlegen – keine neuen Abfragen; Nachsuche-Merker nur der

@@ -345,6 +345,15 @@ OHNE_GESELLSCHAFT = "Person ohne Gesellschaft an dieser Adresse"
 NICHT_ZUGEORDNET = "Person ohne Firmenzeile, mehrere Kanzleien an dieser Adresse – nicht zugeordnet"
 
 
+SOZIETAET = "Sozietät/Bürogemeinschaft – Name über Website prüfen"
+
+
+def sozietaet_name(nachnamen: list[str]) -> str:
+    """Vorläufiger Name (Regel 3): „Steuerberater Lund & Ott", ab drei Namen „Steuerberater Lund, Ott & Rau"."""
+    namen = list(dict.fromkeys(nachnamen))
+    return "Steuerberater " + (" & ".join(namen) if len(namen) <= 2 else f"{', '.join(namen[:-1])} & {namen[-1]}")
+
+
 def ist_einzeln(snippet: str | None) -> bool:
     """Treffer ist eine einzelne Person (keine Gesellschaft, keine Firmenzeile)."""
     return bool(snippet) and (OHNE_GESELLSCHAFT in snippet or NICHT_ZUGEORDNET in snippet)
@@ -549,9 +558,11 @@ def stbv_gruppieren(karten: list[StbvKarte], quelle: str = "stb_verzeichnis") ->
       Ausnahme (Regel 2, HH 05.11.2026): beginnt eine Gesellschaft an derselben Adresse mit denselben ersten zwei
       Namenswörtern oder enthält sie die Firmenzeile ohne Zusätze, gehört die Person zu ihr (`_gesellschaft_zur_firmenzeile`).
     - Ohne Firmenzeile (Regel 1, HH 05.11.2026): genau eine Kanzlei (Gesellschaft oder Firmenzeile) an der Adresse →
-      dieser zugeordnet; mehrere → die, deren Name den Nachnamen enthält; sonst eigener Kandidat („Steuerberaterin Imke
-      Thordsen", Kennzeichen „Person ohne Gesellschaft an dieser Adresse" bzw. bei mehreren Kanzleien „… nicht
-      zugeordnet") – zusammengeführt wird dann erst über die gleiche Website (Nachsuche).
+      dieser zugeordnet; mehrere → die, deren Name den Nachnamen enthält, sonst eigener Kandidat (Kennzeichen „… nicht
+      zugeordnet"). Ohne Kanzlei an der Adresse (Regel 3, SH 05.11.2026): mehrere solche Personen sind eine Kanzlei
+      (Inhaber und Angestellte), vorläufig „Steuerberater Nachname1 & Nachname2", Kennzeichen „Sozietät/
+      Bürogemeinschaft – Name über Website prüfen"; allein → eigener Kandidat („Steuerberaterin Imke Thordsen",
+      „Person ohne Gesellschaft an dieser Adresse").
     - Firmenzeile ohne Steuerberatungsbezug („Siemens AG") → Syndikus/Unternehmen, kein Kandidat (`stbv_syndikus`).
     """
     gruppen: dict[tuple, dict] = {}
@@ -605,17 +616,31 @@ def stbv_gruppieren(karten: list[StbvKarte], quelle: str = "stb_verzeichnis") ->
                 elif len(k.firma) < len(ziel["name"]):  # Hauptname = kürzester
                     ziel["name"] = k.firma
         else:
-            vor_ort = [g for (a, _), g in gruppen.items() if a == adr and g["art"] != "person"]
+            vor_ort = [g for (a, _), g in gruppen.items() if a == adr and g["art"] not in ("person", "personen")]
             ziel = _kanzlei_zur_person(k.name, vor_ort)
-            if ziel is None:
+            if ziel is None and vor_ort:  # mehrere Kanzleien, kein Nachname passt → einzeln
                 ziel = gruppen.setdefault((adr, _schluessel_name(einzelname)), dict(
                     name=einzelname, strasse=k.strasse, plz=k.plz, ort=k.ort, url=k.url, personen=[], art="person",
-                    mehrere=len(vor_ort) > 1))
+                    mehrere=True))
+            elif ziel is None:  # Regel 3: Personen ohne Firmenzeile an einer Adresse ohne Kanzlei = eine Kanzlei
+                ziel = gruppen.setdefault((adr, "personen:"), dict(
+                    name=einzelname, strasse=k.strasse, plz=k.plz, ort=k.ort, url=k.url, personen=[], art="personen",
+                    nachnamen=[]))
+                if k.name.split():
+                    ziel["nachnamen"].append(k.name.split()[-1])
         ziel["personen"].append(person)
     hits = []
     for (adr, key), g in gruppen.items():
         n = len(g["personen"])
-        if g["art"] == "gesellschaft":
+        if g["art"] == "personen":
+            if n == 1:  # allein an der Adresse – wie bisher Person ohne Gesellschaft (Schlüssel unverändert)
+                g["art"], key = "person", _schluessel_name(g["name"])
+            else:
+                g["name"], key = sozietaet_name(g["nachnamen"]), "sozietaet"
+        if g["art"] == "personen":
+            snippet = (f"Amtliches Steuerberaterverzeichnis: {n} Berufsträger ({'; '.join(g['personen'])}); "
+                       f"{SOZIETAET}")
+        elif g["art"] == "gesellschaft":
             snippet = (f"Amtliches Steuerberaterverzeichnis: {n} Berufsträger ({'; '.join(g['personen'])})"
                        if n else "Amtliches Steuerberaterverzeichnis: Berufsausübungsgesellschaft")
         elif g["art"] == "firmenzeile":

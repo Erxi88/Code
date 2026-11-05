@@ -26,13 +26,14 @@ from .search.verzeichnisse import (
     FIRMA_LAUT_VERZEICHNIS,
     NICHT_ZUGEORDNET,
     OHNE_GESELLSCHAFT,
+    SOZIETAET,
     ist_einzeln,
 )
 from .storage import Storage
 
 QUELLE = "stb_verzeichnis"
 # Stand der Gruppierungsregeln (stbv_gruppieren): ein Land mit älterem Stand wird automatisch neu gruppiert
-GRUPPIERUNG_VERSION = "2026-11-05-kurzform"  # Regeln 1, 2 (auch Firmenzeile↔Firmenzeile), Kurzformen
+GRUPPIERUNG_VERSION = "2026-11-05-sozietaet"  # Regeln 1–3, Kurzformen
 SCHRITT = "stb-verzeichnis"
 
 
@@ -204,6 +205,7 @@ class Luecke:
     ohne_gesellschaft: bool = False  # „Person ohne Gesellschaft an dieser Adresse"
     firma: str | None = None  # Firmenzeile der Person laut Verzeichnis
     nicht_zugeordnet: bool = False  # Person ohne Firmenzeile, mehrere Kanzleien an der Adresse
+    sozietaet: bool = False  # Regel 3: mehrere Personen ohne Firmenzeile an einer Adresse ohne Kanzlei
 
 
 LUECKEN_SPALTEN = ["Kandidat", "Name (amtlich)", "Berufsträger (amtlich)", "Kennzeichen", "Firma laut Verzeichnis",
@@ -236,7 +238,7 @@ def luecken(storage: Storage, bundesland: str, kreis_je_plz: dict[str, str] | No
                              plz, (z.ort if z else None) or k.ort, kreis_je_plz.get(plz or ""), k.website,
                              (z.telefon if z else None) or k.telefon, stand, z.kanzleiname if z else None,
                              z.konfidenz.value if z else None, ist_einzeln(snippet), firma,
-                             NICHT_ZUGEORDNET in snippet))
+                             NICHT_ZUGEORDNET in snippet, SOZIETAET in snippet))
     zeilen += syndikus_luecken(storage, bundesland, kreis_je_plz)
     return sorted(zeilen, key=lambda z: (z.plz or "", z.name or ""))
 
@@ -280,7 +282,8 @@ def syndikus_luecken(storage: Storage, bundesland: str, kreis_je_plz: dict[str, 
 
 def luecken_werte(z: Luecke) -> list:
     kennzeichen = (SYNDIKUS_KENNZEICHEN if z.kandidat_id is None
-                   else NICHT_ZUGEORDNET if z.nicht_zugeordnet else OHNE_GESELLSCHAFT if z.ohne_gesellschaft else None)
+                   else SOZIETAET if z.sozietaet else NICHT_ZUGEORDNET if z.nicht_zugeordnet
+                   else OHNE_GESELLSCHAFT if z.ohne_gesellschaft else None)
     return [z.kandidat_id, z.name, z.berufstraeger, kennzeichen, z.firma,
             z.strasse, z.plz, z.ort, z.kreis, z.website, z.telefon, z.stand, z.kanzleiname, z.konfidenz]
 

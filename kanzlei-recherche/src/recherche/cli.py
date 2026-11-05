@@ -1020,7 +1020,7 @@ def stb_verzeichnis_analyse(
     """Amtliches Verzeichnis aus dem Cache auswerten – ohne Abfragen, schreibgeschützt (läuft neben stb-verzeichnis):
     je PLZ Einträge, Gesellschaften, Personen, daraus Kanzleien (aktuelle Gruppierung), Orte der Einträge."""
     from .search.verzeichnisse import FIRMENZEILE_OHNE_KARTE as FIRMENZEILE_TEXT
-    from .search.verzeichnisse import NICHT_ZUGEORDNET, ist_einzeln
+    from .search.verzeichnisse import NICHT_ZUGEORDNET, SOZIETAET, ist_einzeln
     from .stbv_analyse import analyse_csv, analysiere, gecachte_seiten
 
     s = load_settings(config)
@@ -1032,12 +1032,12 @@ def stb_verzeichnis_analyse(
     analysen = [analysiere(html, p, url) for p, (url, html) in sorted(seiten.items())]
     t = Table(title=f"Amtliches Verzeichnis aus dem Cache ({len(analysen)} PLZ)")
     for spalte in ("PLZ", "Einträge", "Ges.", "Personen", "o. Firmenz.", "Syndikus", "Kanzleien", "aus Ges.",
-                   "aus Firmenz.", "einzeln", "andere PLZ", "Orte"):
+                   "aus Firmenz.", "einzeln", "Sozietät", "andere PLZ", "Orte"):
         t.add_column(spalte, justify="left" if spalte == "Orte" else "right")
     for a in analysen:
         t.add_row(a.plz, str(a.eintraege), str(a.gesellschaften), str(a.personen), str(a.personen_ohne_firmenzeile),
                   str(a.syndikus), str(a.kanzleien), str(a.aus_gesellschaft), str(a.aus_firmenzeile),
-                  str(a.person_einzeln), str(a.fremde_plz),
+                  str(a.person_einzeln), str(a.sozietaet), str(a.fremde_plz),
                   ", ".join(f"{o} ({n})" for o, n in a.orte.most_common(4)))
     console.print(t)
     summe = {f: sum(getattr(a, f) for a in analysen) for f in ("eintraege", "gesellschaften", "personen", "kanzleien",
@@ -1063,7 +1063,8 @@ def stb_verzeichnis_analyse(
         console.print(f"\n[bold]{p}[/bold]: {a.kanzleien} Kanzleien")
         for h in sorted(a.liste, key=lambda h: (h.ort or "", h.name or "")):
             art = ("einzeln (mehrere Kanzleien an der Adresse)" if NICHT_ZUGEORDNET in (h.snippet or "")
-                   else "einzeln") if ist_einzeln(h.snippet) else (
+                   else "einzeln") if ist_einzeln(h.snippet) else "Sozietät/Bürogemeinschaft" if SOZIETAET in (
+                h.snippet or "") else (
                 "Firmenzeile" if FIRMENZEILE_TEXT in (h.snippet or "") else "Gesellschaft")
             bt = (h.snippet or "").split(": ", 1)[-1].split(" (")[0]
             console.print(f"  {h.name} | {h.strasse or '–'}, {h.plz} {h.ort} | {art} | {bt}", markup=False,
