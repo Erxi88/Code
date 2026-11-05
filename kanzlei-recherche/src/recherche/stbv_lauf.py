@@ -280,3 +280,114 @@ def neu_gruppieren_vorbereiten(storage: Storage, bundesland: str) -> tuple[int, 
         storage.conn.execute("DELETE FROM api_cache WHERE adapter = ?", (MERKER,))
     return entfernt, bereinigt
 
+
+
+# ---------------------------------------------------------------------- Detailseiten (Vorgabe 05.11.2026)
+
+AMTLICH = "amtlich"  # Fund-Quelle der Detailseite: Felder gelten vor Website-Daten
+BERATUNGSSTELLE_VON = "Weitere Beratungsstelle von "
+
+
+def offene_details(storage: Storage, bundesland: str, plz: set[str] | None = None) -> list[tuple[int, str]]:
+    """(Kandidat, Detail-URL) aller Kandidaten mit Fund des amtlichen Verzeichnisses, deren Detailseite noch nicht
+    gelesen ist (kein Fund „amtlich" mit dieser URL) – fortsetzbar."""
+    offen = []
+    for k in storage.kandidaten(bundesland):
+        funde = storage.funde_kandidat(k.id)
+        gelesen = {f.quell_id for f in funde if f.quelle == AMTLICH}
+        for f in funde:
+            if f.quelle == QUELLE and f.roh_url and "/details/" in f.roh_url and f.roh_url not in gelesen \
+                    and (plz is None or f.plz in plz):
+                offen.append((k.id, f.roh_url))
+                break
+    return offen
+
+
+@dataclass
+class DetailStatistik:
+    gelesen: int = 0
+    mit_internet: int = 0
+    mit_telefon: int = 0
+    mit_email: int = 0
+    zusammengefuehrt: int = 0  # Internet-Domain gehörte schon einem Kandidaten
+    beratungsstellen: int = 0  # neue Standort-Kandidaten
+    leer: int = 0
+    fehler: int = 0
+    abbruch: str | None = None
+
+
+def run_details(storage: Storage, adapter, bundesland: str, blocklist: set[str], lauf_id: str,
+                fortschritt: Callable[[str], None] | None = None, plz: set[str] | None = None) -> DetailStatistik:
+    """Je Kandidat die Detailseite: Fund „amtlich" (Name bei Gesellschaften, Adresse, Telefon, Internet, JSON aller
+    Felder im Snippet), Telefon/Website am Kandidaten ergänzen (gehört die Domain schon einem Kandidaten → zusammen-
+    führen), weitere Beratungsstellen als eigene Standort-Kandidaten mit Verweis auf die Zentrale."""
+    import json
+
+    from .models import Fund
+    from .normalize import normalize_telefon
+    from .search.base import SearchHit
+    from .search.pipeline import normalize_domain
+
+    stat = DetailStatistik()
+    zuordnung = Zuordnung(storage, bundesland, blocklist, lauf_id)
+    offen = offene_details(storage, bundesland, plz)
+    for n, (kid, url) in enumerate(offen, start=1):
+        k = storage.get_kandidat(kid)
+        if k is None:
+            continue
+        try:
+            d = adapter.detail(url)
+        except SearchError as e:
+            if isinstance(e, LimitErreicht):
+                stat.abbruch = str(e)
+                break
+            stat.fehler += 1
+            if fortschritt:
+                fortschritt(f"Detail {n}/{len(offen)} · {k.name}: Fehler – {e}")
+            continue
+        stat.gelesen += 1
+        if d is None:
+            stat.leer += 1
+            storage.add_fund(Fund(kandidat_id=kid, bundesland=bundesland, quelle=AMTLICH, quell_id=url, lauf_id=lauf_id,
+                                  snippet="{}", roh_url=url))
+            continue
+        gesellschaft = d.rechtsform is not None or bool(d.geschaeftsfuehrung or d.gesellschafter)
+        telefon = normalize_telefon(d.telefon) or normalize_telefon(d.mobil)
+        domain = normalize_domain(d.internet) if d.internet else None
+        ziel = kid
+        if domain and (anderer := storage.kandidat_nach_domain(domain)) and anderer.id != kid:
+            storage.kandidat_zusammenfuehren(kid, anderer.id)  # gleiche Website = derselbe Kandidat
+            ziel = anderer.id
+            stat.zusammengefuehrt += 1
+        vorher = storage.get_kandidat(ziel)
+        storage.ergaenze_kandidat(ziel, telefon=telefon, website=d.internet, domain=domain)
+        if domain and vorher and not vorher.domain:
+            storage.set_crawl_status(ziel, SchrittStatus.OFFEN)
+        storage.set_extract_status(ziel, SchrittStatus.OFFEN)
+        storage.add_fund(Fund(kandidat_id=ziel, bundesland=bundesland, quelle=AMTLICH, quell_id=url, lauf_id=lauf_id,
+                              name=d.name if gesellschaft else None, strasse=d.strasse, plz=d.plz, ort=d.ort,
+                              telefon=telefon, website=d.internet, snippet=json.dumps(d.als_dict(), ensure_ascii=False),
+                              roh_url=url))
+        stat.mit_internet += bool(d.internet)
+        stat.mit_telefon += bool(telefon)
+        stat.mit_email += bool(d.email)
+        for i, (strasse, plz, ort) in enumerate(d.beratungsstellen, start=1):
+            name = d.name if gesellschaft else (vorher.name if vorher else d.name)
+            hit = SearchHit(quelle=AMTLICH, quell_id=f"{url}#beratungsstelle-{i}", name=name, strasse=strasse, plz=plz,
+                            ort=ort, roh_url=url,
+                            snippet=f"{BERATUNGSSTELLE_VON}{name} ({d.strasse}, {d.plz} {d.ort})")
+            if zuordnung.verarbeite(hit, adapter, f"detail:{url}", ort) is True:
+                stat.beratungsstellen += 1
+            zeile = storage.conn.execute("SELECT kandidat_id FROM funde WHERE bundesland = ? AND quelle = ? AND "
+                                         "quell_id = ?", (bundesland, AMTLICH, hit.quell_id)).fetchone()
+            if zeile is not None:  # amtliche Felder der Zentrale (Telefon, Vertreter) mit der Adresse der Beratungsstelle
+                info = dict(d.als_dict(), strasse=strasse, plz=plz, ort=ort, beratungsstelle_von=name)
+                with storage.conn:
+                    storage.conn.execute("UPDATE funde SET telefon = ?, snippet = ? WHERE kandidat_id = ? AND quell_id = ?",
+                                         (telefon, json.dumps(info, ensure_ascii=False), zeile[0], hit.quell_id))
+                storage.set_extract_status(zeile[0], SchrittStatus.OFFEN)
+        if fortschritt:
+            teile = [x for x in (telefon, d.email, d.internet) if x]
+            fortschritt(f"Detail {n}/{len(offen)} · {d.name}: {', '.join(teile) or 'keine Kontaktdaten'}"
+                        + (f", {len(d.beratungsstellen)} weitere Beratungsstelle(n)" if d.beratungsstellen else ""))
+    return stat

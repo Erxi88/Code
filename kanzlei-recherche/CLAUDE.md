@@ -150,8 +150,21 @@ der nächsten Quelle füllen.**
       `Storage.kandidat_zusammenfuehren`). Firmenzeile ohne Steuerberatungsbezug, die keiner Kanzlei der Seite entspricht
       („Siemens AG") → „Syndikus/Unternehmen", kein Kandidat (`stbv_syndikus`). 24103 Kiel: 209 Karten (37 Gesellschaften,
       172 Personen) → 67 Kanzleien (37 Gesellschaft, 16 aus Firmenzeile, 14 einzeln). Die Ergebnisliste nennt je Eintrag
-      nur Beruf, akademische Grade, Name, Firmen-/Zusatzzeilen, Straße, PLZ/Ort – kein Telefon, keine E-Mail, keine
-      Website (Detailseiten werden nicht gelesen). Umbrochene Namen
+      nur Beruf, akademische Grade, Name, Firmen-/Zusatzzeilen, Straße, PLZ/Ort; Telefon, E-Mail und Website stehen auf der
+      **Detailseite** (Vorgabe 05.11.2026, `stbv_detail`, IDs der Seite): Name, Berufsbezeichnung, Rechtsform, Straße,
+      PLZ/Ort, Telefon, Mobil, Fax, E-Mail, Internet (`data-url`), Safe-ID, zuständige Kammer, „Weitere
+      Beratungsstelle(n)", Geschäftsführungsorgan, vertretungsberechtigte Gesellschafter. `stb-verzeichnis` liest je
+      Kandidat (Gesellschaft, Kanzlei aus Firmenzeile, Person) die Detailseite (`run_details`) mit eigenem, kürzerem
+      Abstand (`detail_pause_s` 5 + Zufall 0–5 s), gecacht und fortsetzbar (offen = kein Fund „amtlich" mit dieser
+      URL), Dauer-Schätzung vorab, `--ohne-details`. Ergebnis: Fund **„amtlich"** (JSON aller Felder im Snippet);
+      Telefon/Website am Kandidaten ergänzt (gehört die Domain schon einem Kandidaten → zusammengeführt); die
+      Brave-Nachsuche läuft nur noch für Einträge ohne „Internet". In `zusammenfuehren` gilt „amtlich" vor allen
+      anderen Quellen (1B Rang 1): Name (Gesellschaft), Adresse, Telefon, E-Mail, Rechtsform, Ansprechpartner
+      (Geschäftsführungsorgan, dann vertretungsberechtigte Gesellschafter, sonst die zugeordneten Berufsträger; Titel
+      wie „Dipl.-Kaufmann", „Bachelor of Arts" in den Titel) und Berufsträger-Anzahl (zugeordnete Personen); die
+      Website ergänzt nur Teamgröße, Durchwahl und E-Mail der Ansprechpartner. „Weitere Beratungsstellen" werden eigene
+      Kandidaten (Adresse der Beratungsstelle, Telefon und Vertreter der Zentrale) – im Export über gleiches Telefon und
+      Hauptansprechpartner „Standort von …" mit Verweis auf die Zentrale. Umbrochene Namen
       („Steuerberatungs-" / „gesellschaft") werden zusammengesetzt, Ergänzungsstriche („Treuhand- und")
       bleiben. Die Berufsträger stehen im Snippet. Abgleich über die Dubletten-Logik → „X Treffer, Y neu,
       Z bekannt". **Website-Nachsuche** (`search/nachsuche.py`): neue Einträge ohne Website → Brave

@@ -86,12 +86,73 @@ def _stufe_b_quellen() -> frozenset[str]:
     return frozenset(n for n, k in ADAPTER_KLASSEN.items() if k.stufe == "B")
 
 
+AMTLICH = "amtlich"
+_BT_SNIPPET = re.compile(r"Amtliches Steuerberaterverzeichnis: (\d+) Berufsträger \((.*)\)")
+
+
+def amtliche_daten(funde: list[Fund]) -> dict | None:
+    """Felder der Detailseite des amtlichen Verzeichnisses (JSON im Snippet des Funds „amtlich")."""
+    import json
+
+    for f in funde:
+        if f.quelle == AMTLICH and f.snippet and f.snippet.startswith("{"):
+            try:
+                d = json.loads(f.snippet)
+            except ValueError:
+                continue
+            if d:
+                return d
+    return None
+
+
+def amtliche_berufstraeger(funde: list[Fund]) -> list[str]:
+    """Berufsträger, die das Verzeichnis dieser Kanzlei zugeordnet hat („Steuerberater Dipl.-Kfm. Jan Hansen")."""
+    for f in funde:
+        if f.quelle == "stb_verzeichnis" and f.snippet and (m := _BT_SNIPPET.search(f.snippet)):
+            return [x.strip() for x in m.group(2).split(";") if x.strip()]
+    return []
+
+
+def amtliche_ansprechpartner(daten: dict | None, berufstraeger: list[str]) -> list[Ansprechpartner]:
+    """Geschäftsführungsorgan, dann vertretungsberechtigte Gesellschafter (je Person einmal) – ohne Vertreter die
+    zugeordneten Berufsträger; Titel wie „Dipl.-Kauffrau", „Bachelor of Arts" in den Titel."""
+    from .ansprechpartner import titel_abschneiden
+
+    ergebnis: list[Ansprechpartner] = []
+
+    def hinzu(roh: str, funktion: str) -> None:
+        vorn = []
+        if m := _AMTLICHER_TITEL.match(roh.strip()):
+            vorn, roh = [m.group(0)], roh.strip()[m.end():]
+        name, titel = titel_abschneiden(roh.strip())
+        titel = vorn + titel
+        if name and not any(gleiche_person(name, p.name) for p in ergebnis):
+            ergebnis.append(Ansprechpartner(name=name, titel=" ".join(titel) or None, funktion=funktion))
+
+    for n in (daten or {}).get("geschaeftsfuehrung") or []:
+        hinzu(n, "Geschäftsführung (amtlich)")
+    for n in (daten or {}).get("gesellschafter") or []:
+        hinzu(n, "vertretungsberechtigter Gesellschafter (amtlich)")
+    if not ergebnis:
+        for bt in berufstraeger:
+            beruf = next((b for b in ("Steuerberaterin", "Steuerberater", "Steuerbevollmächtigte", "Steuerbevollmächtigter",
+                                      "Wirtschaftsprüferin", "Wirtschaftsprüfer") if bt.startswith(b)), None)
+            rest = bt[len(beruf):].strip() if beruf else bt
+            hinzu(rest, f"{beruf or 'Berufsträger'} (amtlich)")
+    return ergebnis
+
+
+# akademische Grade der Detailseite, die titel_abschneiden nicht als ein Wort erkennt
+_AMTLICHER_TITEL = re.compile(r"^(?:Bachelor|Master)\s+of\s+(?:Arts|Science|Laws|Business Administration)\b", re.I)
+
+
 def discovery_werte(funde: list[Fund]) -> dict[str, str | None]:
     """Name, Adresse und Telefon aus Stufe-B-Funden (Places, Verzeichnisse); Websuche zählt nicht.
 
     Die Adresse wird als Einheit aus dem ersten Fund mit PLZ genommen.
     """
-    b = [f for f in funde if f.quelle in _stufe_b_quellen()]
+    # amtliche Detailseite (Quelle „amtlich") vor allen anderen Stufe-B-Quellen (Vorgabe 05.11.2026)
+    b = [f for f in funde if f.quelle == AMTLICH] + [f for f in funde if f.quelle in _stufe_b_quellen()]
     werte: dict[str, str | None] = {"name": None, "strasse": None, "plz": None, "ort": None, "telefon": None,
                                     "quelle_name": None, "quelle_adresse": None, "quelle_telefon": None}
     for f in b:
@@ -1333,6 +1394,11 @@ def zusammenfuehren(
     llm_form = normalize_rechtsform(llm.rechtsform if llm else None)
     rechtsform = rechtsform_aus_seiten(name, impressum_text, fremd, rahmen) or (
         llm_form if rechtsform_belegt(llm_form, name, impressum_text, fremd, rahmen) else None)
+    amtlich = amtliche_daten(funde)
+    if amtlich:
+        # amtliches Verzeichnis (Detailseite) vor der Website: E-Mail und Rechtsform (Vorgabe 05.11.2026)
+        email = (amtlich.get("email") or "").lower() or email
+        rechtsform = normalize_rechtsform(amtlich.get("rechtsform")) or rechtsform
     if rechtsform == "Einzelkanzlei" and name and _KEINE_EINZELKANZLEI.search(name):
         rechtsform = None  # „… Steuerberatungsgesellschaft" ist nie eine Einzelkanzlei (05.11.2026)
 
@@ -1380,6 +1446,14 @@ def zusammenfuehren(
             if name:
                 abweichungen.append(f"{STANDORT_PRAEFIX}{name}")
             name = anbieter
+    amtliche_bt = amtliche_berufstraeger(funde)
+    if amtlich_personen := amtliche_ansprechpartner(amtlich, amtliche_bt if amtlich else []):
+        # Ansprechpartner aus dem amtlichen Verzeichnis (erster Geschäftsführer zuerst); die Website ergänzt nur
+        # Durchwahl und E-Mail der Personen (Vorgabe 05.11.2026)
+        web = personen
+        personen = [p.model_copy(update={k: v for k, v in next(
+            ({"durchwahl": w.durchwahl, "email": w.email} for w in web if gleiche_person(w.name, p.name)), {}).items()
+            if v}) for p in amtlich_personen]
     # Durchwahl und Personenadresse direkt am Personen-Eintrag → zum Ansprechpartner, nie ins Kanzlei-Feld
     kontakte = ansprechpartner_kontakte([_text(s) for s in team_seiten])
     for i, p in enumerate(personen):
@@ -1394,6 +1468,8 @@ def zusammenfuehren(
     angabe = mitarbeiterzahl([_text(s) for s in seiten.values()])
     zahl, klasse, basis = teamgroesse(llm, team_seiten, erkannte, angabe)
     berufstraeger = sum(1 for p in personen if ist_berufstraeger(p))
+    if amtliche_bt:
+        berufstraeger = len(amtliche_bt)  # zugeordnete Personen laut amtlichem Verzeichnis
     if berufstraeger == 0 and len(personen) == 1 and _berufstraeger_kanzlei(name, rechtsform):
         # bethune.de, cora-stb.de: Einzelkanzlei bzw. Steuerberatungsgesellschaft mit genau einer Person ohne
         # erkannte Berufsangabe – die Person ist der Berufsträger (§ 50 StBerG), Basis „abgeleitet"
@@ -1434,7 +1510,8 @@ def zusammenfuehren(
     start = seiten.get(Seitentyp.START)
     website = (start.final_url or start.url) if start else kandidat.website
     quell_urls = [s.url for t, s in seiten.items() if t != Seitentyp.START]
-    quell_urls += [f.roh_url for f in funde if f.quelle in _stufe_b_quellen() and f.roh_url]
+    quell_urls += [f.roh_url for f in funde if (f.quelle in _stufe_b_quellen() or f.quelle == AMTLICH) and f.roh_url]
+    quell_urls = list(dict.fromkeys(quell_urls))
     impressum = seiten.get(Seitentyp.IMPRESSUM)
     if impressum:
         abrufdatum = impressum.abgerufen_am.date()

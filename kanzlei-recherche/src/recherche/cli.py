@@ -1054,6 +1054,8 @@ def stb_verzeichnis(
     out: Annotated[Path | None, typer.Option("--out", "-o", help="Lückenliste als CSV (Standard neben dem Export)")] = None,
     kreis: Annotated[str | None, typer.Option("--kreis", help=(
         "nur die PLZ eines Kreises (Pilot), z. B. „Kreisfreie Stadt Kiel“"))] = None,
+    ohne_details: Annotated[bool, typer.Option("--ohne-details", help=(
+        "Detailseiten (Telefon, E-Mail, Internet, Vertreter, Beratungsstellen) nicht lesen"))] = False,
     neu_gruppieren: Annotated[bool, typer.Option("--neu-gruppieren", help=(
         "Kandidaten des amtlichen Verzeichnisses entfernen und aus dem Cache neu gruppieren (keine neuen Abfragen; "
         "nicht neben einem laufenden stb-verzeichnis)"))] = False,
@@ -1123,7 +1125,28 @@ def stb_verzeichnis(
         if stat.abbruch:
             console.print(f"[yellow]Verzeichnis vorzeitig beendet:[/yellow] {stat.abbruch} – erneut starten setzt fort.")
             return
+        if not ohne_details:
+            from .stbv_lauf import offene_details, run_details
+
+            im_kreis = {p for o in auswahl for p in o.alle_plz} if kreis else None
+            details = offene_details(st, ctx.bundesland, im_kreis)
+            je_detail = cfg.detail_pause_s + cfg.detail_pause_jitter_s / 2 + 1
+            console.print(f"Detailseiten: {len(details)} offen – geschätzt {_dauer(len(details) * je_detail)} "
+                          f"({je_detail:.1f} s je Seite; aus dem Cache sofort)")
+            if details and (ja or typer.confirm("Detailseiten lesen?", default=True)):
+                ds = run_details(st, adapter, ctx.bundesland, ctx.blocklist(), _lauf_id(),
+                                 fortschritt=lambda m: console.print(f"  {m}", markup=False, highlight=False),
+                                 plz=im_kreis)
+                console.print(f"Detailseiten: {ds.gelesen} gelesen – {ds.mit_telefon} mit Telefon, {ds.mit_email} mit "
+                              f"E-Mail, {ds.mit_internet} mit Internet ({ds.zusammengefuehrt} mit dem Kandidaten "
+                              f"derselben Website zusammengeführt), {ds.beratungsstellen} weitere Beratungsstellen als "
+                              f"Standorte, {ds.leer} ohne Eintrag, {ds.fehler} Fehler")
+                if ds.abbruch:
+                    console.print(f"[yellow]Detailseiten vorzeitig beendet:[/yellow] {ds.abbruch} – erneut starten "
+                                  "setzt fort.")
+                    return
         if not ohne_nachsuche:
+            # nur Einträge ohne „Internet" (Website) – die übrigen haben sie aus der Detailseite
             ohne_website = [k for k in st.kandidaten(ctx.bundesland) if k.quelle == QUELLE
                             and not (k.domain or k.website) and k.name and st.cache_get(MERKER, str(k.id)) is None]
             brave = build_adapter(ctx.settings.discovery.stufe_a.adapter, ctx.settings, cache=st)

@@ -286,7 +286,7 @@ def signal_1b(k: Kanzlei, impressum_text: str | None, funde: Sequence[Fund] = ()
     Steuerberaterverzeichnis (ohne Website) zählen wie die Kammer: das Verzeichnis ist das Berufsregister."""
     if impressum_text and _KAMMER.search(impressum_text):
         return 1, "Steuerberaterkammer im Impressum"
-    if any(f.quelle == "stb_verzeichnis" for f in funde):
+    if any(f.quelle in ("stb_verzeichnis", "amtlich") for f in funde):
         return 1, "amtliches Steuerberaterverzeichnis"
     if any(_STB_BEZEICHNUNG.search(f"{p.titel or ''} {p.funktion or ''}") for p in k.ansprechpartner) or (
             impressum_text and _BERUFSBEZ_IMPRESSUM.search(impressum_text)):

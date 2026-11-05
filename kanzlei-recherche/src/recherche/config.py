@@ -124,6 +124,9 @@ class VerzeichnisConfig(QuelleConfig):
     # True: nur bekannte Kandidaten ohne Website ergänzen (Telefon, Adresse, Website), keine neuen anlegen
     nur_ergaenzen: bool = False
     user_agent: str = "kanzlei-recherche/0.1 (Recherche-Tool; Kontakt siehe README)"
+    # Detailseiten (nur amtliches Verzeichnis): eigener, kürzerer Abstand – detail_pause_s + Zufall 0..jitter (5–10 s)
+    detail_pause_s: float = 5.0
+    detail_pause_jitter_s: float = 5.0
 
 
 class QuellenConfig(BaseModel):

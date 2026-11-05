@@ -29,7 +29,7 @@ import random
 import re
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 from urllib.parse import quote, urlencode, urljoin, urlsplit
 
@@ -165,7 +165,7 @@ class _Verzeichnis(OrtsAdapter):
         regeln = self._robots[host]
         return regeln is None or regeln.erlaubt(self.cfg.user_agent, url)
 
-    def _hole(self, url: str, daten: dict[str, str] | None = None) -> str:
+    def _hole(self, url: str, daten: dict[str, str] | None = None, pause: tuple[float, float] | None = None) -> str:
         schluessel = f"{url} POST {urlencode(daten)}" if daten is not None else url
         if self.cache is not None and (gecacht := self.cache.cache_get(self.name, schluessel)) is not None:
             self.abrufe.append({"url": url, "sekunden": 0.0, "cache": True})
@@ -175,7 +175,8 @@ class _Verzeichnis(OrtsAdapter):
         letzter = ""
         for versuch in range(1, self.cfg.retries + 2):
             if self.anfragen:
-                self._sleep(self.cfg.pause_s + self._rng.uniform(0, self.cfg.pause_jitter_s))
+                basis, zufall = pause or (self.cfg.pause_s, self.cfg.pause_jitter_s)
+                self._sleep(basis + self._rng.uniform(0, zufall))
             self._anfrage_zaehlen()
             start = time.monotonic()
             try:
@@ -521,3 +522,109 @@ class StbVerzeichnisAdapter(_Verzeichnis):
             if self.melden:
                 self.melden(meldung)
         return hits
+
+    def detail(self, url: str) -> StbvDetail | None:
+        """Detailseite eines Eintrags – eigener, kürzerer Abstand (detail_pause_s + Zufall), gecacht."""
+        html = self._hole(url, pause=(self.cfg.detail_pause_s, self.cfg.detail_pause_jitter_s))
+        return stbv_detail(html, url)
+
+
+# ---------------------------------------------------------------------- amtliches Verzeichnis: Detailseite
+
+
+@dataclass
+class StbvDetail:
+    """Felder der Detailseite eines Eintrags (Gesellschaft oder Berufsträger) – Quelle „amtlich"."""
+    url: str
+    name: str | None = None  # Firmenname (Zeilen verbunden) bzw. Personenname
+    beruf: str | None = None  # Berufsbezeichnung (Person) bzw. Berufszeile im Firmennamen
+    titel: str | None = None
+    rechtsform: str | None = None
+    strasse: str | None = None
+    plz: str | None = None
+    ort: str | None = None
+    telefon: str | None = None
+    mobil: str | None = None
+    fax: str | None = None
+    email: str | None = None
+    internet: str | None = None
+    safe_id: str | None = None
+    kammer: str | None = None
+    beratungsstellen: list[tuple[str | None, str | None, str | None]] = field(default_factory=list)  # (Straße, PLZ, Ort)
+    geschaeftsfuehrung: list[str] = field(default_factory=list)  # „Dipl.-Kauffrau Anke Anders"
+    gesellschafter: list[str] = field(default_factory=list)  # vertretungsberechtigte Gesellschafter
+
+    def als_dict(self) -> dict:
+        return {k: (list(map(list, v)) if k == "beratungsstellen" else v) for k, v in self.__dict__.items()}
+
+    @classmethod
+    def aus_dict(cls, d: dict) -> StbvDetail:
+        d = dict(d)
+        d["beratungsstellen"] = [tuple(x) for x in d.get("beratungsstellen") or []]
+        return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
+
+
+def _feld(soup, id_: str) -> str | None:
+    """Wert hinter dem Label („Telefon:" ⏎ „0431 670090") eines <p id=…>."""
+    el = soup.find(id=id_)
+    if el is None:
+        return None
+    spans = el.find_all("span", class_="text-wrap")
+    return _knoten_text(spans[-1]) if spans else _knoten_text(el)
+
+
+def _liste(soup, id_: str) -> list[str]:
+    el = soup.find(id=id_)
+    return [t for li in el.find_all("li") if (t := _knoten_text(li))] if el is not None else []
+
+
+def _adresse_teilen(zeilen: list[str]) -> tuple[str | None, str | None, str | None]:
+    plz = ort = strasse = None
+    if zeilen and (m := _PLZ_ORT.match(zeilen[-1])):
+        plz, ort = m.group(1), m.group(2)
+        zeilen = zeilen[:-1]
+    if zeilen:
+        strasse = zeilen[-1]
+    return strasse, plz, ort
+
+
+def stbv_detail(html: str, url: str) -> StbvDetail | None:
+    """Detailseite des amtlichen Verzeichnisses (IDs der Seite: firmenname, rechtsform, adresse, telefon, mobil, fax,
+    email, internetseite, safeid, regionalkammerSection, other-advisory-offices-list, management-body-list,
+    authorized-partner-list). None, wenn die Seite keinen Eintrag enthält."""
+    soup = BeautifulSoup(html or "", "lxml")
+    d = StbvDetail(url)
+    if (firma := soup.find(id="firmenname")) is not None:
+        zeilen = _zeilen(firma)
+        # „Koch, Bolz, … & von Heyer" ⏎ „Steuerberater" ⏎ „Partnerschaftsgesellschaft mbB": alles ist der Name
+        d.name = zeilen_verbinden(zeilen) or None
+        d.beruf = next((z for z in zeilen[1:] if _BERUF_ZEILE.match(z)), None)
+    else:
+        d.name = _knoten_text(soup.select_one("p.name"))
+        d.beruf = _knoten_text(soup.select_one("p.beruf"))
+        d.titel = _knoten_text(soup.select_one("p.akademische-grade"))
+    if not d.name:
+        return None
+    d.rechtsform = _feld(soup, "rechtsform")
+    d.strasse, d.plz, d.ort = _adresse_teilen(_zeilen(soup.find(id="adresse")))
+    d.telefon, d.mobil, d.fax = _feld(soup, "telefon"), _feld(soup, "mobil"), _feld(soup, "fax")
+    if (mail := soup.select_one("#email a[href^='mailto:']")) is not None:
+        d.email = mail["href"][7:].split("?")[0].strip().lower() or None
+    else:
+        d.email = _feld(soup, "email")
+    if (web := soup.select_one("#internetseite [data-url]")) is not None:
+        d.internet = web["data-url"].strip() or None
+    else:
+        d.internet = _feld(soup, "internetseite")
+    d.safe_id = _feld(soup, "safeid")
+    if (kammer := soup.find(id="regionalkammerSection")) is not None and (p := kammer.find("p")) is not None:
+        d.kammer = _knoten_text(p)
+    for eintrag in _liste(soup, "other-advisory-offices-list"):
+        teile = [t.strip() for t in eintrag.split(",")]
+        d.beratungsstellen.append(_adresse_teilen([", ".join(teile[:-1]), teile[-1]] if len(teile) > 1 else teile))
+    d.geschaeftsfuehrung = _liste(soup, "management-body-list")
+    d.gesellschafter = _liste(soup, "authorized-partner-list")
+    return d
+
+
+_BERUF_ZEILE = re.compile(r"^(?:steuerberater|steuerbevollmächtigte|wirtschaftsprüfer|rechtsanw|vereidigte)", re.I)

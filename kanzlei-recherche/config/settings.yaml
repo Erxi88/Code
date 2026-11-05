@@ -131,6 +131,8 @@ discovery:
       url_vorlage: "https://steuerberaterverzeichnis.berufs-org.de/?lang=de"
       formular: {nachnameOrFirmenname: "", ortFilter: "", plzFilter: "{plz}"}   # Suche per POST
       max_seiten: 1                  # alle Treffer einer PLZ auf einer Seite („Treffer: 209 von 209")
+      detail_pause_s: 5.0            # Detailseite je Kandidat (Telefon, E-Mail, Internet, Vertreter, Beratungsstellen):
+      detail_pause_jitter_s: 5.0     #   5–10 s Abstand, gecacht, fortsetzbar
 
 crawl:
   parallel_domains: 10               # so viele Domains gleichzeitig
