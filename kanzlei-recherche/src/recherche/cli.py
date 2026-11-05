@@ -1014,6 +1014,49 @@ def _verzeichnis_bericht(stat) -> None:
         console.print("Keine Abfrage abgeschnitten (überall „Treffer: X von X“).")
 
 
+@app.command("telefonbuch")
+def telefonbuch(
+    bundesland: BundeslandOpt = None,
+    db: DbOpt = None,
+    config: ConfigOpt = None,
+    ja: Annotated[bool, typer.Option("--ja", "-y", help="ohne Rückfrage zur Dauer")] = False,
+    ohne_extract: Annotated[bool, typer.Option("--ohne-extract", help="danach kein crawl/extract")] = False,
+) -> None:
+    """Stufe C: Telefon (ggf. Website) für Einträge des amtlichen Verzeichnisses ohne Website – Das Örtliche, Rückfall
+    Gelbe Seiten; Treffer nur mit Nachname und PLZ/Straße; gecacht, fortsetzbar, Abstand wie beim Verzeichnis."""
+    from .telefonbuch import ANZEIGE, QUELLEN, offene, run_telefonbuch
+
+    ctx = _kontext(config, bundesland, db)
+    with ctx.storage() as st:
+        adapter = []
+        for name in QUELLEN:
+            a = build_adapter(name, ctx.settings, cache=st)
+            if a.aktiv and a.cfg.name_url_vorlage:
+                a.melden = lambda m: console.print(f"  [yellow]{m}[/yellow]")
+                adapter.append(a)
+        if not adapter:
+            _fehler("Kein Telefonbuch aktiv (discovery.quellen.dasoertliche/gelbeseiten: aktiv, name_url_vorlage)")
+        n = len(offene(st, ctx.bundesland))
+        je = adapter[0].cfg.name_pause_s + adapter[0].cfg.name_pause_jitter_s / 2 + 1
+        console.print(f"Telefonbuch {ctx.bl_cfg.name}: {n} Einträge des Verzeichnisses ohne Website offen – je eine "
+                      f"Namenssuche ({' → '.join(ANZEIGE[a.name] for a in adapter)}), geschätzt {_dauer(n * je)} "
+                      f"(höchstens {_dauer(n * je * len(adapter))} mit Rückfall; aus dem Cache sofort)")
+        if n and not ja and not typer.confirm("Telefonbuch abfragen?", default=True):
+            console.print("Abgebrochen – nichts abgefragt.")
+            return
+        stat = run_telefonbuch(st, adapter, ctx.bundesland, ctx.blocklist(), fortschritt=lambda m: console.print(
+            f"  {m}", markup=False, highlight=False))
+    console.print(f"Telefonbuch: {stat.geprueft} gesucht, {stat.telefon} Telefon ergänzt, {stat.website} Website "
+                  f"(→ crawl/extract), {stat.ohne} ohne passenden Eintrag, {stat.fehler} Fehler; Treffer je Quelle: "
+                  + (", ".join(f"{ANZEIGE[q]} {n}" for q, n in stat.je_quelle.items()) or "–"))
+    if stat.abbruch:
+        console.print(f"[yellow]Telefonbuch vorzeitig beendet:[/yellow] {stat.abbruch} – erneut starten setzt fort.")
+        return
+    if not ohne_extract:
+        _crawl(ctx)
+        _extract(ctx)
+
+
 @app.command("stb-verzeichnis-analyse")
 def stb_verzeichnis_analyse(
     db: DbOpt = None,

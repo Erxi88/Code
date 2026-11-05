@@ -242,6 +242,17 @@ class _Verzeichnis(OrtsAdapter):
         """Verzeichnisspezifischer Parser (aus den Fixture-Seiten); None = schema.org-Rückfall."""
         return None
 
+    def suche_name(self, name: str, ort: str | None, plz: str | None = None) -> list[SearchHit]:
+        """Stufe C (`recherche telefonbuch`): ein Eintrag nach Name und Ort – erste Ergebnisseite, gecacht, robots.txt,
+        Abstand name_pause_s + Zufall."""
+        if not self.cfg.name_url_vorlage:
+            raise SearchError(f"{self.name}: name_url_vorlage fehlt (discovery.quellen.{self.name}.name_url_vorlage)")
+        werte = dict(name=name, ort=ort or "", ort_klein=(ort or "").lower(), plz=plz or "")
+        url = self.cfg.name_url_vorlage.format(**{k: quote(str(v)) for k, v in werte.items()})
+        html = self._hole(url, None, (self.cfg.name_pause_s, self.cfg.name_pause_jitter_s))
+        hits = self._parse(html, url)
+        return schema_org_eintraege(html, url, self.name) if hits is None else hits
+
     def search_ort(self, ort: Ort) -> list[SearchHit]:
         einheiten = list(ort.alle_plz) if self.cfg.je_plz else [ort.plz]
         alle: dict[str, SearchHit] = {}

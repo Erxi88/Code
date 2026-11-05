@@ -34,6 +34,7 @@ from .search.verzeichnisse import (
     ist_einzeln,
 )
 from .storage import Storage
+from .telefonbuch import telefon_quelle
 
 QUELLE = "stb_verzeichnis"
 # Stand der Gruppierungsregeln (stbv_gruppieren): ein Land mit älterem Stand wird automatisch neu gruppiert
@@ -271,10 +272,12 @@ class Luecke:
     nicht_zugeordnet: bool = False  # Person ohne Firmenzeile, mehrere Kanzleien an der Adresse
     sozietaet: bool = False  # Regel 3: mehrere Personen ohne Firmenzeile an einer Adresse ohne Kanzlei
     angestellt: str | None = None  # Regel 4: zugeordnete Personen ohne Firmenzeile („A | B"), „angestellt (vermutet)"
+    telefon_quelle: str | None = None  # „amtlich", „Das Örtliche", „Gelbe Seiten" (Stufe C)
 
 
 LUECKEN_SPALTEN = ["Kandidat", "Name (amtlich)", "Berufsträger (amtlich)", "Kennzeichen", "Firma laut Verzeichnis",
-                   "Straße", "PLZ", "Ort", "Kreis", "Website", "Telefon", "Stand", "Kanzleiname (Website)", "Konfidenz",
+                   "Straße", "PLZ", "Ort", "Kreis", "Website", "Telefon", "Telefon-Quelle", "Stand",
+                   "Kanzleiname (Website)", "Konfidenz",
                    f"Berufsträger {ANGESTELLT}"]
 
 
@@ -285,7 +288,8 @@ def luecken(storage: Storage, bundesland: str, kreis_je_plz: dict[str, str] | No
     for k in storage.kandidaten(bundesland):
         if k.quelle != QUELLE or k.id is None:
             continue
-        fund = next((f for f in storage.funde_kandidat(k.id) if f.quelle == QUELLE), None)
+        alle_funde = storage.funde_kandidat(k.id)
+        fund = next((f for f in alle_funde if f.quelle == QUELLE), None)
         z: Kanzlei | None = storage.kanzlei_fuer_kandidat(k.id)
         if z is not None:
             stand = f"extrahiert ({z.status.value})"
@@ -296,7 +300,7 @@ def luecken(storage: Storage, bundesland: str, kreis_je_plz: dict[str, str] | No
         else:
             stand = "ohne Website (amtliche Anschrift)"
         plz = (z.plz if z and z.plz else None) or k.plz
-        snippet = fund.snippet if fund else ""
+        snippet = (fund.snippet if fund else "") or ""
         firma = (m.group(1).strip() if (m := re.search(rf"{re.escape(FIRMA_LAUT_VERZEICHNIS)}(.+?)(?:;|$)", snippet))
                  else None)
         berufstraeger = (m.group(2) if (m := BERUFSTRAEGER_SNIPPET.search(snippet)) else snippet) or None
@@ -306,7 +310,8 @@ def luecken(storage: Storage, bundesland: str, kreis_je_plz: dict[str, str] | No
                              plz, (z.ort if z else None) or k.ort, kreis_je_plz.get(plz or ""), k.website,
                              (z.telefon if z else None) or k.telefon, stand, z.kanzleiname if z else None,
                              z.konfidenz.value if z else None, ist_einzeln(snippet), firma,
-                             NICHT_ZUGEORDNET in snippet, SOZIETAET in snippet, angestellt))
+                             NICHT_ZUGEORDNET in snippet, SOZIETAET in snippet, angestellt,
+                             telefon_quelle(alle_funde, (z.telefon if z else None) or k.telefon)))
     zeilen += syndikus_luecken(storage, bundesland, kreis_je_plz)
     return sorted(zeilen, key=lambda z: (z.plz or "", z.name or ""))
 
@@ -353,7 +358,8 @@ def luecken_werte(z: Luecke) -> list:
                    else SOZIETAET if z.sozietaet else NICHT_ZUGEORDNET if z.nicht_zugeordnet
                    else OHNE_GESELLSCHAFT if z.ohne_gesellschaft else None)
     return [z.kandidat_id, z.name, z.berufstraeger, kennzeichen, z.firma,
-            z.strasse, z.plz, z.ort, z.kreis, z.website, z.telefon, z.stand, z.kanzleiname, z.konfidenz,
+            z.strasse, z.plz, z.ort, z.kreis, z.website, z.telefon, z.telefon_quelle, z.stand, z.kanzleiname,
+            z.konfidenz,
             f"{z.angestellt} – {ANGESTELLT}" if z.angestellt else None]
 
 

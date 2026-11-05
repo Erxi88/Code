@@ -149,6 +149,9 @@ discovery:
       pause_s: 10.0
       pause_jitter_s: 5.0
       url_vorlage: "https://www.gelbeseiten.de/suche/steuerberater/{ort_klein}"
+      name_url_vorlage: "https://www.gelbeseiten.de/suche/{name}/{ort_klein}"   # recherche telefonbuch (Rückfall)
+      name_pause_s: 30.0             # Abstand der Namenssuche wie beim amtlichen Verzeichnis (30–35 s)
+      name_pause_jitter_s: 5.0
       max_seiten: 1                  # weitere Einträge nur per AJAX („Mehr anzeigen") – erste 50
       nur_ergaenzen: true
       website_nachsuche: false
@@ -157,6 +160,9 @@ discovery:
       pause_s: 10.0
       pause_jitter_s: 5.0
       url_vorlage: "https://www.dasoertliche.de/?kw={rubrik}&ci={ort}&form_name=search_nat&recFrom={start}"
+      name_url_vorlage: "https://www.dasoertliche.de/?kw={name}&ci={ort}&form_name=search_nat"   # recherche telefonbuch
+      name_pause_s: 30.0
+      name_pause_jitter_s: 5.0
       seitengroesse: 25
       nur_ergaenzen: true
       website_nachsuche: false

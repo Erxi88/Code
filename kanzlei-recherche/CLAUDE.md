@@ -276,6 +276,16 @@ der nächsten Quelle füllen.**
       Telefon oder Straße fehlt. gelbeseiten: eigene Kacheln (Telefon/Website base64 in `data-prg`/
       `data-webseitelink`), nur die ersten 50 (weitere per AJAX-POST, nicht gebaut); dasoertliche (25 je Seite,
       `recFrom={start}`) und 11880 (50 je Seite, `?page={seite}`): schema.org (JSON-LD, Microdata).
+- **Stufe C – Telefonbuch** (`recherche telefonbuch -b SH [--ja] [--ohne-extract]`, `telefonbuch.py`, Vorgabe
+  05.11.2026: 695 Einträge „Person ohne Gesellschaft" ohne Website in der SH-Lückenliste): je Kandidat des amtlichen
+  Verzeichnisses ohne Website eine Namenssuche (Name ohne Berufsbezeichnung + Ort) in Das Örtliche
+  (`name_url_vorlage`), ohne passenden Treffer Rückfall Gelbe Seiten; erste Ergebnisseite, robots.txt, gecacht,
+  Abstand wie beim amtlichen Verzeichnis (`name_pause_s` 30 + Zufall 0–5 s), fortsetzbar (api_cache „telefonbuch" je
+  Kandidat; Fehler ohne Merker → erneuter Versuch). Treffer nur mit Nachname (Sozietät: einer der Nachnamen,
+  Gesellschaft: unterscheidendes Namenswort) **und** gleicher PLZ oder Straße. Übernommen: Telefon (leeres Feld),
+  Website nur ohne Blocklist/Portal/Kette und wenn die Domain keinem Kandidaten gehört (→ crawl/extract); E-Mail
+  nennen beide Ergebnisseiten nicht. Fund mit Quelle `dasoertliche`/`gelbeseiten`; Lückenliste Spalte
+  „Telefon-Quelle" („amtlich", „Das Örtliche", „Gelbe Seiten"). Danach crawl und extract.
 - **Interface** (`search/base.py`): `QueryAdapter.search(query, max_results)` (Stufe A)
   und `OrtsAdapter.search_ort(ort)` (Stufe B). Alle liefern `SearchHit` mit Name,
   Straße, PLZ, Ort, Telefon, Website, Quelle, Quell-ID (+ Snippet, Fundstelle). Jede
@@ -872,7 +882,7 @@ der nächsten Quelle füllen.**
 ### CLI (`cli.py`)
 
 `recherche search | fill | coverage | ketten | crawl | extract | export | run | search-compare | orte |
-blocklist-vorschlag | kanzlei-pruefung | zeile | stb-verzeichnis | qualitaet | stichprobe | nachbarkreise | robots-check | suche-auswertung | offen | fixture-add | fixture-eval | fixture-prompt |
+blocklist-vorschlag | kanzlei-pruefung | zeile | stb-verzeichnis | telefonbuch | qualitaet | stichprobe | nachbarkreise | robots-check | suche-auswertung | offen | fixture-add | fixture-eval | fixture-prompt |
 fixture-klassen-umstellen`,
 jeweils mit `--bundesland` und `--db`. **Jeder Schritt muss nach Abbruch
 wiederaufnehmbar sein**: Fortschritt steht in SQLite (Status je Domain und
