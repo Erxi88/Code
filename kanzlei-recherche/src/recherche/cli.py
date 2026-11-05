@@ -1063,40 +1063,72 @@ def telefonbuch(
     config: ConfigOpt = None,
     ja: Annotated[bool, typer.Option("--ja", "-y", help="ohne Rückfrage zur Dauer")] = False,
     ohne_extract: Annotated[bool, typer.Option("--ohne-extract", help="danach kein crawl/extract")] = False,
+    ohne_website_pruefung: Annotated[bool, typer.Option("--ohne-website-pruefung", help=(
+        "Website aus dem Eintrag ohne Erreichbarkeitsprüfung übernehmen"))] = False,
+    out: Annotated[Path | None, typer.Option("--out", "-o", help="Zuordnungsprotokoll als CSV")] = None,
 ) -> None:
-    """Stufe C: Telefon (ggf. Website) für Einträge des amtlichen Verzeichnisses ohne Website – Das Örtliche, Rückfall
-    Gelbe Seiten; Treffer nur mit Nachname und PLZ/Straße; gecacht, fortsetzbar, Abstand wie beim Verzeichnis."""
-    from .telefonbuch import ANZEIGE, QUELLEN, offene, run_telefonbuch
+    """Stufe C: Telefon (ggf. Website) aus Das Örtliche, Rückfall Gelbe Seiten – Ortssuche „Steuerberater" je Ort mit
+    offenen Einträgen (amtliche ohne Website, Kanzleien mit Website ohne Telefon), Zuordnung über Domain bzw. Nachname
+    + PLZ/Straße, Protokoll eindeutig/mehrdeutig/kein Treffer; gecacht, fortsetzbar."""
+    from .telefonbuch import ANZEIGE, QUELLEN, offene, protokoll_csv, run_telefonbuch
 
     ctx = _kontext(config, bundesland, db)
     with ctx.storage() as st:
         adapter = []
         for name in QUELLEN:
             a = build_adapter(name, ctx.settings, cache=st)
-            if a.aktiv and a.cfg.name_url_vorlage:
+            if a.aktiv and a.cfg.url_vorlage:
+                a.cfg = a.cfg.model_copy(update={"pause_s": a.cfg.telefonbuch_pause_s,
+                                                 "pause_jitter_s": a.cfg.telefonbuch_pause_jitter_s})
                 a.melden = lambda m: console.print(f"  [yellow]{m}[/yellow]")
                 adapter.append(a)
         if not adapter:
-            _fehler("Kein Telefonbuch aktiv (discovery.quellen.dasoertliche/gelbeseiten: aktiv, name_url_vorlage)")
-        n = len(offene(st, ctx.bundesland))
-        je = adapter[0].cfg.name_pause_s + adapter[0].cfg.name_pause_jitter_s / 2 + 1
-        console.print(f"Telefonbuch {ctx.bl_cfg.name}: {n} Einträge des Verzeichnisses ohne Website offen – je eine "
-                      f"Namenssuche ({' → '.join(ANZEIGE[a.name] for a in adapter)}), geschätzt {_dauer(n * je)} "
-                      f"(höchstens {_dauer(n * je * len(adapter))} mit Rückfall; aus dem Cache sofort)")
-        if n and not ja and not typer.confirm("Telefonbuch abfragen?", default=True):
+            _fehler("Kein Telefonbuch aktiv (discovery.quellen.dasoertliche/gelbeseiten: aktiv, url_vorlage)")
+        liste = offene(st, ctx.bundesland)
+        orte = {o.ort for o in liste}
+        je = adapter[0].cfg.pause_s + adapter[0].cfg.pause_jitter_s / 2 + 1
+        console.print(f"Telefonbuch {ctx.bl_cfg.name}: {len(liste)} offene Einträge "
+                      f"({sum(o.art == 'verzeichnis' for o in liste)} amtlich ohne Website, "
+                      f"{sum(o.art == 'telefon' for o in liste)} mit Website ohne Telefon) in {len(orte)} Orten – je Ort "
+                      f"eine Ortssuche ({' → '.join(ANZEIGE[a.name] for a in adapter)}), geschätzt mindestens "
+                      f"{_dauer(len(orte) * je)} (große Orte mehrere Seiten; aus dem Cache sofort)")
+        if liste and not ja and not typer.confirm("Telefonbuch abfragen?", default=True):
             console.print("Abgebrochen – nichts abgefragt.")
             return
-        stat = run_telefonbuch(st, adapter, ctx.bundesland, ctx.blocklist(), fortschritt=lambda m: console.print(
-            f"  {m}", markup=False, highlight=False))
-    console.print(f"Telefonbuch: {stat.geprueft} gesucht, {stat.telefon} Telefon ergänzt, {stat.website} Website "
-                  f"(→ crawl/extract), {stat.ohne} ohne passenden Eintrag, {stat.fehler} Fehler; Treffer je Quelle: "
+        stat = run_telefonbuch(st, adapter, ctx.bundesland, ctx.blocklist(),
+                               fortschritt=lambda m: console.print(f"  {m}", markup=False, highlight=False),
+                               erreichbar=None if ohne_website_pruefung else _website_erreichbar(ctx))
+    console.print(f"Telefonbuch: {stat.orte} Orte, {stat.abfragen} Seiten abgerufen – {stat.eindeutig} eindeutig "
+                  f"({stat.telefon} Telefon, {stat.website} Website ergänzt), {stat.mehrdeutig} mehrdeutig, "
+                  f"{stat.kein_treffer} kein Treffer; je Quelle: "
                   + (", ".join(f"{ANZEIGE[q]} {n}" for q, n in stat.je_quelle.items()) or "–"))
+    for f in stat.fehler:
+        console.print(f"  [yellow]{f}[/yellow]")
+    ziel = out or ctx.settings.ausgabe_pfad(ctx.bundesland).with_name(f"telefonbuch_{ctx.bundesland}.csv")
+    console.print(f"Zuordnungsprotokoll: [bold]{protokoll_csv(stat, ziel)}[/bold]")
     if stat.abbruch:
         console.print(f"[yellow]Telefonbuch vorzeitig beendet:[/yellow] {stat.abbruch} – erneut starten setzt fort.")
         return
     if not ohne_extract:
         _crawl(ctx)
         _extract(ctx)
+
+
+def _website_erreichbar(ctx: Kontext):
+    """Website aus dem Telefonbuch: erreichbar = HTTP-Antwort unter 400 (HEAD, sonst GET), Weiterleitungen gefolgt."""
+    import httpx
+
+    client = httpx.Client(timeout=10, follow_redirects=True, headers={"User-Agent": ctx.settings.crawl.user_agent})
+
+    def pruefen(url: str) -> bool:
+        try:
+            r = client.head(url)
+            if r.status_code >= 400:
+                r = client.get(url)
+            return r.status_code < 400
+        except httpx.HTTPError:
+            return False
+    return pruefen
 
 
 @app.command("stb-verzeichnis-analyse")

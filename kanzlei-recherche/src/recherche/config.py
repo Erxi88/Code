@@ -129,11 +129,11 @@ class VerzeichnisConfig(QuelleConfig):
     detail_pause_jitter_s: float = 0.0
     # Mindestabstand zwischen zwei Anfragen an denselben Host über alle parallel laufenden Länder (--parallel)
     min_abstand_host_s: float = 0.0  # settings.yaml: amtliches Verzeichnis 1 s
-    # Stufe C `recherche telefonbuch`: Suche nach Name und Ort (Platzhalter {name} {ort} {ort_klein} {plz}), Abstand
-    # wie beim amtlichen Verzeichnis (30–35 s)
-    name_url_vorlage: str | None = None
-    name_pause_s: float = 30.0
-    name_pause_jitter_s: float = 5.0
+    # Stufe C `recherche telefonbuch`: Ortssuche (url_vorlage) mit eigenem Abstand wie beim amtlichen Verzeichnis
+    # (30–35 s); Gelbe Seiten nur für Städte in der Sitemap der Stadtseiten (robots.txt sperrt /suche)
+    telefonbuch_pause_s: float = 30.0
+    telefonbuch_pause_jitter_s: float = 5.0
+    staedte_sitemap: str | None = None
 
 
 class QuellenConfig(BaseModel):
@@ -142,10 +142,8 @@ class QuellenConfig(BaseModel):
     serpapi: SerpApiConfig = Field(default_factory=SerpApiConfig)
     ddgs: DdgsConfig = Field(default_factory=DdgsConfig)
     places: PlacesConfig = Field(default_factory=PlacesConfig)
-    gelbeseiten: VerzeichnisConfig = Field(default_factory=lambda: VerzeichnisConfig(
-        nur_ergaenzen=True, name_url_vorlage="https://www.gelbeseiten.de/suche/{name}/{ort_klein}"))
-    dasoertliche: VerzeichnisConfig = Field(default_factory=lambda: VerzeichnisConfig(
-        nur_ergaenzen=True, name_url_vorlage="https://www.dasoertliche.de/?kw={name}&ci={ort}&form_name=search_nat"))
+    gelbeseiten: VerzeichnisConfig = Field(default_factory=lambda: VerzeichnisConfig(nur_ergaenzen=True))
+    dasoertliche: VerzeichnisConfig = Field(default_factory=lambda: VerzeichnisConfig(nur_ergaenzen=True))
     elf880: VerzeichnisConfig = Field(default_factory=lambda: VerzeichnisConfig(nur_ergaenzen=True))
     stb_verzeichnis: VerzeichnisConfig = Field(
         default_factory=lambda: VerzeichnisConfig(pause_s=30.0, pause_jitter_s=5.0, je_plz=True, max_seiten=1, nur_luecken=False)

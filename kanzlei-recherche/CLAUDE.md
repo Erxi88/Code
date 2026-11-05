@@ -276,19 +276,31 @@ der nächsten Quelle füllen.**
       gespeichert; extract neu, bei neuer Website auch crawl). Unbekannte Einträge werden nicht angelegt,
       Kandidaten mit Website nicht angefasst (deren Website-Daten gelten) – Ausgabe „ergänzt / bekannt mit
       Website / nicht im Bestand". Ortswahl `fill --unvollstaendig`: Orte mit Kandidaten ohne Website, denen
-      Telefon oder Straße fehlt. gelbeseiten: eigene Kacheln (Telefon/Website base64 in `data-prg`/
+      Telefon oder Straße fehlt. gelbeseiten: Stadtseite `/branchen/steuerberater/<stadt>` (robots.txt sperrt `/suche`
+      und `/prg`), eigene Kacheln (Telefon/Website base64 in `data-prg`/
       `data-webseitelink`), nur die ersten 50 (weitere per AJAX-POST, nicht gebaut); dasoertliche (25 je Seite,
       `recFrom={start}`) und 11880 (50 je Seite, `?page={seite}`): schema.org (JSON-LD, Microdata).
-- **Stufe C – Telefonbuch** (`recherche telefonbuch -b SH [--ja] [--ohne-extract]`, `telefonbuch.py`, Vorgabe
-  05.11.2026: 695 Einträge „Person ohne Gesellschaft" ohne Website in der SH-Lückenliste): je Kandidat des amtlichen
-  Verzeichnisses ohne Website eine Namenssuche (Name ohne Berufsbezeichnung + Ort) in Das Örtliche
-  (`name_url_vorlage`), ohne passenden Treffer Rückfall Gelbe Seiten; erste Ergebnisseite, robots.txt, gecacht,
-  Abstand wie beim amtlichen Verzeichnis (`name_pause_s` 30 + Zufall 0–5 s), fortsetzbar (api_cache „telefonbuch" je
-  Kandidat; Fehler ohne Merker → erneuter Versuch). Treffer nur mit Nachname (Sozietät: einer der Nachnamen,
-  Gesellschaft: unterscheidendes Namenswort) **und** gleicher PLZ oder Straße. Übernommen: Telefon (leeres Feld),
-  Website nur ohne Blocklist/Portal/Kette und wenn die Domain keinem Kandidaten gehört (→ crawl/extract); E-Mail
-  nennen beide Ergebnisseiten nicht. Fund mit Quelle `dasoertliche`/`gelbeseiten`; Lückenliste Spalte
-  „Telefon-Quelle" („amtlich", „Das Örtliche", „Gelbe Seiten"). Danach crawl und extract.
+- **Stufe C – Telefonbuch** (`recherche telefonbuch -b SH [--ja] [--ohne-extract] [--ohne-website-pruefung] [--out …csv]`,
+  `telefonbuch.py`; Umbau 05.11.2026 – die Namenssuche brach ab: Das Örtliche HTTP 410 bei mehrwortigem `kw`, Gelbe
+  Seiten `/suche` per robots.txt gesperrt): **Ortssuche statt Namenssuche** – je Ort mit offenen Einträgen eine Abfrage
+  „Steuerberater" im Ort. Offen sind (a) Einträge des amtlichen Verzeichnisses ohne Website, (b) Kanzleien mit Website
+  ohne Telefon. Das Örtliche über `Controller?form_name=search_nat&kw=Steuerberater&ci=<Ort>&recFrom=<start>`, alle
+  Seiten à 25 über „zur nächsten Seite" (`max_seiten` 20; Kiel, Lübeck, Flensburg …); Parser aus dem Skript-Array
+  `handlerData` der Trefferliste (Name, Straße, PLZ, Ort, Telefon, **Website, E-Mail** – sonst nur hinter Schaltflächen;
+  Detaillink aus `a.hitlnk_name`), Rückfall schema.org. Gelbe Seiten nur als Rückfall über die erlaubte Stadtseite
+  `/branchen/steuerberater/<stadt>` (erste 50), wenn die Stadt in der Sitemap der Stadtseiten steht
+  (`staedte_sitemap`, `sitemap_trefferliste_<stadt>_alle`), sonst weggelassen. Zuordnung: (b) zuerst über die gleiche
+  Domain; sonst Nachname (Sozietät: einer, Gesellschaft: unterscheidendes Namenswort) **und** gleiche PLZ oder Straße;
+  mehrere passende Einträge mit verschiedenen Nummern → „mehrdeutig" (nichts übernommen), gleiche Nummer zählt einmal
+  (Eintrag mit Website bevorzugt). Übernommen: Telefon (leeres Feld) und bei (a) die Website des Eintrags, wenn weder
+  Blocklist, Portal, Kette noch vergeben, mit Namensbezug (Namenswort oder Steuer-/Kanzleiwort in der Domain –
+  „muenchen-klinik.de" für einen Steuerberater nicht) und erreichbar (HEAD/GET < 400). Fund mit Quelle
+  `dasoertliche`/`gelbeseiten` (E-Mail und Website des Eintrags im Snippet). **Protokoll** je Eintrag eindeutig /
+  mehrdeutig / kein Treffer mit Quelle, Treffer, Telefon, Website, Übernahme und Hinweis als `telefonbuch_<BL>.csv`;
+  Lückenliste Spalten „Telefon-Quelle" und „Website-Herkunft". Seiten gecacht, Abstand wie beim amtlichen Verzeichnis
+  (`telefonbuch_pause_s` 30 + 0–5 s), jeder Eintrag einmal (api_cache „telefonbuch"). Echte Seiten nur lokal
+  (`echt/dasoertliche_reinbek.html`, `dasoertliche_kiel_ort_1.html`, `gelbeseiten_branchen_kiel.html`), fiktive unter
+  `beispiele/`. Danach crawl und extract.
 - **Interface** (`search/base.py`): `QueryAdapter.search(query, max_results)` (Stufe A)
   und `OrtsAdapter.search_ort(ort)` (Stufe B). Alle liefern `SearchHit` mit Name,
   Straße, PLZ, Ort, Telefon, Website, Quelle, Quell-ID (+ Snippet, Fundstelle). Jede

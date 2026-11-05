@@ -242,16 +242,9 @@ class _Verzeichnis(OrtsAdapter):
         """Verzeichnisspezifischer Parser (aus den Fixture-Seiten); None = schema.org-Rückfall."""
         return None
 
-    def suche_name(self, name: str, ort: str | None, plz: str | None = None) -> list[SearchHit]:
-        """Stufe C (`recherche telefonbuch`): ein Eintrag nach Name und Ort – erste Ergebnisseite, gecacht, robots.txt,
-        Abstand name_pause_s + Zufall."""
-        if not self.cfg.name_url_vorlage:
-            raise SearchError(f"{self.name}: name_url_vorlage fehlt (discovery.quellen.{self.name}.name_url_vorlage)")
-        werte = dict(name=name, ort=ort or "", ort_klein=(ort or "").lower(), plz=plz or "")
-        url = self.cfg.name_url_vorlage.format(**{k: quote(str(v)) for k, v in werte.items()})
-        html = self._hole(url, None, (self.cfg.name_pause_s, self.cfg.name_pause_jitter_s))
-        hits = self._parse(html, url)
-        return schema_org_eintraege(html, url, self.name) if hits is None else hits
+    def _weiter(self, html: str) -> bool:
+        """Gibt es eine nächste Ergebnisseite? Standard: ja, solange neue Einträge kommen."""
+        return True
 
     def search_ort(self, ort: Ort) -> list[SearchHit]:
         einheiten = list(ort.alle_plz) if self.cfg.je_plz else [ort.plz]
@@ -266,7 +259,7 @@ class _Verzeichnis(OrtsAdapter):
                 neu = [h for h in hits if h.quell_id not in alle]
                 for h in neu:
                     alle[h.quell_id] = h
-                if not neu or not self._blaettert():
+                if not neu or not self._blaettert() or not self._weiter(html):
                     break
         return list(alle.values())
 
@@ -683,6 +676,43 @@ def stbv_kanzleien(html: str, basis_url: str, quelle: str = "stb_verzeichnis") -
     return stbv_gruppieren(karten, quelle), zahl
 
 
+_HANDLER_DATA = re.compile(r"handlerData\s*=\s*(\[\[.*?\]\])\s*;", re.S)
+# Spalten des handlerData-Arrays (aus der echten Seite, 05.11.2026)
+_HD_ID, _HD_WEB, _HD_ORT, _HD_PLZ, _HD_STRASSE, _HD_NR, _HD_TEL, _HD_NAME, _HD_MAIL = 0, 3, 4, 8, 9, 10, 11, 14, 17
+
+
+def dasoertliche_eintraege(html: str, basis_url: str, quelle: str = "dasoertliche") -> list[SearchHit] | None:
+    """Einträge aus `handlerData` (je Zeile ein Eintrag), Detaillink aus der Trefferliste; None ohne das Array."""
+    m = _HANDLER_DATA.search(html or "")
+    if not m:
+        return None
+    try:
+        zeilen = json.loads(m.group(1))
+    except ValueError:
+        return None
+    details = {}
+    for a in BeautifulSoup(html, "lxml").select("a.hitlnk_name[href]"):
+        if mid := re.search(r"[?&]id=(\d+)", a["href"]):
+            details[mid.group(1)] = urljoin(basis_url, a["href"])
+    hits, gesehen = [], set()
+    for z in zeilen:
+        if len(z) <= _HD_MAIL or not z[_HD_NAME] or z[_HD_ID] in gesehen:
+            continue
+        gesehen.add(z[_HD_ID])
+        detail = next((u for i, u in details.items() if i.startswith(z[_HD_ID])), basis_url)
+        strasse = " ".join(x for x in (z[_HD_STRASSE], z[_HD_NR]) if x).strip() or None
+        hits.append(SearchHit(quelle=quelle, quell_id=z[_HD_ID], name=z[_HD_NAME], strasse=strasse,
+                              plz=z[_HD_PLZ] or None, ort=z[_HD_ORT] or None, telefon=z[_HD_TEL] or None,
+                              website=z[_HD_WEB] or None, email=z[_HD_MAIL] or None, roh_url=detail))
+    return hits
+
+
+def stadt_schluessel(ort: str) -> str:
+    """„Bad Bramstedt" → „bad_bramstedt" (Schreibweise der Gelbe-Seiten-Sitemap)."""
+    f = ort.casefold().replace("ä", "ae").replace("ö", "oe").replace("ü", "ue").replace("ß", "ss")
+    return re.sub(r"[^a-z0-9]+", "_", f).strip("_")
+
+
 class GelbeSeitenAdapter(_Verzeichnis):
     """Branchenverzeichnis, nur Ergänzung bekannter Kandidaten (Telefon, Adresse, Website)."""
 
@@ -691,11 +721,33 @@ class GelbeSeitenAdapter(_Verzeichnis):
     def _parse(self, html: str, url: str) -> list[SearchHit] | None:
         return gelbeseiten_eintraege(html, url, self.name)
 
+    def stadt_bekannt(self, ort: str) -> bool:
+        """Hat die Stadt eine Stadtseite laut Sitemap (staedte_sitemap)? Ohne Sitemap oder bei Fehler: nein."""
+        if not self.cfg.staedte_sitemap:
+            return False
+        if getattr(self, "_staedte", None) is None:
+            try:
+                xml = self._hole(self.cfg.staedte_sitemap)
+            except SearchError:
+                xml = ""
+            self._staedte = set(re.findall(r"sitemap_trefferliste_([a-z0-9_]+?)_alle_\d+", xml))
+        return stadt_schluessel(ort) in self._staedte
+
 
 class DasOertlicheAdapter(_Verzeichnis):
-    """schema.org (JSON-LD ItemList), 25 Einträge je Seite, Blättern über recFrom={start}."""
+    """Trefferliste mit Skript-Array `handlerData` (Name, Straße, PLZ, Ort, Telefon, Website, E-Mail je Eintrag; Website
+    und E-Mail stehen sonst nur hinter Schaltflächen), Rückfall schema.org; 25 je Seite, weiter über „zur nächsten
+    Seite" (recFrom={start})."""
 
     name = "dasoertliche"
+
+    def _parse(self, html: str, url: str) -> list[SearchHit] | None:
+        return dasoertliche_eintraege(html, url, self.name)
+
+    def _weiter(self, html: str) -> bool:
+        # Trefferliste mit handlerData: weiter nur mit Link „zur nächsten Seite"; schema.org-Seiten ohne Seitenzähler:
+        # weiter, solange neue Einträge kommen
+        return "zur nächsten Seite" in (html or "") or "handlerData" not in (html or "")
 
 
 class Elf880Adapter(_Verzeichnis):

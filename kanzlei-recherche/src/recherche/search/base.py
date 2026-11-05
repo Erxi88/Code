@@ -36,6 +36,7 @@ class SearchHit(BaseModel):
     ort: str | None = None
     telefon: str | None = None
     website: str | None = None
+    email: str | None = None  # nur wo die Quelle sie nennt (Das Örtliche)
     snippet: str | None = None
     roh_url: str | None = None  # Fundstelle (Trefferseite, Verzeichniseintrag)
 
