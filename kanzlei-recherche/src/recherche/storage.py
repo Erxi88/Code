@@ -401,6 +401,21 @@ class Storage:
                 pass  # Domain gehört schon einem anderen Kandidaten
         return self.get_kandidat(kid)
 
+    def kandidat_zusammenfuehren(self, von: int, nach: int) -> Kandidat | None:
+        """Kandidat `von` geht in `nach` auf: Funde wandern mit, leere Felder von `nach` werden aus `von` ergänzt,
+        `von` (mit Seiten-Zuordnung und Kanzlei-Zeile) wird gelöscht. Für die Website-Nachsuche: Personen des amtlichen
+        Verzeichnisses, deren Website schon einem Kandidaten gehört (Pilot-Vorgabe 05.11.2026)."""
+        alt = self.get_kandidat(von)
+        if alt is None or von == nach:
+            return self.get_kandidat(nach)
+        with self.conn:
+            self.conn.execute("UPDATE funde SET kandidat_id = ? WHERE kandidat_id = ?", (nach, von))
+            self.conn.execute("DELETE FROM kanzleien WHERE kandidat_id = ?", (von,))
+            self.conn.execute("DELETE FROM kandidaten WHERE id = ?", (von,))
+        self.set_extract_status(nach, SchrittStatus.OFFEN)  # neue Funde (Berufsträger) in die Zeile
+        return self.ergaenze_kandidat(nach, **{f: getattr(alt, f) for f in ERGAENZBARE_FELDER
+                                               if f not in ("domain", "website") and hasattr(alt, f)})
+
     def get_kandidat(self, kid: int) -> Kandidat | None:
         row = self.conn.execute("SELECT * FROM kandidaten WHERE id = ?", (kid,)).fetchone()
         return Kandidat(**dict(row)) if row else None

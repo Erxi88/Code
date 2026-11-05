@@ -302,6 +302,12 @@ def bezeichnung(k: Kandidat | SearchHit, domain: str | None = None) -> str:
     return ", ".join(x for x in teile if x) or "(ohne Angaben)"
 
 
+def _ist_person_ohne_gesellschaft(eintrag) -> bool:
+    from .verzeichnisse import OHNE_GESELLSCHAFT
+
+    return OHNE_GESELLSCHAFT in (getattr(eintrag, "snippet", None) or "")
+
+
 class Zuordnung:
     """Ordnet Treffer Kandidaten zu (Dubletten-Logik) und speichert Kandidaten und Funde."""
 
@@ -312,8 +318,12 @@ class Zuordnung:
         self.lauf_id = lauf_id
         self.zaehler: Counter[str] = Counter()  # nur_ergaenzen: ergänzt / mit Website / nicht im Bestand
         self.index = Index()
+        self.personen: set[int] = set()  # Kandidaten „Person ohne Gesellschaft" des amtlichen Verzeichnisses
         for k in storage.kandidaten(bundesland):
             self.index.setze(k.id, kandidat_schluessel(k))
+            if k.quelle == "stb_verzeichnis" and not k.domain and any(
+                    _ist_person_ohne_gesellschaft(f) for f in storage.funde_kandidat(k.id) if f.quelle == k.quelle):
+                self.personen.add(k.id)
 
     def verarbeite(
         self, hit: SearchHit, adapter: SearchAdapter, suchbegriff: str | None, suchort: str | None
@@ -327,6 +337,10 @@ class Zuordnung:
             return None
         s = schluessel(hit, domain)
         abgleich = self.index.finde(s)
+        if abgleich.id is not None and _ist_person_ohne_gesellschaft(hit) and abgleich.id in self.personen:
+            # amtliches Verzeichnis: je Person ein Kandidat – zwei Personen ohne Gesellschaft (gleiche Adresse,
+            # gleicher Nachname) erst über die gleiche Website zusammenführen (Pilot-Vorgabe 05.11.2026)
+            abgleich = type(abgleich)()
         felder = dict(
             domain=domain, website=hit.website, name=hit.name, strasse=hit.strasse,
             plz=hit.plz, ort=hit.ort, telefon=hit.telefon,
@@ -344,6 +358,8 @@ class Zuordnung:
             k = Kandidat(bundesland=self.bundesland, suchort=suchort, quelle=hit.quelle, **felder)
             kid, neu = self.storage.add_kandidat(k), True
             self.index.setze(kid, s)
+            if _ist_person_ohne_gesellschaft(hit):
+                self.personen.add(kid)
         for vid in abgleich.verdacht:
             if vid != kid:
                 self._dublette(self.storage.get_kandidat(vid), hit, domain, "adresse", DublettenArt.VERDACHT)

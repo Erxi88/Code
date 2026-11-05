@@ -20,6 +20,7 @@ from ..storage import Storage
 from .base import LimitErreicht, QueryAdapter, SearchError, SearchHit
 from .dedupe import name_tokens
 from .pipeline import website_domain
+from .verzeichnisse import FIRMA_LAUT_VERZEICHNIS
 
 MERKER = "website_nachsuche"
 
@@ -55,7 +56,12 @@ def website_nachsuche(storage: Storage, adapter: QueryAdapter, bundesland: str, 
     offen = [k for k in storage.kandidaten(bundesland) if k.quelle == quelle and not (k.domain or k.website)
              and k.name and storage.cache_get(MERKER, str(k.id)) is None]
     for k in offen:
-        query = f"{k.name} {k.ort or ''}".strip()
+        # Person ohne Gesellschaft an ihrer Adresse: mit der Firmenzeile aus dem Verzeichnis suchen („Nordlicht
+        # Treuhand … Kiel") – die Website der Kanzlei, in der die Person arbeitet
+        firma = next((m.group(1).strip() for f in storage.funde_kandidat(k.id) if f.snippet
+                      and (m := re.search(rf"{re.escape(FIRMA_LAUT_VERZEICHNIS)}(.+?)(?:;|$)", f.snippet))), None)
+        suchname = firma or k.name
+        query = f"{suchname} {k.ort or ''}".strip()
         try:
             hits = adapter.search(query, adapter.seitengroesse)
         except LimitErreicht as e:
@@ -67,14 +73,20 @@ def website_nachsuche(storage: Storage, adapter: QueryAdapter, bundesland: str, 
                 fortschritt(f"{query}: Fehler – {e}")
             continue
         stat.geprueft += 1
-        treffer = passender_treffer(k.name, k.ort, hits, blocklist)
+        treffer = passender_treffer(suchname, k.ort, hits, blocklist) or (
+            passender_treffer(k.name, k.ort, hits, blocklist) if firma else None)
         ergebnis = None
         if treffer:
             h, domain = treffer
             anderer = storage.kandidat_nach_domain(domain)
             if anderer and anderer.id != k.id:
+                # gleiche Website → derselbe Kandidat: die Person geht in ihm auf (Funde wandern mit)
+                storage.kandidat_zusammenfuehren(k.id, anderer.id)
                 stat.schon_vergeben += 1
-                ergebnis = f"Domain {domain} gehört schon zu Kandidat {anderer.id}"
+                ergebnis = f"Domain {domain} gehört schon zu Kandidat {anderer.id} – zusammengeführt"
+                if fortschritt:
+                    fortschritt(f"{query}: {ergebnis}")
+                continue  # Kandidat k gibt es nicht mehr (kein Merker nötig)
             else:
                 storage.ergaenze_kandidat(k.id, domain=domain, website=h.website)
                 storage.add_fund(Fund(kandidat_id=k.id, bundesland=bundesland, quelle=adapter.name, quell_id=h.quell_id,

@@ -144,20 +144,28 @@ def test_zeilen_verbinden():
 
 
 def test_stbv_karten_zu_kanzleien():
-    """Gesellschaft + ihre Berufsträger = eine Kanzlei; Zweigstellen-Zeilen und c/o; Einzel-StB ohne Firmenzeile."""
+    """Gesellschaft + ihre Berufsträger an derselben Adresse = eine Kanzlei (c/o, abweichende Firmenzeile mit gleichem
+    erstem Wort); ohne Gesellschaft an der Adresse je Person ein Kandidat mit Kennzeichen und Firmenzeile (Pilot-Vorgabe
+    05.11.2026: „Nordlicht … Beratungsstelle Kiel" hat dort keine Gesellschaftskarte)."""
+    from recherche.search.verzeichnisse import FIRMA_LAUT_VERZEICHNIS, OHNE_GESELLSCHAFT
+
     hits, zahl = stbv_kanzleien((BEISPIELE / "stbv_24103.html").read_text(encoding="utf-8"), STBV_URL)
     assert zahl == (9, 9)
     k = {h.name: h for h in hits}
     assert list(k) == ["Hansen & Petersen Steuerberatungsgesellschaft mbH", "Förde Steuerberater PartG mbB",
-                       "Steuerberaterin Imke Thordsen", "Nordlicht Treuhand- und Revisionsgesellschaft mbH"]
+                       "Steuerberaterin Imke Thordsen", "Steuerberater Ole Ketelsen", "Steuerberater Lars Ketelsen"]
+    for name in ("Steuerberaterin Imke Thordsen", "Steuerberater Ole Ketelsen", "Steuerberater Lars Ketelsen"):
+        assert OHNE_GESELLSCHAFT in k[name].snippet
+    assert f"{FIRMA_LAUT_VERZEICHNIS}Nordlicht Treuhand- und Revisionsgesellschaft mbH" in k["Steuerberater Ole Ketelsen"].snippet
+    assert OHNE_GESELLSCHAFT not in k["Förde Steuerberater PartG mbB"].snippet
     hp = k["Hansen & Petersen Steuerberatungsgesellschaft mbH"]
     assert (hp.strasse, hp.plz, hp.ort) == ("Holstenstraße 42", "24103", "Kiel")
     # Maren Petersen nennt eine abweichende Firmenzeile – gleiche Adresse, eindeutig gleiches erstes Wort
     assert "2 Berufsträger (Steuerberater Dipl.-Kaufmann Jan Hansen; Steuerberaterin Maren Petersen)" in hp.snippet
     assert hp.roh_url.endswith("/details/G1/?lang=de") and hp.website is None and hp.telefon is None
     assert "Steuerbevollmächtigter Timo Brodersen" in k["Förde Steuerberater PartG mbB"].snippet  # c/o-Firma
-    assert "2 Berufsträger" in k["Nordlicht Treuhand- und Revisionsgesellschaft mbH"].snippet  # ohne „Beratungsstelle Kiel"
-    assert len({h.quell_id for h in hits}) == 4
+    assert "Beratungsstelle" not in k["Steuerberater Lars Ketelsen"].snippet  # Zweigstellen-Zeile entfällt
+    assert len({h.quell_id for h in hits}) == 5
 
 
 def test_stbv_post_je_plz_mit_drosselung_cache_und_warnung(storage):
@@ -178,12 +186,12 @@ def test_stbv_post_je_plz_mit_drosselung_cache_und_warnung(storage):
                               sleep=pausen.append, rng=random.Random(1))
     a.melden = meldungen.append
     hits = a.search_ort(Ort("Kiel", "24103", plz_weitere=("24105",)))
-    assert len(hits) == 4  # dieselben Kanzleien unter beiden PLZ
+    assert len(hits) == 5  # dieselben Kanzleien unter beiden PLZ
     assert anfragen == [("POST", "nachnameOrFirmenname=&plzFilter=24103"), ("POST", "nachnameOrFirmenname=&plzFilter=24105")]
     assert len(pausen) == 1 and 30 <= pausen[0] <= 35
     assert meldungen == [f"stb_verzeichnis: nur 9 von 12 Treffern angezeigt ({STBV_URL}) – Rest fehlt"]
     b = StbVerzeichnisAdapter(cfg, cache=storage, client=httpx.Client(transport=httpx.MockTransport(handler)))
-    assert len(b.search_ort(Ort("Kiel", "24103"))) == 4 and b.anfragen == 0  # POST-Antwort aus dem Cache
+    assert len(b.search_ort(Ort("Kiel", "24103"))) == 5 and b.anfragen == 0  # POST-Antwort aus dem Cache
 
 
 def test_gelbeseiten_kacheln_mit_base64():

@@ -1,5 +1,7 @@
 """`recherche stb-verzeichnis`: amtliches Verzeichnis PLZ für PLZ, Abgleich, neue Einträge direkt, Lückenliste."""
 
+from pathlib import Path
+
 from openpyxl import load_workbook
 
 from recherche.config import VerzeichnisConfig
@@ -115,3 +117,113 @@ def test_cli_stb_verzeichnis(monkeypatch, db_pfad, tmp_path):
     r = CliRunner().invoke(cli.app, ["stb-verzeichnis", "-b", "SH", "--db", str(db_pfad), "--ja", "--ohne-nachsuche",
                                      "--nur-verzeichnis", "--out", str(tmp_path / "l.csv")])
     assert r.exit_code == 0 and "davon 0 offen" in " ".join(r.output.split()) and fake.abgefragt == []
+
+
+# ---------------------------------------------------------------------- Pilot (Vorgabe 05.11.2026)
+
+BEISPIEL_STBV = Path(__file__).parent / "fixtures" / "verzeichnisse" / "beispiele" / "stbv_24103.html"
+STBV_URL = "https://steuerberaterverzeichnis.berufs-org.de/?lang=de"
+
+
+def _stbv_adapter(storage, html_je_plz):
+    import httpx
+
+    from recherche.search.verzeichnisse import StbVerzeichnisAdapter
+
+    def handler(req):
+        if req.url.path == "/robots.txt":
+            return httpx.Response(404)
+        plz = next(p for p in html_je_plz if f"plzFilter={p}".encode() in req.content)
+        return httpx.Response(200, text=html_je_plz[plz])
+
+    cfg = VerzeichnisConfig(url_vorlage=STBV_URL, formular={"nachnameOrFirmenname": "", "plzFilter": "{plz}"},
+                            pause_s=30, je_plz=True, max_seiten=1)
+    return StbVerzeichnisAdapter(cfg, cache=storage, client=httpx.Client(transport=httpx.MockTransport(handler)),
+                                 sleep=lambda s: None)
+
+
+def test_pilot_bericht_je_plz_abschneiden_cache_und_antwortzeit(storage, tmp_path):
+    from recherche.stbv_lauf import bericht_csv
+
+    html = BEISPIEL_STBV.read_text(encoding="utf-8")
+    gekuerzt = html.replace("9\n          von\n          9", "9\n          von\n          12")
+    orte = plz_orte([Ort("Kiel", "24103", "Kreisfreie Stadt Kiel", plz_weitere=("24105",))])
+    stat = run_verzeichnis(storage, _stbv_adapter(storage, {"24103": html, "24105": gekuerzt}), orte, "SH", set(), "p1")
+    b1, b2 = stat.berichte
+    assert (b1.plz, b1.eintraege, b1.angezeigt, b1.gesamt, b1.kanzleien, b1.ohne_gesellschaft) == ("24103", 9, 9, 9, 5, 3)
+    assert b1.sekunden is not None and not b1.cache and not b1.abgeschnitten
+    assert b2.abgeschnitten and [b.plz for b in stat.abgeschnitten] == ["24105"]
+    assert (b1.neu, b2.neu) == (5, 0)  # unter 24105 dieselben Kanzleien – schon im Bestand
+    text = bericht_csv(stat.berichte, tmp_path / "b.csv").read_text(encoding="utf-8-sig")
+    assert "24105;Kiel;9;9;12;ja;5;3;0;" in text
+
+    # zweiter Adapter, gleiche Datenbank: Antwort aus dem Cache (neuer Lauf nach Löschen des Protokolls)
+    storage.conn.execute("DELETE FROM lauf_protokoll")
+    stat = run_verzeichnis(storage, _stbv_adapter(storage, {"24103": html, "24105": html}), orte, "SH", set(), "p2")
+    assert all(b.cache and b.sekunden == 0 for b in stat.berichte)
+
+
+def test_orte_im_kreis():
+    from recherche.stbv_lauf import orte_im_kreis
+
+    assert [o.name for o in orte_im_kreis(ORTE, "Kreisfreie Stadt Kiel")[0]] == ["Kiel"]
+    assert [o.name for o in orte_im_kreis(ORTE, "rendsburg")[0]] == ["Kronshagen"]
+    orte, fehler = orte_im_kreis(ORTE, "Kreis Plön")
+    assert orte == [] and "nicht in der Ortsliste" in fehler and "Kreisfreie Stadt Kiel" in fehler
+    assert "nicht eindeutig" in orte_im_kreis(ORTE, "Kreis")[1]
+
+
+def test_person_ohne_gesellschaft_kennzeichen_und_zusammenfuehrung_ueber_website(storage):
+    """Je Person ein Kandidat; die Nachsuche sucht mit der Firmenzeile und führt Personen derselben Website zusammen."""
+    from fakes import FakeQueryAdapter
+
+    from recherche.search.nachsuche import website_nachsuche
+    from recherche.search.verzeichnisse import OHNE_GESELLSCHAFT
+
+    html = BEISPIEL_STBV.read_text(encoding="utf-8")
+    run_verzeichnis(storage, _stbv_adapter(storage, {"24103": html}), plz_orte([Ort("Kiel", "24103", "Kreisfreie Stadt Kiel")]),
+                    "SH", set(), "p1")
+    zeilen = {z.name: z for z in luecken(storage, "SH")}
+    ole, lars = zeilen["Steuerberater Ole Ketelsen"], zeilen["Steuerberater Lars Ketelsen"]
+    assert ole.ohne_gesellschaft and ole.firma == "Nordlicht Treuhand- und Revisionsgesellschaft mbH"
+    assert not zeilen["Förde Steuerberater PartG mbB"].ohne_gesellschaft
+    assert luecken_werte_kennzeichen(ole) == OHNE_GESELLSCHAFT
+
+    # Nachsuche: beide Ketelsen mit der Firmenzeile → dieselbe Website → ein Kandidat mit beiden Funden
+    firma = "Nordlicht Treuhand- und Revisionsgesellschaft mbH Kiel"
+    brave = FakeQueryAdapter("brave", {firma: ["https://www.nordlicht-treuhand.example/"]})
+    meldungen = []
+    stat = website_nachsuche(storage, brave, "SH", QUELLE, set(), fortschritt=meldungen.append)
+    assert brave.aufrufe.count(firma) == 2 and stat.gefunden == 1 and stat.schon_vergeben == 1
+    k = storage.kandidat_nach_domain("nordlicht-treuhand.example")
+    assert storage.get_kandidat(ole.kandidat_id if ole.kandidat_id != k.id else lars.kandidat_id) is None
+    namen = [f.name for f in storage.funde_kandidat(k.id) if f.quelle == QUELLE]
+    assert sorted(namen) == ["Steuerberater Lars Ketelsen", "Steuerberater Ole Ketelsen"]
+    assert any("zusammengeführt" in m for m in meldungen)
+
+
+def luecken_werte_kennzeichen(z):
+    from recherche.stbv_lauf import LUECKEN_SPALTEN, luecken_werte
+
+    return luecken_werte(z)[LUECKEN_SPALTEN.index("Kennzeichen")]
+
+
+def test_cli_pilot_kreis(monkeypatch, db_pfad, tmp_path):
+    from typer.testing import CliRunner
+
+    from recherche import cli
+
+    fake = FakeVerzeichnis({"24119": [_hit(9, "Steuerberater Ole Rau", "Dorfstraße 1", "24119", "Kronshagen")],
+                            "24103": [_hit(8, "Steuerberaterin Eva Ott", "Markt 1", "24103", "Kiel")]})
+    monkeypatch.setattr(cli, "build_adapter", lambda name, s, cache=None: fake)
+    monkeypatch.setattr(cli.Kontext, "orte", lambda self, auswahl, mit_zusatz=True: ORTE)
+    monkeypatch.setattr(cli.Settings, "ausgabe_pfad", lambda self, bl, datum=None: tmp_path / "sh.xlsx")
+    r = CliRunner().invoke(cli.app, ["stb-verzeichnis", "-b", "SH", "--db", str(db_pfad), "--ja", "--ohne-nachsuche",
+                                     "--nur-verzeichnis", "--kreis", "Kiel"])
+    assert r.exit_code == 0, r.output
+    text = " ".join(r.output.split())
+    assert "Pilot: nur Kreisfreie Stadt Kiel" in text and "2 PLZ, davon 2 offen" in text
+    assert fake.abgefragt == ["24103", "24105"] and "Keine Abfrage abgeschnitten" in text
+    assert (tmp_path / "stb_verzeichnis_plz_SH_Kreisfreie_Stadt_Kiel.csv").exists()
+    assert "Eva Ott" in (tmp_path / "luecken_amtlich_SH_Kreisfreie_Stadt_Kiel.csv").read_text(encoding="utf-8-sig")
+    assert "Ole Rau" not in (tmp_path / "luecken_amtlich_SH_Kreisfreie_Stadt_Kiel.csv").read_text(encoding="utf-8-sig")

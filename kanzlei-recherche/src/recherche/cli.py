@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 from collections import Counter
 from datetime import datetime
@@ -493,8 +494,8 @@ def _website_nachsuche(ctx: Kontext, st: Storage, quelle: str) -> None:
     console.print(f"Website-Nachsuche für neue {quelle}-Einträge ohne Website mit {name} (eine Seite je Eintrag) …")
     stat = website_nachsuche(st, brave, ctx.bundesland, quelle, ctx.blocklist(), fortschritt=lambda m: console.print(f"  {m}"))
     console.print(f"Nachsuche: {stat.geprueft} gesucht, {stat.gefunden} mit Website (→ crawl/extract), "
-                  f"{stat.ohne_website} ohne Website (amtliche Anschrift bleibt), {stat.schon_vergeben} Domain schon "
-                  f"vergeben, {stat.fehler} Fehler; {brave.anfragen} Anfragen ≈ {brave.kosten():.2f}")
+                  f"{stat.ohne_website} ohne Website (amtliche Anschrift bleibt), {stat.schon_vergeben} mit dem "
+                  f"Kandidaten derselben Website zusammengeführt, {stat.fehler} Fehler; {brave.anfragen} Anfragen ≈ {brave.kosten():.2f}")
     if stat.abbruch:
         console.print(f"[yellow]Nachsuche vorzeitig beendet:[/yellow] {stat.abbruch} – erneut `fill` aufrufen setzt fort.")
 
@@ -960,6 +961,34 @@ def zeile(
         raise typer.Exit(1)
 
 
+def _verzeichnis_bericht(stat) -> None:
+    """Pilot-Zusammenfassung: Kanzleien je PLZ, Abschneide-Warnungen, Antwortzeiten."""
+    if not stat.berichte:
+        return
+    t = Table(title="Amtliches Verzeichnis je PLZ")
+    for spalte in ("PLZ", "Ort", "Einträge", "Treffer", "Kanzleien", "ohne Ges.", "neu", "bekannt", "Antwort"):
+        t.add_column(spalte, justify="left" if spalte == "Ort" else "right")
+    for b in stat.berichte:
+        treffer = f"{b.angezeigt} von {b.gesamt}" if b.gesamt is not None else "–"
+        if b.abgeschnitten:
+            treffer = f"[red]{treffer}[/red]"
+        zeit = "Cache" if b.cache else (f"{b.sekunden:.1f} s" if b.sekunden is not None else (b.fehler or "–"))
+        t.add_row(b.plz, b.ort, str(b.eintraege if b.eintraege is not None else "–"), treffer, str(b.kanzleien),
+                  str(b.ohne_gesellschaft), str(b.neu), str(b.bekannt), zeit)
+    console.print(t)
+    zeiten = [b.sekunden for b in stat.berichte if b.sekunden is not None and not b.cache]
+    if zeiten:
+        console.print(f"Antwortzeiten (ohne Pause, {len(zeiten)} Abfragen): Mittel {sum(zeiten) / len(zeiten):.1f} s, "
+                      f"Median {sorted(zeiten)[len(zeiten) // 2]:.1f} s, längste {max(zeiten):.1f} s")
+    groesste = max((b.gesamt or 0 for b in stat.berichte), default=0)
+    console.print(f"Größte Trefferzahl einer Abfrage: {groesste}")
+    if stat.abgeschnitten:
+        console.print(f"[red]Abgeschnitten ({len(stat.abgeschnitten)} PLZ):[/red] " + ", ".join(
+            f"{b.plz} ({b.angezeigt} von {b.gesamt})" for b in stat.abgeschnitten))
+    else:
+        console.print("Keine Abfrage abgeschnitten (überall „Treffer: X von X“).")
+
+
 @app.command("stb-verzeichnis")
 def stb_verzeichnis(
     bundesland: BundeslandOpt = None,
@@ -970,6 +999,8 @@ def stb_verzeichnis(
     nur_verzeichnis: Annotated[bool, typer.Option("--nur-verzeichnis", help=(
         "nach Abgleich und Nachsuche aufhören (kein crawl/extract)"))] = False,
     out: Annotated[Path | None, typer.Option("--out", "-o", help="Lückenliste als CSV (Standard neben dem Export)")] = None,
+    kreis: Annotated[str | None, typer.Option("--kreis", help=(
+        "nur die PLZ eines Kreises (Pilot), z. B. „Kreisfreie Stadt Kiel“"))] = None,
 ) -> None:
     """Stufe B für das ganze Land: amtliches Steuerberaterverzeichnis PLZ für PLZ, Abgleich mit dem Bestand, neue
     Einträge direkt als Kandidaten, Website-Nachsuche (Brave, Kosten vorab), crawl, extract und Lückenliste (CSV und
@@ -977,10 +1008,12 @@ def stb_verzeichnis(
     from .search.nachsuche import MERKER
     from .stbv_lauf import (
         QUELLE,
+        bericht_csv,
         kreise,
         luecken,
         luecken_csv,
         offene_plz,
+        orte_im_kreis,
         plz_orte,
         run_verzeichnis,
     )
@@ -990,7 +1023,14 @@ def stb_verzeichnis(
         alle_orte = ctx.orte(None, mit_zusatz=False)
     except (OSError, ValueError) as e:
         _fehler(f"Ortsliste nicht lesbar: {e}")
-    orte = plz_orte(alle_orte)
+    auswahl = alle_orte
+    if kreis:
+        auswahl, fehler = orte_im_kreis(alle_orte, kreis)
+        if fehler:
+            _fehler(fehler)
+        console.print(f"Pilot: nur {auswahl[0].kreis} ({len(auswahl)} Gemeinden)")
+    orte = plz_orte(auswahl)
+    endung = f"_{re.sub(r'[^0-9a-zA-ZäöüÄÖÜß]+', '_', auswahl[0].kreis or kreis).strip('_')}" if kreis else ""
     with ctx.storage() as st:
         adapter = build_adapter(QUELLE, ctx.settings, cache=st)
         _adapter_pruefen(adapter, explizit=True)
@@ -1008,6 +1048,10 @@ def stb_verzeichnis(
         console.print(f"Verzeichnis: {stat.plz - stat.uebersprungen} PLZ abgefragt ({stat.uebersprungen} schon erledigt), "
                       f"{stat.treffer} Kanzleien – {stat.neu} neu (direkt im Bestand), {stat.bekannt} bekannt, "
                       f"{stat.verworfen} schon von dieser Quelle, {stat.fehler} Fehler")
+        _verzeichnis_bericht(stat)
+        if stat.berichte:
+            ziel = ctx.settings.ausgabe_pfad(ctx.bundesland).with_name(f"stb_verzeichnis_plz_{ctx.bundesland}{endung}.csv")
+            console.print(f"Bericht je PLZ: [bold]{bericht_csv(stat.berichte, ziel)}[/bold]")
         if stat.abbruch:
             console.print(f"[yellow]Verzeichnis vorzeitig beendet:[/yellow] {stat.abbruch} – erneut starten setzt fort.")
             return
@@ -1025,10 +1069,15 @@ def stb_verzeichnis(
         _extract(ctx)
     with ctx.storage() as st:
         zeilen = luecken(st, ctx.bundesland, kreise(alle_orte))
+    if kreis:
+        im_kreis = {p for o in auswahl for p in o.alle_plz}
+        zeilen = [z for z in zeilen if z.plz in im_kreis]
     pfad = luecken_csv(zeilen, out or ctx.settings.ausgabe_pfad(ctx.bundesland).with_name(
-        f"luecken_amtlich_{ctx.bundesland}.csv"))
+        f"luecken_amtlich_{ctx.bundesland}{endung}.csv"))
     mit_website = sum(1 for z in zeilen if z.website)
-    console.print(f"Lückenliste: {len(zeilen)} Kanzleien nur im amtlichen Verzeichnis ({mit_website} mit Website) – "
+    ohne_ges = sum(1 for z in zeilen if z.ohne_gesellschaft)
+    console.print(f"Lückenliste: {len(zeilen)} Kanzleien nur im amtlichen Verzeichnis ({mit_website} mit Website, "
+                  f"{ohne_ges} „Person ohne Gesellschaft an dieser Adresse“) – "
                   f"[bold]{pfad}[/bold]; dieselbe Liste im Export (`recherche export -b {ctx.bundesland}`) im Blatt "
                   "„Lücken (amtlich)“")
 

@@ -137,10 +137,16 @@ der nächsten Quelle füllen.**
     - `stb_verzeichnis` (amtlich, BStBK, **Grundliste**, `nur_luecken: false` → auch `fill --alle`; gleiche PLZ
     mehrerer Gemeinden kommen aus dem Cache): POST je PLZ des Ortes (`je_plz`), alle Treffer auf
       einer Seite; „Treffer: X von Y" mit X < Y wird gemeldet. Karten je Berufsträger und je Gesellschaft werden
-      zu Kanzleien gruppiert (`stbv_kanzleien`): Gesellschaften sind Kanzleien; Berufsträger gehören zur Firma
-      in ihren Adresszeilen (vor der Straße; Zeilen „Beratungsstelle/Zweigniederlassung …" entfallen, „c/o X" →
-      X), bei gleicher Adresse zur Gesellschaft mit gleichem Namen, Namensanfang oder eindeutig gleichem
-      erstem Wort; ohne Firmenzeile Einzelkanzlei „Steuerberaterin Vorname Nachname". Umbrochene Namen
+      zu Kanzleien gruppiert (`stbv_kanzleien`, Pilot-Vorgabe 05.11.2026): Gesellschaften (Karte ohne Beruf) sind
+      Kanzleien; ein Berufsträger gehört **nur zu einer Gesellschaft an derselben Adresse**, deren Name zu seiner
+      Firmenzeile passt (gleicher Name, Namensanfang oder eindeutig gleiches erstes Wort; Zeilen „Beratungsstelle/
+      Zweigniederlassung …" entfallen, „c/o X" → X). Sonst **je Person ein Kandidat** „Steuerberaterin Vorname Nachname"
+      mit Kennzeichen „Person ohne Gesellschaft an dieser Adresse" und „Firma laut Verzeichnis: …" im Snippet; solche
+      Personen werden untereinander nie über Name/Adresse zusammengeführt (`Zuordnung`), sondern erst über die gleiche
+      Website: Die Nachsuche sucht mit der Firmenzeile, und gehört die gefundene Domain schon einem Kandidaten, geht die
+      Person in ihm auf (`Storage.kandidat_zusammenfuehren`, Funde wandern mit). Die Ergebnisliste nennt je Eintrag
+      nur Beruf, akademische Grade, Name, Firmen-/Zusatzzeilen, Straße, PLZ/Ort – kein Telefon, keine E-Mail, keine
+      Website (Detailseiten werden nicht gelesen). Umbrochene Namen
       („Steuerberatungs-" / „gesellschaft") werden zusammengesetzt, Ergänzungsstriche („Treuhand- und")
       bleiben. Die Berufsträger stehen im Snippet. Abgleich über die Dubletten-Logik → „X Treffer, Y neu,
       Z bekannt". **Website-Nachsuche** (`search/nachsuche.py`): neue Einträge ohne Website → Brave
@@ -156,7 +162,11 @@ der nächsten Quelle füllen.**
       Verzeichnis neu angelegt hat (Name und Berufsträger amtlich, Adresse, Kreis, Website, Telefon, Stand: ohne Website /
       nicht gelesen / extrahiert mit Status, Kanzleiname und Konfidenz der Website) – als CSV
       (`luecken_amtlich_<BL>.csv` neben dem Export) und als Blatt „Lücken (amtlich)" im Export des Landes (auch im
-      Lieferformat, nur wenn es solche Zeilen gibt).
+      Lieferformat, nur wenn es solche Zeilen gibt); Spalten „Kennzeichen" und „Firma laut Verzeichnis".
+      **Pilot** `--kreis "Kreisfreie Stadt Kiel"` (eindeutiger Teilname genügt): nur die PLZ dieses Kreises; je PLZ
+      Einträge (Karten), „Treffer X von Y", Kandidaten nach Gruppierung (davon Person ohne Gesellschaft), neu/bekannt und
+      Antwortzeit ohne Pause (bzw. „Cache"); Zusammenfassung mit Abschneide-Warnungen, Mittel/Median/längster Antwort und
+      größter Trefferzahl; Bericht je PLZ als `stb_verzeichnis_plz_<BL>_<Kreis>.csv`, Lückenliste nur des Kreises.
     - `gelbeseiten`, `dasoertliche`, `elf880` (11880.com) **nur Ergänzung** (`nur_ergaenzen`): Treffer werden
       nur bekannten Kandidaten **ohne Website** zugeordnet (leere Felder Telefon, Adresse, Website; Fund
       gespeichert; extract neu, bei neuer Website auch crawl). Unbekannte Einträge werden nicht angelegt,

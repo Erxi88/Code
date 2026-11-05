@@ -134,6 +134,8 @@ class _Verzeichnis(OrtsAdapter):
         self._rng = rng or random.Random()
         self._robots: dict[str, Robots | None] = {}
         self.melden: Callable[[str], None] | None = None
+        # je Abruf (für den Pilot): Antwortzeit ohne Pause, aus dem Cache, Trefferzahl „X von Y" der Seite
+        self.abrufe: list[dict] = []
 
     def nicht_konfiguriert_grund(self) -> str | None:
         if not self.cfg.url_vorlage:
@@ -165,6 +167,7 @@ class _Verzeichnis(OrtsAdapter):
     def _hole(self, url: str, daten: dict[str, str] | None = None) -> str:
         schluessel = f"{url} POST {urlencode(daten)}" if daten is not None else url
         if self.cache is not None and (gecacht := self.cache.cache_get(self.name, schluessel)) is not None:
+            self.abrufe.append({"url": url, "sekunden": 0.0, "cache": True})
             return gecacht["html"]
         if not self._erlaubt(url):
             raise SearchError(f"{self.name}: robots.txt verbietet {url}")
@@ -173,12 +176,15 @@ class _Verzeichnis(OrtsAdapter):
             if self.anfragen:
                 self._sleep(self.cfg.pause_s + self._rng.uniform(0, self.cfg.pause_jitter_s))
             self._anfrage_zaehlen()
+            start = time.monotonic()
             try:
                 resp = self.client.post(url, data=daten) if daten is not None else self.client.get(url)
             except httpx.HTTPError as e:
                 letzter = f"{type(e).__name__}: {e}"
             else:
                 if resp.status_code == 200:
+                    self.abrufe.append({"url": url, "sekunden": round(time.monotonic() - start, 2), "cache": False,
+                                        "versuch": versuch})
                     if self.cache is not None:
                         self.cache.cache_put(self.name, schluessel, {"html": resp.text})
                     return resp.text
@@ -315,13 +321,18 @@ def _firma(zeilen: list[str]) -> str | None:
     return zeilen_verbinden(zeilen) or None
 
 
+OHNE_GESELLSCHAFT = "Person ohne Gesellschaft an dieser Adresse"
+FIRMA_LAUT_VERZEICHNIS = "Firma laut Verzeichnis: "
+
+
 def stbv_kanzleien(html: str, basis_url: str, quelle: str = "stb_verzeichnis") -> tuple[list[SearchHit], tuple[int, int] | None]:
     """Karten des amtlichen Verzeichnisses → ein Treffer je Kanzlei; dazu (angezeigt, gesamt) aus „Treffer: X von Y".
 
-    Gesellschaften (Karte ohne Beruf) sind Kanzleien. Berufsträger gehören zur Firma in ihren Adresszeilen (vor der
-    Straße); dieselbe Firma an derselben Adresse wie eine Gesellschaft (gleicher Name oder eindeutig gleiches erstes
-    Wort: „RBB v.Reden … mbB" → „RBB Büchl & Partner mbB") wird ihr zugeordnet. Ohne Firmenzeile ist der Berufsträger
-    eine Einzelkanzlei („Steuerberaterin Imke Thordsen"). Die Berufsträger stehen im Snippet.
+    Gesellschaften (Karte ohne Beruf) sind Kanzleien. Ein Berufsträger gehört nur zu einer Gesellschaft an derselben
+    Adresse, deren Name zur Firmenzeile vor seiner Straße passt (gleich, Namensanfang oder eindeutig gleiches erstes
+    Wort: „RBB v.Reden … mbB" → „RBB Büchl & Partner mbB"; „c/o X" → X). Sonst ist jede Person ein eigener Kandidat
+    („Steuerberaterin Imke Thordsen", Kennzeichen „Person ohne Gesellschaft an dieser Adresse", Firmenzeile im Snippet)
+    – zusammengeführt wird erst über die gleiche Website (Nachsuche). Die Berufsträger stehen im Snippet.
     """
     soup = BeautifulSoup(html or "", "lxml")
     gruppen: dict[tuple, dict] = {}
@@ -352,21 +363,29 @@ def stbv_kanzleien(html: str, basis_url: str, quelle: str = "stb_verzeichnis") -
         adr = adresse_key(strasse, plz) or f"{strasse}|{plz}"
         ziel = None
         if firma:
-            ziel = gruppen.get((adr, _schluessel_name(firma)))
+            # nur zu einer Gesellschaft (eigene Karte) an derselben Adresse (Pilot-Vorgabe 05.11.2026)
             vor_ort = [(k, g) for (a, k), g in gruppen.items() if a == adr and g["gesellschaft"]]
             fk, fw = _schluessel_name(firma), _erstes_wort(firma)
+            gleich = [g for k, g in vor_ort if k == fk]
             praefix = [g for k, g in vor_ort if k.startswith(fk) or fk.startswith(k)]  # „rt Revision + Treuhand GmbH"
             wort = [g for _, g in vor_ort if _erstes_wort(g["name"]) == fw]
-            ziel = ziel or (praefix[0] if len(praefix) == 1 else wort[0] if len(wort) == 1 else None)
+            ziel = gleich[0] if gleich else praefix[0] if len(praefix) == 1 else wort[0] if len(wort) == 1 else None
         if ziel is None:
-            name = firma or einzelname
-            ziel = gruppen.setdefault((adr, _schluessel_name(name)), dict(
-                name=name, strasse=strasse, plz=plz, ort=ort, url=url, personen=[], gesellschaft=False))
+            # keine Gesellschaft an dieser Adresse: je Person ein Kandidat („Steuerberater Ole Ketelsen"); die Firmenzeile
+            # bleibt im Snippet (Website-Nachsuche), zusammengeführt wird erst über die gleiche Website
+            ziel = gruppen.setdefault((adr, _schluessel_name(einzelname)), dict(
+                name=einzelname, strasse=strasse, plz=plz, ort=ort, url=url, personen=[], gesellschaft=False,
+                firma=firma))
         ziel["personen"].append(person)
     hits = []
     for (adr, key), g in gruppen.items():
-        snippet = (f"Amtliches Steuerberaterverzeichnis: {len(g['personen'])} Berufsträger ({'; '.join(g['personen'])})"
-                   if g["personen"] else "Amtliches Steuerberaterverzeichnis: Berufsausübungsgesellschaft")
+        if g["gesellschaft"]:
+            snippet = (f"Amtliches Steuerberaterverzeichnis: {len(g['personen'])} Berufsträger ({'; '.join(g['personen'])})"
+                       if g["personen"] else "Amtliches Steuerberaterverzeichnis: Berufsausübungsgesellschaft")
+        else:
+            snippet = f"Amtliches Steuerberaterverzeichnis: 1 Berufsträger ({'; '.join(g['personen'])}); {OHNE_GESELLSCHAFT}"
+            if g.get("firma"):
+                snippet += f"; {FIRMA_LAUT_VERZEICHNIS}{g['firma']}"
         hits.append(SearchHit(quelle=quelle, quell_id=f"{g['plz']}|{adr}|{key}", name=g["name"], strasse=g["strasse"],
                               plz=g["plz"], ort=g["ort"], snippet=snippet, roh_url=g["url"]))
     zahl = _TREFFER.search(" ".join(soup.get_text(" ").split()))
@@ -403,6 +422,9 @@ class StbVerzeichnisAdapter(_Verzeichnis):
         if "link-to-detail" not in (html or "") and "Treffer:" not in (html or ""):
             return None  # anderer Seitenaufbau (Tests mit schema.org-Seiten)
         hits, zahl = stbv_kanzleien(html, url, self.name)
+        if self.abrufe:
+            self.abrufe[-1].update(angezeigt=zahl[0] if zahl else None, gesamt=zahl[1] if zahl else None,
+                                   eintraege=len(BeautifulSoup(html or "", "lxml").select("a.link-to-detail")))
         if zahl and zahl[0] < zahl[1]:
             meldung = f"{self.name}: nur {zahl[0]} von {zahl[1]} Treffern angezeigt ({url}) – Rest fehlt"
             log.warning(meldung)
