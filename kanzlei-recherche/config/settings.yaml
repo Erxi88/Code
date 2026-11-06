@@ -163,6 +163,7 @@ discovery:
       # Ortssuche über den Controller (die Startseiten-Suche gab HTTP 410); weiter über „zur nächsten Seite"
       url_vorlage: "https://www.dasoertliche.de/Controller?form_name=search_nat&kw={rubrik}&ci={ort}&recFrom={start}"
       max_seiten: 20                 # Kiel, Lübeck, Flensburg, Neumünster, Norderstedt: mehrere Seiten à 25
+      telefonbuch_plz_ab: 400        # Ortsabfrage mit mehr Treffern (oder Ortsauswahl) → je PLZ fragen (ci=<PLZ>)
       telefonbuch_pause_s: 30.0      # recherche telefonbuch: Abstand wie beim amtlichen Verzeichnis (30–35 s)
       telefonbuch_pause_jitter_s: 5.0
       seitengroesse: 25

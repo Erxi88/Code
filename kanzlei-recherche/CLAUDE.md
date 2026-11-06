@@ -285,7 +285,14 @@ der nächsten Quelle füllen.**
   Seiten `/suche` per robots.txt gesperrt): **Ortssuche statt Namenssuche** – je Ort mit offenen Einträgen eine Abfrage
   „Steuerberater" im Ort. Offen sind (a) Einträge des amtlichen Verzeichnisses ohne Website, (b) Kanzleien mit Website
   ohne Telefon. Das Örtliche über `Controller?form_name=search_nat&kw=Steuerberater&ci=<Ort>&recFrom=<start>`, alle
-  Seiten à 25 über „zur nächsten Seite" (`max_seiten` 20; Kiel, Lübeck, Flensburg …); Parser aus dem Skript-Array
+  Seiten à 25 über „zur nächsten Seite" (`max_seiten` 20; Kiel, Lübeck, Flensburg …). **Großstädte je PLZ**
+  (HH 06.11.2026: 1.121 offene Einträge): nennt Seite 1 der Ortsabfrage mehr als `telefonbuch_plz_ab` (400) Treffer
+  („Treffer 1-25 von 856") oder kommt eine **Ortsauswahl** (mehrdeutiger Ort – „Hamburg": 8 Orte; Bergedorf, Harburg,
+  Wilhelmsburg … sind eigene Orte und fehlen in der Ortsabfrage), wird je PLZ der offenen Einträge gefragt
+  (`ci=<PLZ>`; das Feld `plz=` wirkt nicht – Gegenprobe 20095: 39 Treffer, alle 20095), jeweils alle Seiten; Ausgabe
+  „Abfragen je Ort: Ort / je PLZ / Stadtseite". Seiten hinter Treffer 500 ließen sich in HH abrufen („526-550 von
+  856"). Echte HH-Seiten lokal (`echt/dasoertliche_hamburg_ortsauswahl.html`, `…_hamburg_ort_1.html`,
+  `…_plz_20095.html`); Parser aus dem Skript-Array
   `handlerData` der Trefferliste (Name, Straße, PLZ, Ort, Telefon, **Website, E-Mail** – sonst nur hinter Schaltflächen;
   Detaillink aus `a.hitlnk_name`), Rückfall schema.org. Gelbe Seiten nur als Rückfall über die erlaubte Stadtseite
   `/branchen/steuerberater/<stadt>` (erste 50), wenn die Stadt in der Sitemap der Stadtseiten steht

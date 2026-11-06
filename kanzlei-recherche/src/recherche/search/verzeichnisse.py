@@ -707,6 +707,21 @@ def dasoertliche_eintraege(html: str, basis_url: str, quelle: str = "dasoertlich
     return hits
 
 
+_TREFFERZAHL = re.compile(r"Treffer\s*\d+\s*-\s*\d+\s*von\s*([\d.]+)")
+
+
+def dasoertliche_trefferzahl(html: str) -> int | None:
+    """„Treffer 1-25 von 856" → 856 (Gesamtzahl der Abfrage, auf jeder Seite der Trefferliste)."""
+    text = BeautifulSoup(html or "", "lxml").get_text(" ", strip=True) if "Treffer" in (html or "") else ""
+    m = _TREFFERZAHL.search(text)
+    return int(m.group(1).replace(".", "")) if m else None
+
+
+def ist_ortsauswahl(html: str) -> bool:
+    """Das Örtliche fragt bei mehrdeutigen Orten nach („Ortsauswahl … wurden 8 Orte gefunden") statt Treffer zu zeigen."""
+    return "Ortsauswahl" in (html or "") and "handlerData" not in (html or "")
+
+
 def stadt_schluessel(ort: str) -> str:
     """„Bad Bramstedt" → „bad_bramstedt" (Schreibweise der Gelbe-Seiten-Sitemap)."""
     f = ort.casefold().replace("ä", "ae").replace("ö", "oe").replace("ü", "ue").replace("ß", "ss")
@@ -743,6 +758,23 @@ class DasOertlicheAdapter(_Verzeichnis):
 
     def _parse(self, html: str, url: str) -> list[SearchHit] | None:
         return dasoertliche_eintraege(html, url, self.name)
+
+    def suche_telefonbuch(self, ort: str, plz: list[str]) -> tuple[list[SearchHit], str]:
+        """Stufe C: Ortsabfrage; nennt Seite 1 mehr als telefonbuch_plz_ab Treffer oder kommt eine Ortsauswahl („Hamburg":
+        8 Orte – Bergedorf, Harburg … sind eigene Orte und fehlen in der Ortsabfrage), dann je PLZ (`ci=<PLZ>`, das
+        Formularfeld `plz=` wirkt nicht – Gegenprobe 20095, 06.11.2026), jeweils alle Seiten. (Treffer, Art)."""
+        from .pipeline import Ort
+
+        erste = self._hole(self._url(Ort(ort, ""), "", 1))
+        gesamt, auswahl = dasoertliche_trefferzahl(erste), ist_ortsauswahl(erste)
+        if not auswahl and (gesamt is None or gesamt <= self.cfg.telefonbuch_plz_ab or not plz):
+            return self.search_ort(Ort(ort, plz[0] if plz else "")), f"Ort ({gesamt if gesamt is not None else '?'} Treffer)"
+        alle: dict[str, SearchHit] = {}
+        for p in sorted(set(plz)):
+            for h in self.search_ort(Ort(p, p)):
+                alle.setdefault(h.quell_id, h)
+        grund = "Ortsauswahl" if auswahl else f"{gesamt} Treffer"
+        return list(alle.values()), f"je PLZ ({len(set(plz))} PLZ; Ortsabfrage: {grund})"
 
     def _weiter(self, html: str) -> bool:
         # Trefferliste mit handlerData: weiter nur mit Link „zur nächsten Seite"; schema.org-Seiten ohne Seitenzähler:

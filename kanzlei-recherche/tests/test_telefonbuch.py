@@ -167,3 +167,46 @@ def test_ortssuche_seiten_zuordnung_rueckfall_und_protokoll(storage, tmp_path):
     vorher = len(abrufe_oe) + len(abrufe_gs)
     assert run_telefonbuch(storage, [oe, gs], "SH", set()).protokoll == []
     assert len(abrufe_oe) + len(abrufe_gs) == vorher
+
+
+@pytest.mark.parametrize("seite1", ["dasoertliche_grossstadt_ort_1.html", "dasoertliche_ortsauswahl.html"])
+def test_grossstadt_und_ortsauswahl_je_plz(storage, seite1):
+    """HH 06.11.2026 (1.121 offene Einträge): Nennt Seite 1 der Ortsabfrage mehr als 400 Treffer („Treffer 1-25 von
+    856") oder kommt eine Ortsauswahl („Hamburg": 8 Orte, Bergedorf/Harburg … eigene Orte), wird je PLZ der offenen
+    Einträge gefragt (ci=<PLZ>; das Feld plz= wirkt nicht) – fiktiv nachgebaut."""
+    from recherche.search.verzeichnisse import dasoertliche_trefferzahl, ist_ortsauswahl
+
+    assert dasoertliche_trefferzahl(_lesen("dasoertliche_grossstadt_ort_1.html")) == 856
+    assert ist_ortsauswahl(_lesen("dasoertliche_ortsauswahl.html"))
+    hansen = _amtlich(storage, "Steuerberater Ole Hansen", "Mönckebergstr. 5", "20095", "Hamburg")
+    petersen = _amtlich(storage, "Steuerberaterin Eva Petersen", "Sachsentor 9", "21029", "Hamburg")
+
+    def antwort(url):
+        for teil, datei in (("ci=20095", "dasoertliche_plz_20095.html"), ("ci=21029", "dasoertliche_plz_21029.html"),
+                            ("ci=Hamburg", seite1)):
+            if teil in url:
+                return httpx.Response(200, text=_lesen(datei))
+        return httpx.Response(404)
+
+    oe, abrufe, _ = _adapter(DasOertlicheAdapter, antwort, url_vorlage=OE_URL, max_seiten=20, telefonbuch_plz_ab=400)
+    oe.cache = storage
+    zeilen = []
+    stat = run_telefonbuch(storage, [oe], "SH", set(), fortschritt=zeilen.append, erreichbar=lambda u: True)
+    assert {z.offen.kandidat.id: z.ergebnis for z in stat.protokoll} == {hansen: EINDEUTIG, petersen: EINDEUTIG}
+    assert storage.get_kandidat(hansen).domain == "hansen-hh-stb.example"
+    assert storage.get_kandidat(petersen).telefon == "040 3 33 33 33"  # Bergedorf: nur über die PLZ gefunden
+    assert [u.split("ci=")[1].split("&")[0] for u in abrufe] == ["Hamburg", "20095", "21029"]
+    assert stat.abfrageart == {"Das Örtliche: je PLZ": 1}
+    assert any("je PLZ (2 PLZ; Ortsabfrage: " + ("856 Treffer" if "gross" in seite1 else "Ortsauswahl") in z
+               for z in zeilen)
+
+
+@pytest.mark.skipif(not (ECHT / "dasoertliche_hamburg_ort_1.html").exists(), reason="echte Seiten nur lokal")
+def test_echte_hamburger_seiten():
+    from recherche.search.verzeichnisse import dasoertliche_trefferzahl, ist_ortsauswahl
+
+    lesen = lambda n: (ECHT / n).read_text(encoding="utf-8")  # noqa: E731
+    assert ist_ortsauswahl(lesen("dasoertliche_hamburg_ortsauswahl.html"))
+    assert dasoertliche_trefferzahl(lesen("dasoertliche_hamburg_ort_1.html")) == 856
+    plz = dasoertliche_eintraege(lesen("dasoertliche_plz_20095.html"), "https://www.dasoertliche.de/")
+    assert len(plz) == 25 and {h.plz for h in plz} == {"20095"}

@@ -1102,6 +1102,8 @@ def telefonbuch(
                   f"({stat.telefon} Telefon, {stat.website} Website ergänzt), {stat.mehrdeutig} mehrdeutig, "
                   f"{stat.kein_treffer} kein Treffer; je Quelle: "
                   + (", ".join(f"{ANZEIGE[q]} {n}" for q, n in stat.je_quelle.items()) or "–"))
+    if stat.abfrageart:
+        console.print("Abfragen je Ort: " + ", ".join(f"{a} {n}" for a, n in stat.abfrageart.most_common()))
     for f in stat.fehler:
         console.print(f"  [yellow]{f}[/yellow]")
     ziel = out or ctx.settings.ausgabe_pfad(ctx.bundesland).with_name(f"telefonbuch_{ctx.bundesland}.csv")

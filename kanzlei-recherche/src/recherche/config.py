@@ -133,6 +133,9 @@ class VerzeichnisConfig(QuelleConfig):
     # (30–35 s); Gelbe Seiten nur für Städte in der Sitemap der Stadtseiten (robots.txt sperrt /suche)
     telefonbuch_pause_s: float = 30.0
     telefonbuch_pause_jitter_s: float = 5.0
+    # Das Örtliche: nennt Seite 1 einer Ortsabfrage mehr Treffer (oder kommt eine Ortsauswahl), wird je PLZ der offenen
+    # Einträge gefragt (ci=<PLZ>) – Großstädte, Stadtteile als eigene Orte (HH 06.11.2026)
+    telefonbuch_plz_ab: int = 400
     staedte_sitemap: str | None = None
 
 

@@ -105,6 +105,7 @@ class TelefonbuchStatistik:
     fehler: list[str] = field(default_factory=list)
     abbruch: str | None = None
     je_quelle: Counter = field(default_factory=Counter)
+    abfrageart: Counter = field(default_factory=Counter)  # „Das Örtliche: Ort" / „Das Örtliche: je PLZ" / Stadtseite
     protokoll: list[Zuordnung] = field(default_factory=list)
 
 
@@ -175,7 +176,13 @@ def run_telefonbuch(storage: Storage, adapter: list, bundesland: str, blocklist:
                 continue  # Gelbe Seiten: keine Stadtseite laut Sitemap → weglassen
             vorher = a.anfragen
             try:
-                hits = a.search_ort(Ort(ort, offen[0].plz or ""))
+                if hasattr(a, "suche_telefonbuch"):  # Das Örtliche: Großstädte und Ortsauswahl je PLZ
+                    hits, art = a.suche_telefonbuch(ort, sorted({o.plz for o in offen if o.plz}))
+                else:
+                    hits, art = a.search_ort(Ort(ort, offen[0].plz or "")), "Stadtseite"
+                stat.abfrageart[f"{ANZEIGE.get(a.name, a.name)}: {art.split(' (')[0]}"] += 1
+                if fortschritt and art.startswith("je PLZ"):
+                    fortschritt(f"Ort {n}/{stat.orte} {ort}: {ANZEIGE.get(a.name, a.name)} {art}")
             except LimitErreicht as e:
                 stat.abbruch = str(e)
                 return stat
