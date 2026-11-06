@@ -1399,6 +1399,13 @@ def zusammenfuehren(
         # amtliches Verzeichnis (Detailseite) vor der Website: E-Mail und Rechtsform (Vorgabe 05.11.2026)
         email = (amtlich.get("email") or "").lower() or email
         rechtsform = normalize_rechtsform(amtlich.get("rechtsform")) or rechtsform
+    if not email and not (kandidat.domain or kandidat.website):
+        # ohne Website: E-Mail aus dem Telefonbuch-Eintrag (Das Örtliche, Vorgabe 06.11.2026)
+        from ..extract.rules import EMAIL_AUSGESCHLOSSEN
+        from ..telefonbuch import telefonbuch_email
+
+        gesperrt = tuple(f"{x}@" for x in (ausschluss.email_ausgeschlossen if ausschluss else EMAIL_AUSGESCHLOSSEN))
+        email = telefonbuch_email(funde, gesperrt)
     if rechtsform == "Einzelkanzlei" and name and _KEINE_EINZELKANZLEI.search(name):
         rechtsform = None  # „… Steuerberatungsgesellschaft" ist nie eine Einzelkanzlei (05.11.2026)
 

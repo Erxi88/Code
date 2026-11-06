@@ -297,7 +297,8 @@ der nächsten Quelle füllen.**
   „muenchen-klinik.de" für einen Steuerberater nicht) und erreichbar (HEAD/GET < 400). Fund mit Quelle
   `dasoertliche`/`gelbeseiten` (E-Mail und Website des Eintrags im Snippet). **Protokoll** je Eintrag eindeutig /
   mehrdeutig / kein Treffer mit Quelle, Treffer, Telefon, Website, Übernahme und Hinweis als `telefonbuch_<BL>.csv`;
-  Lückenliste Spalten „Telefon-Quelle" und „Website-Herkunft". Seiten gecacht, Abstand wie beim amtlichen Verzeichnis
+  ohne Website wird die E-Mail des Eintrags Kanzlei-E-Mail (ohne gesperrte Präfixe, Vorgabe 06.11.2026); Lückenliste
+  Spalten „E-Mail", „Kontakt-Quelle" (Telefon und E-Mail: amtlich / Das Örtliche / Gelbe Seiten) und „Website-Herkunft". Seiten gecacht, Abstand wie beim amtlichen Verzeichnis
   (`telefonbuch_pause_s` 30 + 0–5 s), jeder Eintrag einmal (api_cache „telefonbuch"). Echte Seiten nur lokal
   (`echt/dasoertliche_reinbek.html`, `dasoertliche_kiel_ort_1.html`, `gelbeseiten_branchen_kiel.html`), fiktive unter
   `beispiele/`. Danach crawl und extract.

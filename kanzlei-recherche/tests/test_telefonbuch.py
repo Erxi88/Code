@@ -149,8 +149,15 @@ def test_ortssuche_seiten_zuordnung_rueckfall_und_protokoll(storage, tmp_path):
     text = protokoll_csv(stat, tmp_path / "tb.csv").read_text(encoding="utf-8-sig")
     assert text.startswith("Kandidat;Art;Name") and "mehrdeutig" in text and "Website ohne Telefon" in text
 
+    # ohne Website: E-Mail des Eintrags wird Kanzlei-E-Mail (Vorgabe 06.11.2026), Kontakt-Quelle für beide
+    from recherche.extract.lauf import run_extract
+
+    run_extract(storage, "SH", None, None, None, "l-tb", nur_ids={behn})
+    assert storage.kanzlei_fuer_kandidat(behn).email == "kanzlei@behn-steuer.example"
     werte = {z.name: luecken_werte(z) for z in luecken(storage, "SH")}
-    spalte = LUECKEN_SPALTEN.index("Telefon-Quelle")
+    assert werte["Steuerberaterin Ina Behn"][LUECKEN_SPALTEN.index("E-Mail")] == "kanzlei@behn-steuer.example"
+    assert werte["Steuerberaterin Ina Behn"][LUECKEN_SPALTEN.index("Kontakt-Quelle")] == "Das Örtliche"
+    spalte = LUECKEN_SPALTEN.index("Kontakt-Quelle")
     assert werte["Steuerberater Ole Lund"][spalte] == "Das Örtliche"
     assert werte["Steuerberaterin Imke Thordsen"][spalte] == "Gelbe Seiten"
     assert werte["Steuerberater Ole Lund"][LUECKEN_SPALTEN.index("Website-Herkunft")] == "Telefonbuch (Das Örtliche)"

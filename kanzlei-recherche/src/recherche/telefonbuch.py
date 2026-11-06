@@ -12,9 +12,9 @@ Telefonnummern → „mehrdeutig" (nichts übernommen), keiner → „kein Treff
 eindeutig / mehrdeutig / kein Treffer mit Quelle und Treffer. Übernommen werden Telefon (leeres Feld) und – nur bei (a)
 – die Website aus dem Eintrag (Skript-Array der Trefferliste), wenn sie weder Blocklist, Portal, Kette noch vergeben
 ist, zum Namen passt (Namenswort oder Steuer-/Kanzleiwort in der Domain) und erreichbar ist. Fund mit Quelle
-`dasoertliche`/`gelbeseiten` (Telefon, Website, E-Mail im Snippet); Lückenliste Spalte „Telefon-Quelle". Seiten
-gecacht, Abstand wie beim amtlichen Verzeichnis, jeder Eintrag einmal (api_cache „telefonbuch").
-"""
+`dasoertliche`/`gelbeseiten` (Telefon, Website, E-Mail im Snippet); ohne Website wird die E-Mail des Eintrags
+Kanzlei-E-Mail (merge.py); Lückenliste Spalten „E-Mail" und „Kontakt-Quelle" (Telefon und E-Mail). Seiten gecacht,
+Abstand wie beim amtlichen Verzeichnis, jeder Eintrag einmal (api_cache „telefonbuch")."""
 
 from __future__ import annotations
 
@@ -275,16 +275,36 @@ def protokoll_csv(stat: TelefonbuchStatistik, pfad: str | Path) -> Path:
     return pfad
 
 
-def telefon_quelle(funde: list[Fund], telefon: str | None) -> str | None:
-    """Quelle des Telefons für die Lückenliste: Detailseite des Verzeichnisses („amtlich"), sonst das Telefonbuch,
-    dessen Fund diese Nummer trägt."""
-    if not telefon:
-        return None
-    ziffern = re.sub(r"\D", "", telefon)[-6:]
+_EMAIL_IM_SNIPPET = re.compile(r"E-Mail: ([^\s;]+@[^\s;]+)")
+
+
+def telefonbuch_email(funde: list[Fund], gesperrt: tuple[str, ...] = ()) -> str | None:
+    """E-Mail des Telefonbuch-Eintrags (im Snippet des Funds), ohne gesperrte Präfixe (datenschutz@ …)."""
     for f in funde:
-        if f.quelle == "amtlich" and f.snippet and ziffern and ziffern in re.sub(r"\D", "", f.snippet):
-            return "amtlich"
-    for f in funde:
-        if f.quelle in ANZEIGE and f.telefon and re.sub(r"\D", "", f.telefon).endswith(ziffern):
-            return ANZEIGE[f.quelle]
+        if f.quelle in ANZEIGE and (m := _EMAIL_IM_SNIPPET.search(f.snippet or "")):
+            mail = m.group(1).lower()
+            if not mail.startswith(gesperrt):
+                return mail
     return None
+
+
+def _quelle_von(funde: list[Fund], passt_amtlich, passt_telefonbuch) -> str | None:
+    if any(f.quelle == "amtlich" and f.snippet and passt_amtlich(f.snippet) for f in funde):
+        return "amtlich"
+    return next((ANZEIGE[f.quelle] for f in funde if f.quelle in ANZEIGE and passt_telefonbuch(f)), None)
+
+
+def kontakt_quelle(funde: list[Fund], telefon: str | None, email: str | None) -> str | None:
+    """Quelle von Telefon und E-Mail für die Lückenliste (Spalte „Kontakt-Quelle", 06.11.2026): Detailseite des
+    Verzeichnisses („amtlich"), sonst das Telefonbuch, dessen Fund diesen Wert trägt; beide verschieden → „Telefon: …,
+    E-Mail: …"."""
+    tel = mail = None
+    if telefon and (ziffern := re.sub(r"\D", "", telefon)[-6:]):
+        tel = _quelle_von(funde, lambda s: ziffern in re.sub(r"\D", "", s),
+                          lambda f: bool(f.telefon) and re.sub(r"\D", "", f.telefon).endswith(ziffern))
+    if email:
+        e = email.lower()
+        mail = _quelle_von(funde, lambda s: e in s.lower(), lambda f: e in (f.snippet or "").lower())
+    if tel and mail and tel != mail:
+        return f"Telefon: {tel}, E-Mail: {mail}"
+    return tel or mail
