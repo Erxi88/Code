@@ -288,7 +288,7 @@ _EMAIL_IM_SNIPPET = re.compile(r"E-Mail: ([^\s;]+@[^\s;]+)")
 def telefonbuch_email(funde: list[Fund], gesperrt: tuple[str, ...] = ()) -> str | None:
     """E-Mail des Telefonbuch-Eintrags (im Snippet des Funds), ohne gesperrte Präfixe (datenschutz@ …)."""
     for f in funde:
-        if f.quelle in ANZEIGE and (m := _EMAIL_IM_SNIPPET.search(f.snippet or "")):
+        if (f.quelle in ANZEIGE or f.quelle == "kette") and (m := _EMAIL_IM_SNIPPET.search(f.snippet or "")):
             mail = m.group(1).lower()
             if not mail.startswith(gesperrt):
                 return mail

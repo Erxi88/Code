@@ -895,6 +895,22 @@ der nächsten Quelle füllen.**
   `KEINE_STANDORTE`: www., jobs., karriere., mail., portal. …); `recherche ketten` verknüpft sie zusätzlich mit der
   Zentrale (Fund „kette") und meldet „n aus der Übersicht, n aus standorte_fest, n aus Suchtreffern".
   Danach `crawl` und `extract`.
+  **Großgesellschaften mit Standortliste** (06.11.2026, Übersichten live geprüft, robots.txt erlaubt): Link-Liste mit
+  Standortseiten (`standortmuster: pfad`) für PwC (20), KPMG (28, ohne Service Delivery Center), BDO (31), RSM Ebner
+  Stolz (15; www.rsm.de bricht ab), Forvis Mazars (13), Treuhand Hannover (32), Rödl (21, www.roedl.com), WTS (11);
+  **Standortdaten** (`format`) ohne Link-Liste: `ecovis_json` (281 deutsche Standorte als JSON im Quelltext von
+  de.ecovis.com/standorte/ mit Adresse, Telefon, E-Mail, Standortseite), `ey_json` (21 Büros aus `daten_url`
+  office-locations.json, ohne wavespace, keine eigenen Seiten), `hlb_karten` (31 Mitgliedskanzleien mit eigener
+  Website, Adresse, Telefon). Standorte mit Daten werden **im Land ihrer PLZ** angelegt (`LandNachOrt`, eine Zeile je
+  Standort bundesweit), mit Fund „kette" (zählt wie Stufe B: Name, Adresse, Telefon; E-Mail im Snippet, ohne Website
+  Kanzlei-E-Mail); steht an der Adresse schon ein Kandidat (amtlicher Eintrag), bekommt er den Fund – kein Doppel.
+  Standortseiten ohne Adresse kommen ins Lauf-Land; der Ortsname im Pfad ist zu mehrdeutig („munster" bei bdo.de =
+  Münster, „frankfurt" = Main) – nach extract ordnet die Lieferliste sie über die gelesene PLZ zu. PwC sperrt die
+  Standortseiten für automatische Abrufe („Access Denied"; die Übersicht ging). Nicht gebaut: ETL (Standortsuche nur
+  per POST mit CSRF-Cookie), dhpg und Deloitte (Standorte nur per JavaScript). **`recherche ketten-abgleich -b SH
+  [--out …csv]`**: je Standortzeile im Land „im Verzeichnis (gleiche Adresse)" / „(gleiche PLZ, andere Adresse)" /
+  „nicht im Verzeichnis" / „Adresse noch unbekannt" (mit dem Verzeichnis-Eintrag derselben Kette im Ort aus dem
+  Pfad), dazu Verzeichnis-Einträge mit der Kurzform einer Kette ohne Standortzeile („nur im Verzeichnis").
 - Spalte **„Kanzleityp"** (hinter „Zentrale", `ketten.py`, Prüfkatalog 9): Großgesellschaft (Namensmuster/Domain
   aus `config/ketten.yaml`) vor Kette (Eintrag in `ketten.yaml` oder ≥ 3 Standorte mit derselben Impressum-URL bzw.
   Standort-Gruppe mit ≥ 3 Zeilen) vor Einzelkanzlei (Rechtsform) vor Mittelstand. Jede Kette steht im
@@ -915,7 +931,7 @@ der nächsten Quelle füllen.**
 ### CLI (`cli.py`)
 
 `recherche search | fill | coverage | ketten | crawl | extract | export | run | search-compare | orte |
-blocklist-vorschlag | kanzlei-pruefung | zeile | stb-verzeichnis | telefonbuch | kuerzung | qualitaet | stichprobe | nachbarkreise | robots-check | suche-auswertung | offen | fixture-add | fixture-eval | fixture-prompt |
+blocklist-vorschlag | kanzlei-pruefung | zeile | stb-verzeichnis | telefonbuch | kuerzung | ketten-abgleich | qualitaet | stichprobe | nachbarkreise | robots-check | suche-auswertung | offen | fixture-add | fixture-eval | fixture-prompt |
 fixture-klassen-umstellen`,
 jeweils mit `--bundesland` und `--db`. **Jeder Schritt muss nach Abbruch
 wiederaufnehmbar sein**: Fortschritt steht in SQLite (Status je Domain und

@@ -83,7 +83,8 @@ _TITEL = re.compile(r"\b(dr|prof|dipl|mag|ll\.?m|m\.?a|m\.?sc|b\.?a|b\.?sc|rer|p
 def _stufe_b_quellen() -> frozenset[str]:
     from ..search.registry import ADAPTER_KLASSEN
 
-    return frozenset(n for n, k in ADAPTER_KLASSEN.items() if k.stufe == "B")
+    # „kette": Standortdaten der Kette selbst (Adresse, Telefon aus der Standortliste, 06.11.2026)
+    return frozenset(n for n, k in ADAPTER_KLASSEN.items() if k.stufe == "B") | {"kette"}
 
 
 AMTLICH = "amtlich"

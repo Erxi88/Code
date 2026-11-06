@@ -881,12 +881,15 @@ def ketten_cmd(
 
     from .ketten import KettenConfig
     from .ketten_crawl import (
+        daten_laden,
         feste_standorte,
         standort_links,
+        standortdaten_anlegen,
         standorte_anlegen,
         standorte_aus_suchtreffern,
         uebersicht_laden,
     )
+    from .stbv_lauf import LandNachOrt
 
     ctx = _kontext(config, bundesland, db)
     cfg = KettenConfig.laden(ctx.settings.pfad(ctx.settings.pfade.ketten))
@@ -895,9 +898,20 @@ def ketten_cmd(
         _fehler(f"Keine Kette {kette!r} in ketten.yaml" if kette else "Keine Ketten in ketten.yaml")
     lauf_id = _lauf_id()
     ua = ctx.settings.crawl.user_agent
+    land = LandNachOrt.aus_settings(ctx.settings)  # bundesweit: jeder Standort im Land seiner PLZ bzw. seines Ortes
     with ctx.storage() as st, httpx.Client(timeout=ctx.settings.crawl.timeout_s, follow_redirects=True,
                                            headers={"User-Agent": ua}) as client:
         for c in auswahl:
+            if c.format:
+                daten = daten_laden(c, client, ua, st, melden=lambda t: console.print(f"[yellow]{t}[/yellow]"))
+                if not daten:
+                    console.print(f"{c.schluessel}: keine Standortdaten ({c.format})")
+                    continue
+                ds = standortdaten_anlegen(st, ctx.bundesland, c, daten, lauf_id, land)
+                console.print(f"{c.name}: {ds.standorte} Standorte aus den Standortdaten ({c.format}), {ds.neu} neu, "
+                              f"{ds.bekannt} bekannt – je Land: "
+                              + ", ".join(f"{bl} {n}" for bl, n in sorted(ds.je_land.items())))
+                continue
             aus_liste: list[str] = []
             if c.uebersicht:
                 html = uebersicht_laden(c, client, ua, st, melden=lambda t: console.print(f"[yellow]{t}[/yellow]"))
@@ -908,10 +922,48 @@ def ketten_cmd(
             if not urls:
                 console.print(f"{c.schluessel}: keine Standorte (weder uebersicht noch standorte_fest noch Suchtreffer)")
                 continue
+            # Standortseiten ohne Adresse: im Lauf-Land angelegt; nach extract ordnet die Lieferliste jede Zeile über ihre
+            # PLZ dem richtigen Land zu (der Ortsname im Pfad ist mehrdeutig: „munster" bei bdo.de = Münster, nicht Munster)
             stat = standorte_anlegen(st, ctx.bundesland, c, urls, lauf_id)
             console.print(f"{c.name}: {stat.standorte} Standorte ({len(aus_liste)} aus der Übersicht, {len(fest)} aus "
                           f"standorte_fest, {len(gefunden)} aus Suchtreffern), {stat.neu} neu, {stat.bekannt} bekannt")
     console.print("Weiter mit: recherche crawl, dann recherche extract")
+
+
+@app.command("ketten-abgleich")
+def ketten_abgleich_cmd(
+    bundesland: BundeslandOpt = None,
+    db: DbOpt = None,
+    config: ConfigOpt = None,
+    out: Annotated[Path | None, typer.Option("--out", "-o", help="Ergebnis als CSV")] = None,
+) -> None:
+    """Gegenprobe: Standortzeilen der Ketten/Großgesellschaften im Land gegen die Einträge des amtlichen Verzeichnisses
+    (gleiche Adresse / gleiche PLZ / nicht im Verzeichnis / nur im Verzeichnis)."""
+    import csv
+    from collections import Counter
+
+    from .ketten import KettenConfig
+    from .ketten_crawl import ketten_abgleich
+    from .stbv_lauf import LandNachOrt
+
+    ctx = _kontext(config, bundesland, db)
+    cfg = KettenConfig.laden(ctx.settings.pfad(ctx.settings.pfade.ketten))
+    with ctx.storage() as st:
+        zeilen = ketten_abgleich(st, ctx.bundesland, cfg.ketten, LandNachOrt.aus_settings(ctx.settings))
+    t = Table(title=f"Ketten gegen das amtliche Verzeichnis – {ctx.bl_cfg.name}")
+    for col in ("Kette", "Standort", "Adresse", "Ergebnis", "Verzeichnis"):
+        t.add_column(col)
+    for z in zeilen:
+        t.add_row(z.kette, z.standort, z.adresse, z.ergebnis, z.verzeichnis)
+    console.print(t)
+    console.print("Summe: " + ", ".join(f"{e} {n}" for e, n in Counter(z.ergebnis for z in zeilen).most_common()))
+    if out:
+        out.parent.mkdir(parents=True, exist_ok=True)
+        with open(out, "w", encoding="utf-8-sig", newline="") as f:
+            w = csv.writer(f, delimiter=";")
+            w.writerow(["Kette", "Standort", "Adresse", "Ergebnis", "Verzeichnis"])
+            w.writerows([z.kette, z.standort, z.adresse, z.ergebnis, z.verzeichnis] for z in zeilen)
+        console.print(f"CSV: [bold]{out}[/bold]")
 
 
 @app.command("stichprobe")

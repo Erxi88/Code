@@ -56,6 +56,10 @@ class Kette:
     standorte_fest: list[str] = field(default_factory=list)
     # Telefon der Zentrale: an Standorten nur Rückfall (westerland.shbb.de, fixture-eval 03.11.2026)
     telefon: list[str] = field(default_factory=list)
+    # Standortdaten statt Link-Liste (06.11.2026): ecovis_json (JSON im Quelltext der Übersicht), ey_json (eigene
+    # JSON-Datei `daten_url`), hlb_karten (Karten mit Adresse, Telefon, Website im HTML) – siehe ketten_crawl.py
+    format: str | None = None
+    daten_url: str | None = None
 
     def enthaelt(self, domain: str | None, website: str | None = None) -> bool:
         """Zentrale oder Standort dieser Kette: Subdomain der Zentrale (außer jobs., karriere., mail. …), Eintrag der
@@ -88,7 +92,8 @@ class KettenConfig:
         ketten = [Kette(s, k.get("name") or s, k["zentrale"], k.get("uebersicht"),
                         re.compile(k["link_muster"], re.IGNORECASE) if k.get("link_muster") else None,
                         k.get("standortmuster") or "subdomain", [str(x) for x in k.get("standorte_fest") or []],
-                        [str(x) for x in ([k["telefon"]] if isinstance(k.get("telefon"), (str, int)) else k.get("telefon") or [])])
+                        [str(x) for x in ([k["telefon"]] if isinstance(k.get("telefon"), (str, int)) else k.get("telefon") or [])],
+                        k.get("format"), k.get("daten_url"))
                   for s, k in (daten.get("ketten") or {}).items()]
         return cls(gross, ketten)
 

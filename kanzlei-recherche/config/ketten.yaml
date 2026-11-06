@@ -56,3 +56,78 @@ ketten:
       - lbb.wetreu.de
       - mecklenburg.wetreu.de
       - nordkg.wetreu.de
+
+  # ---- Großgesellschaften mit Standortliste (06.11.2026, Übersichten geprüft: robots.txt erlaubt, Zahlen vom 06.11.)
+  # Jeder Standort wird bundesweit eine Zeile im Land seines Ortes (Pfad der Standortseite) bzw. seiner PLZ.
+  pwc:                              # 20 Standorte
+    name: PricewaterhouseCoopers GmbH Wirtschaftsprüfungsgesellschaft
+    zentrale: pwc.de
+    uebersicht: https://www.pwc.de/de/standorte.html
+    link_muster: 'https://www\.pwc\.de/de/standorte/[a-z0-9-]+\.html$'
+    standortmuster: pfad
+  kpmg:                             # 28 Standorte (ohne die Service Delivery Center essen-sdc, leipzig-sdc)
+    name: KPMG AG Wirtschaftsprüfungsgesellschaft
+    zentrale: kpmg.com
+    uebersicht: https://kpmg.com/de/de/ueber-kpmg/offices.html
+    link_muster: 'https://kpmg\.com/de/de/ueber-kpmg/offices/(?![a-z-]+-sdc\.html)[a-z0-9-]+\.html$'
+    standortmuster: pfad
+  bdo:                              # 31 Standorte
+    name: BDO AG Wirtschaftsprüfungsgesellschaft
+    zentrale: bdo.de
+    uebersicht: https://www.bdo.de/de-de/offices
+    link_muster: 'https://www\.bdo\.de/de-de/offices/[a-z0-9-]+$'
+    standortmuster: pfad
+  ebnerstolz:                       # 15 Standorte (RSM Ebner Stolz; www.rsm.de bricht die Verbindung ab)
+    name: RSM Ebner Stolz
+    zentrale: ebnerstolz.de
+    uebersicht: https://www.ebnerstolz.de/de/ueber-rsm-ebner-stolz/standorte/
+    link_muster: 'https://www\.ebnerstolz\.de/de/ueber-rsm-ebner-stolz/standorte/[a-z0-9-]+$'
+    standortmuster: pfad
+  forvismazars:                     # 13 Standorte
+    name: Forvis Mazars GmbH & Co. KG
+    zentrale: forvismazars.com
+    uebersicht: https://www.forvismazars.com/de/de/offices
+    link_muster: 'https://www\.forvismazars\.com/de/de/offices/[a-z0-9-]+$'
+    standortmuster: pfad
+  treuhand-hannover:                # 32 Niederlassungen
+    name: Treuhand Hannover GmbH Steuerberatungsgesellschaft
+    zentrale: treuhand-hannover.de
+    uebersicht: https://www.treuhand-hannover.de/unser-unternehmen/standorte
+    link_muster: 'https://www\.treuhand-hannover\.de/unser-unternehmen/standorte/standorte-detail/niederlassung-[a-z0-9-]+$'
+    standortmuster: pfad
+  roedl:                            # 21 Standorte in Deutschland (www.roedl.de leitet auf www.roedl.com)
+    name: Rödl & Partner
+    zentrale: roedl.com
+    uebersicht: https://www.roedl.com/
+    link_muster: 'https://www\.roedl\.com/locations/deutschland/[a-z0-9-]+$'
+    standortmuster: pfad
+  wts:                              # 11 Standorte
+    name: WTS Steuerberatungsgesellschaft mbH
+    zentrale: wts.com
+    uebersicht: https://wts.com/de-de/wts-in-deutschland/standorte
+    link_muster: 'https://wts\.com/de-de/locations/[a-z0-9-]+~location$'
+    standortmuster: pfad
+  ecovis:                           # 281 deutsche Standorte als JSON im Quelltext (mit Adresse, Telefon, E-Mail)
+    name: ECOVIS
+    zentrale: ecovis.com
+    uebersicht: https://de.ecovis.com/standorte/
+    format: ecovis_json
+    link_muster: 'https://www\.ecovis\.com/[a-z0-9-]+$'
+    standortmuster: pfad
+  ey:                               # 21 Büros (ohne wavespace) aus der JSON-Datei; keine eigenen Standortseiten
+    name: EY
+    zentrale: ey.com
+    uebersicht: https://www.ey.com/de_de/locations
+    daten_url: https://www.ey.com/content/ey-unified-site/ey-com.office-locations.json?site=ey-com&locale=de_de
+    format: ey_json
+    standortmuster: pfad
+  hlb:                              # 31 Mitgliedskanzleien mit eigener Website (Karten mit Adresse, Telefon)
+    name: HLB Deutschland
+    zentrale: hlb-deutschland.de
+    uebersicht: https://www.hlb-deutschland.de/netzwerk/standorte/
+    format: hlb_karten
+    standortmuster: domain
+  # Nicht gebaut (06.11.2026): ETL (Standortsuche nur per POST mit CSRF-Cookie und Geocoding – Schutz gegen
+  # automatische Abfragen, ETL-Kanzleien sind eigenständige Kanzleien mit eigener Website und kommen über Verzeichnis
+  # und Websuche), dhpg und Deloitte (Standorte nur per JavaScript nachgeladen, keine Sitemap/Datei) – bei Bedarf
+  # standorte_fest von Hand.
